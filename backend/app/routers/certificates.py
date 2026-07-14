@@ -11,6 +11,7 @@ from ..auth import Identity, get_identity
 from ..config import Settings, get_settings
 from ..db import get_db
 from ..models import Certificate, SequenceCounter
+from ..pdf_store import PdfStore, get_pdf_store
 from ..readiness import validate_ready_to_sign
 from ..schema_validation import validate_sign_submission
 from ..signing.crosscheck import crosscheck_pdf
@@ -25,11 +26,19 @@ def get_signing_service(settings: Settings = Depends(get_settings)) -> SigningSe
     return SigningService(provider, tsa_url=settings.tsa_url)
 
 
-def _response_for(cert: Certificate) -> dict:
+def _signed_pdf_bytes(cert: Certificate, store: PdfStore) -> bytes:
+    if cert.storage_ref is not None:
+        return store.get(cert.storage_ref)
+    if cert.signed_pdf is None:
+        raise HTTPException(status_code=500, detail="Signed PDF missing from both stores")
+    return cert.signed_pdf
+
+
+def _response_for(cert: Certificate, store: PdfStore) -> dict:
     return {
         "certificateNumber": cert.certificate_number,
         "status": "issued",
-        "signedPdfBase64": base64.b64encode(cert.signed_pdf).decode(),
+        "signedPdfBase64": base64.b64encode(_signed_pdf_bytes(cert, store)).decode(),
         "signedPdfSha256": cert.signed_pdf_sha256,
         "signatureId": cert.signature_id,
         "signedAt": cert.signed_at.isoformat(),
@@ -70,6 +79,7 @@ def sign_certificate(
     identity: Identity = Depends(get_identity),
     settings: Settings = Depends(get_settings),
     signing_service: SigningService = Depends(get_signing_service),
+    pdf_store: PdfStore = Depends(get_pdf_store),
 ) -> dict:
     # 1. Structural validation against the shared (zod-derived) JSON Schema
     violations = validate_sign_submission(submission)
@@ -84,7 +94,7 @@ def sign_certificate(
     #    Retries after connectivity loss never double-sign or double-issue.
     existing = db.scalar(select(Certificate).where(Certificate.idempotency_key == idempotency_key))
     if existing is not None:
-        return _response_for(existing)
+        return _response_for(existing, pdf_store)
 
     # 3. The certificate number itself must also be unique.
     clash = db.scalar(select(Certificate).where(Certificate.certificate_number == cert_number))
@@ -144,6 +154,11 @@ def sign_certificate(
         certificate_number=cert_number,
     )
 
+    # Persist the signed PDF (Supabase Storage bucket in production, DB row in
+    # dev). Storage upload happens BEFORE the certificate row is committed so
+    # a storage failure can never yield an issued-but-unretrievable cert.
+    storage_ref = pdf_store.put(cert_number, result.signed_pdf)
+
     cert = Certificate(
         certificate_number=cert_number,
         idempotency_key=idempotency_key,
@@ -151,7 +166,8 @@ def sign_certificate(
         form_json=form,
         unsigned_pdf_sha256=submission["pdfSha256"],
         signed_pdf_sha256=result.signed_pdf_sha256,
-        signed_pdf=result.signed_pdf,
+        signed_pdf=None if storage_ref else result.signed_pdf,
+        storage_ref=storage_ref,
         signature_id=result.signature_id,
         signed_at=result.signed_at,
     )
@@ -169,7 +185,7 @@ def sign_certificate(
         },
     )
     db.commit()
-    return _response_for(cert)
+    return _response_for(cert, pdf_store)
 
 
 @router.get("/{certificate_number}/receipt")

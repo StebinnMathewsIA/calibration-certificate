@@ -32,9 +32,11 @@ class Certificate(Base):
     form_json: Mapped[dict] = mapped_column(JSON)
     unsigned_pdf_sha256: Mapped[str] = mapped_column(String(64))
     signed_pdf_sha256: Mapped[str] = mapped_column(String(64))
-    # PoC stores the signed PDF in the DB; production moves this to
-    # write-once object storage (S3 object lock / immutable blob).
-    signed_pdf: Mapped[bytes] = mapped_column(LargeBinary)
+    # PDF_STORAGE=db keeps the signed PDF here (dev/tests). With
+    # PDF_STORAGE=supabase the bytes live in a private Supabase Storage
+    # bucket and storage_ref holds the object path (app/pdf_store.py).
+    signed_pdf: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    storage_ref: Mapped[str | None] = mapped_column(String(255), nullable=True)
     signature_id: Mapped[str] = mapped_column(String(64))
     signed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     supersedes: Mapped[str | None] = mapped_column(String(64), nullable=True)

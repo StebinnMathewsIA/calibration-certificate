@@ -54,8 +54,9 @@ double-issue: the server replays the stored result for a repeated key.
 
 The signing service refuses to sign unless ALL of the following hold:
 
-1. The bearer token verifies against the identity broker (JWKS) and the token
-   subject matches the `calibratedBy` identity on the form.
+1. The bearer token verifies against the identity broker (Supabase Auth,
+   which federates Microsoft/Google/Apple; verified via the project JWKS) and
+   the token subject matches the `calibratedBy` identity on the form.
 2. The form validates against the shared schema (the same zod contract the
    app uses, re-checked server-side via exported JSON Schema).
 3. Cross-field rules pass: declaration ticked, reference standards in date on

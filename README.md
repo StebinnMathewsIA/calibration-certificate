@@ -9,6 +9,12 @@ Full project brief: [CLAUDE.md](CLAUDE.md). Assessor-facing docs:
 [docs/e-signature-procedure.md](docs/e-signature-procedure.md) and
 [docs/key-rotation-runbook.md](docs/key-rotation-runbook.md).
 
+**Platform: Supabase** — Postgres (certificates + append-only audit),
+a private Storage bucket (signed PDFs), and Supabase Auth (Microsoft/Google/
+Apple sign-in). Setup guide: [docs/supabase-setup.md](docs/supabase-setup.md).
+The FastAPI signing service fronts all of it; the app never touches the
+database or bucket directly, and PostgREST access is blocked by RLS.
+
 ## Repository layout
 
 ```
@@ -18,14 +24,15 @@ shared/schema/   Shared zod schemas + tolerance math (TypeScript).
                  (shared/schema/json/) so the Python backend validates the
                  exact same contract — validation parity by construction.
 mobile/          Expo app (dev-client workflow, EAS profiles in eas.json):
-                 broker OIDC auth, six-section form (react-hook-form + zod),
-                 expo-sqlite offline store, durable sign queue with
-                 idempotent retry, expo-print SANAS-style PDF template.
-backend/         FastAPI: JWKS auth, schema re-validation, server-side result
-                 recomputation, PDF text-layer cross-check, PAdES signing
-                 (pyHanko, KMS-ready key provider, RFC 3161 TSA hook),
-                 append-only audit trail, Claude analysis proxy.
-docs/            E-signature procedure + key rotation runbook.
+                 Supabase Auth sign-in (PKCE), six-section form
+                 (react-hook-form + zod), expo-sqlite offline store, durable
+                 sign queue with idempotent retry, expo-print PDF template.
+backend/         FastAPI: Supabase JWT verification, schema re-validation,
+                 server-side result recomputation, PDF text-layer cross-check,
+                 PAdES signing (pyHanko, KMS-ready key provider, RFC 3161 TSA
+                 hook), append-only audit trail (Supabase Postgres), signed
+                 PDFs in Supabase Storage, Claude analysis proxy.
+docs/            E-signature procedure, key rotation runbook, Supabase setup.
 ```
 
 ## Backend — run locally
@@ -38,8 +45,13 @@ cp .env.example .env                                    # defaults are dev-safe
 .venv/bin/uvicorn app.main:app --reload
 ```
 
-Tests (28, including a full sign flow that validates the PAdES signature on
-the output PDF, idempotent replay, and cross-check rejection):
+The dev defaults (SQLite, PDFs in the DB, auth disabled) need no external
+services. For production, point it at Supabase — database, storage bucket,
+and auth mode — following [docs/supabase-setup.md](docs/supabase-setup.md).
+
+Tests (37, including a full sign flow that validates the PAdES signature on
+the output PDF, idempotent replay, cross-check rejection, Supabase Storage
+round-trips, and Supabase JWT verification):
 
 ```bash
 .venv/bin/python -m pytest tests/ -q
@@ -72,9 +84,10 @@ npm start
 ```
 
 Configure per-profile env in `mobile/eas.json`: `EXPO_PUBLIC_API_URL`,
-`EXPO_PUBLIC_AUTH_ISSUER`, `EXPO_PUBLIC_AUTH_CLIENT_ID` (the OIDC broker that
-federates Microsoft/Google/Apple), `EXPO_PUBLIC_BRANCH_CODE`. Replace the
-placeholder logo in `mobile/assets/logo-base64.ts` with the client asset.
+`EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_ANON_KEY` (Supabase Auth
+federates Microsoft/Google/Apple — enable the providers per
+docs/supabase-setup.md), `EXPO_PUBLIC_BRANCH_CODE`. Replace the placeholder
+logo in `mobile/assets/logo-base64.ts` with the client asset.
 
 ## Signing flow (one paragraph)
 
@@ -93,7 +106,7 @@ certificate is issued exactly once.
 | # | Milestone | Status |
 |---|---|---|
 | 1 | Scaffold (repo, Expo app, EAS profiles) | ✅ code in repo; run `eas init` against Prowalco's EAS account |
-| 2 | Auth (broker + 3 providers) | ✅ app + backend integration built; broker tenant config pending |
+| 2 | Auth (broker + 3 providers) | ✅ Supabase Auth wired app + backend; enable Azure/Google/Apple providers in the dashboard |
 | 3 | Form (6 sections, computed fields, offline drafts) | ✅ |
 | 4 | PDF template (SANAS-style, expo-print) | ✅ template built; pixel-review against sample cert pending |
 | 5 | Signing + offline queue (pyHanko, idempotency, retries) | ✅ backend tested end-to-end; KMS + production TSA are deploy-time config; airplane-mode device test pending |

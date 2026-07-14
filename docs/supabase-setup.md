@@ -26,11 +26,7 @@ touches directly (sign-in), holding just the publishable anon key.
 
 ## 2. Database
 
-1. Open the **SQL editor** and run `backend/migrations/001_init.sql` in full.
-   This creates the three tables, enables deny-all RLS (blocks the
-   auto-generated REST API), and installs the append-only triggers on
-   `certificates` and `audit_events`.
-2. Set the backend's `DATABASE_URL` to the **session pooler** connection
+1. Set the backend's `DATABASE_URL` to the **session pooler** connection
    string (Dashboard → Connect → Session pooler), with the SQLAlchemy driver
    prefix and TLS:
 
@@ -41,6 +37,17 @@ touches directly (sign-in), holding just the publishable anon key.
    Use the session pooler (port 5432), not the transaction pooler (6543) —
    SQLAlchemy's default prepared-statement behaviour is not compatible with
    transaction-mode PgBouncer.
+2. Apply the schema (idempotent — also creates the storage bucket):
+
+   ```bash
+   cd backend && .venv/bin/python scripts/apply_migrations.py
+   ```
+
+   (Equivalently, paste `backend/migrations/001_init.sql` into the SQL
+   editor.) This creates the three tables, enables deny-all RLS (blocks the
+   auto-generated REST API), and installs the append-only triggers on
+   `certificates` and `audit_events`. The API also verifies all of this at
+   startup and refuses to boot if anything is missing.
 
 ## 3. Storage
 
@@ -76,25 +83,36 @@ Lock as a post-PoC hardening step.
    then verifies tokens against the project JWKS with zero shared secrets.
    If you must stay on the legacy shared secret temporarily, set
    `SUPABASE_JWT_SECRET` on the backend instead.
-4. Backend env: `AUTH_MODE=supabase`.
 
 Only Azure/Google/Apple identities are accepted by the backend — tokens from
 any other provider (e.g. email/password sign-ups) are rejected with 403
 (`backend/app/auth.py`).
 
-## 5. Backend `.env` for production (summary)
+**Test account note:** the test suite provisions one technician account
+(`calibration-e2e@example.com`) through the Auth admin API, tagged with an
+`azure` provider in its app metadata, and signs in with the password grant —
+so the **email provider must remain enabled** in Supabase Auth (it is by
+default). End users can never reach the backend with plain email identities.
+
+## 5. Backend `.env` (summary — same in every environment)
 
 ```
 DATABASE_URL=postgresql+psycopg2://postgres.<ref>:<pw>@aws-0-<region>.pooler.supabase.com:5432/postgres?sslmode=require
-AUTH_MODE=supabase
 SUPABASE_URL=https://<ref>.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=<service-role-key>
-PDF_STORAGE=supabase
+SUPABASE_ANON_KEY=<anon-key>
 SUPABASE_STORAGE_BUCKET=certificates
 SIGNING_KEY_PROVIDER=local            # → aws_kms once KMS is provisioned
 TSA_URL=<rfc3161 endpoint>
 ANTHROPIC_API_KEY=<key>
 ```
+
+There is no dev mode: the API refuses to start, and the test suite refuses
+to run, without a reachable Supabase project. Tests run against this same
+project (schema application is idempotent; test certificates use random
+numbers and land in the same append-only tables and bucket — use a separate
+Supabase project for CI/testing if you want to keep production data
+pristine, but the architecture is identical either way).
 
 ## 6. What does NOT move to Supabase
 

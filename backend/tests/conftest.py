@@ -1,3 +1,11 @@
+"""Test fixtures — PRODUCTION PARITY, no separate test architecture.
+
+The suite runs against the real Supabase project configured in backend/.env:
+Supabase Postgres (schema auto-applied, idempotent), the private Storage
+bucket, and Supabase Auth (a technician test user is provisioned through the
+Auth admin API and signed in for a real JWT). If Supabase is not configured,
+the suite refuses to run.
+"""
 import base64
 import hashlib
 import io
@@ -7,28 +15,134 @@ import tempfile
 import uuid
 from pathlib import Path
 
-# Environment must be configured before app modules are imported (settings
-# and the DB engine are resolved at import time).
-_TMP = Path(tempfile.mkdtemp(prefix="prowalco-test-"))
-os.environ["DATABASE_URL"] = f"sqlite:///{_TMP}/test.sqlite3"
-os.environ["AUTH_MODE"] = "disabled"
-os.environ["SIGNING_KEY_DIR"] = str(_TMP / "dev-keys")
-os.environ["TSA_URL"] = ""
-os.environ["ANALYSIS_ENABLED"] = "true"
+import httpx
+import pytest
 
 BACKEND_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BACKEND_DIR))
 
-import pytest
-from fastapi.testclient import TestClient
-from reportlab.lib.pagesizes import A4
-from reportlab.pdfgen import canvas
+# Signing keys: still the local dev provider until KMS is provisioned —
+# generated per test run, never committed.
+_KEYS = Path(tempfile.mkdtemp(prefix="prowalco-signing-")) / "dev-keys"
+os.environ["SIGNING_KEY_DIR"] = str(_KEYS)
+os.environ.setdefault("TSA_URL", "")
 
-from scripts.generate_dev_signing_cert import generate as generate_dev_cert
-from app.main import app
-from app.tolerance import DEFAULT_TOLERANCE_CLASS_ID, compute_row
+from app.config import get_settings, validate_settings  # noqa: E402
 
-generate_dev_cert(_TMP / "dev-keys")
+_settings = get_settings()
+_problems = validate_settings(_settings)
+if _problems:
+    pytest.exit(
+        "Tests run against the real Supabase project and need backend/.env configured "
+        "(see docs/supabase-setup.md). Missing:\n- " + "\n- ".join(_problems),
+        returncode=1,
+    )
+
+# ---------------------------------------------------------------------------
+# Apply the schema + ensure the bucket (idempotent), then provision the
+# technician test user and sign in for a real Supabase JWT.
+# ---------------------------------------------------------------------------
+from sqlalchemy import create_engine  # noqa: E402
+
+from app.config import MIGRATIONS_DIR  # noqa: E402
+from app.pdf_store import SupabaseStoragePdfStore  # noqa: E402
+
+_engine = create_engine(_settings.database_url)
+for _path in sorted(MIGRATIONS_DIR.glob("*.sql")):
+    with _engine.begin() as _conn:
+        _conn.exec_driver_sql(_path.read_text())
+
+pdf_bucket_store = SupabaseStoragePdfStore(
+    _settings.supabase_url,
+    _settings.supabase_service_role_key,
+    _settings.supabase_storage_bucket,
+)
+pdf_bucket_store.ensure_bucket()
+
+_TEST_EMAIL = "calibration-e2e@example.com"
+# Deterministic, derived from the (secret) service key — stable across runs,
+# no literal password in the repo.
+_TEST_PASSWORD = (
+    "E2e!" + hashlib.sha256((_settings.supabase_service_role_key + "|e2e").encode()).hexdigest()[:24]
+)
+
+
+def _provision_technician() -> tuple[str, str, str]:
+    """Returns (access_token, subject_uuid, display_name)."""
+    base = f"{_settings.supabase_url.rstrip('/')}/auth/v1"
+    key = _settings.supabase_service_role_key
+    admin = httpx.Client(
+        timeout=30, headers={"apikey": key, "Authorization": f"Bearer {key}"}
+    )
+
+    created = admin.post(
+        f"{base}/admin/users",
+        json={
+            "email": _TEST_EMAIL,
+            "password": _TEST_PASSWORD,
+            "email_confirm": True,
+            "user_metadata": {"full_name": "E2E Technician"},
+        },
+    )
+    if created.status_code in (200, 201):
+        user_id = created.json()["id"]
+    else:
+        # Already exists (or similar) — find it and reset the password.
+        listing = admin.get(f"{base}/admin/users", params={"page": 1, "per_page": 100})
+        listing.raise_for_status()
+        users = listing.json().get("users", [])
+        match = next((u for u in users if u.get("email") == _TEST_EMAIL), None)
+        if match is None:
+            pytest.exit(
+                f"Could not provision test user ({created.status_code}): {created.text[:300]}",
+                returncode=1,
+            )
+        user_id = match["id"]
+
+    # The backend only accepts azure/google/apple identities; mark the test
+    # account as an Azure identity so the token passes the provider gate.
+    updated = admin.put(
+        f"{base}/admin/users/{user_id}",
+        json={
+            "password": _TEST_PASSWORD,
+            "email_confirm": True,
+            "app_metadata": {"provider": "azure", "providers": ["azure"]},
+            "user_metadata": {"full_name": "E2E Technician"},
+        },
+    )
+    if updated.status_code not in (200, 201):
+        pytest.exit(
+            f"Could not update test user ({updated.status_code}): {updated.text[:300]}",
+            returncode=1,
+        )
+
+    login = httpx.post(
+        f"{base}/token?grant_type=password",
+        headers={"apikey": key},
+        json={"email": _TEST_EMAIL, "password": _TEST_PASSWORD},
+        timeout=30,
+    )
+    if login.status_code != 200:
+        pytest.exit(
+            "Could not sign the test user in (is the email provider enabled in "
+            f"Supabase Auth?) ({login.status_code}): {login.text[:300]}",
+            returncode=1,
+        )
+    body = login.json()
+    return body["access_token"], body["user"]["id"], "E2E Technician"
+
+
+ACCESS_TOKEN, TECHNICIAN_SUBJECT, TECHNICIAN_NAME = _provision_technician()
+
+from fastapi.testclient import TestClient  # noqa: E402
+from reportlab.lib.pagesizes import A4  # noqa: E402
+from reportlab.pdfgen import canvas  # noqa: E402
+
+from scripts.generate_dev_signing_cert import generate as generate_dev_cert  # noqa: E402
+from app.main import app  # noqa: E402
+from app.tolerance import DEFAULT_TOLERANCE_CLASS_ID, compute_row  # noqa: E402
+
+generate_dev_cert(_KEYS)
 
 UNCERTAINTY = (
     "Expanded uncertainty of measurement: ±0.15 % of reading, coverage factor k=2 "
@@ -50,7 +164,8 @@ def make_row(indicated: float, measured: float, nominal: float = 20.0) -> dict:
     }
 
 
-def make_valid_form(cert_number: str = "PWC-JHB-000123-00") -> dict:
+def make_valid_form(cert_number: str | None = None) -> dict:
+    cert_number = cert_number or f"PWC-JHB-{uuid.uuid4().int % 1_000_000:06d}-00"
     return {
         "schemaVersion": 1,
         "job": {
@@ -93,9 +208,11 @@ def make_valid_form(cert_number: str = "PWC-JHB-000123-00") -> dict:
             "photos": [],
         },
         "signOff": {
+            # The real Supabase user — the backend enforces that the token
+            # subject matches calibratedBy.subject.
             "calibratedBy": {
-                "subject": "dev|local",
-                "name": "T. Ngcobo",
+                "subject": TECHNICIAN_SUBJECT,
+                "name": TECHNICIAN_NAME,
                 "authMethod": "microsoft",
             },
             "technicalSignatory": {"id": "SIG-01", "name": "P. van Wyk"},
@@ -143,7 +260,7 @@ def make_submission(form: dict | None = None, pdf: bytes | None = None) -> dict:
         "pdfBase64": base64.b64encode(pdf).decode(),
         "intentToSign": {
             "deviceTimestamp": "2026-07-14T08:59:31Z",
-            "deviceId": "device-abc",
+            "deviceId": "device-e2e",
             "gps": {
                 "latitude": -26.2041,
                 "longitude": 28.0473,
@@ -156,5 +273,14 @@ def make_submission(form: dict | None = None, pdf: bytes | None = None) -> dict:
 
 @pytest.fixture()
 def client():
+    """Authenticated client — carries the real Supabase JWT."""
+    with TestClient(app) as c:
+        c.headers.update({"Authorization": f"Bearer {ACCESS_TOKEN}"})
+        yield c
+
+
+@pytest.fixture()
+def raw_client():
+    """Unauthenticated client, for testing the auth gate itself."""
     with TestClient(app) as c:
         yield c

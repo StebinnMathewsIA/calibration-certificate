@@ -26,19 +26,11 @@ def get_signing_service(settings: Settings = Depends(get_settings)) -> SigningSe
     return SigningService(provider, tsa_url=settings.tsa_url)
 
 
-def _signed_pdf_bytes(cert: Certificate, store: PdfStore) -> bytes:
-    if cert.storage_ref is not None:
-        return store.get(cert.storage_ref)
-    if cert.signed_pdf is None:
-        raise HTTPException(status_code=500, detail="Signed PDF missing from both stores")
-    return cert.signed_pdf
-
-
 def _response_for(cert: Certificate, store: PdfStore) -> dict:
     return {
         "certificateNumber": cert.certificate_number,
         "status": "issued",
-        "signedPdfBase64": base64.b64encode(_signed_pdf_bytes(cert, store)).decode(),
+        "signedPdfBase64": base64.b64encode(store.get(cert.storage_ref)).decode(),
         "signedPdfSha256": cert.signed_pdf_sha256,
         "signatureId": cert.signature_id,
         "signedAt": cert.signed_at.isoformat(),
@@ -105,7 +97,7 @@ def sign_certificate(
         )
 
     # 4. The signed-in identity must be the technician on the form.
-    if settings.auth_mode == "jwks" and form["signOff"]["calibratedBy"]["subject"] != identity.subject:
+    if form["signOff"]["calibratedBy"]["subject"] != identity.subject:
         raise HTTPException(status_code=403, detail="Token subject does not match calibratedBy")
 
     # 5. Cross-field readiness checks (standards in date, recomputed results, ...)
@@ -154,9 +146,9 @@ def sign_certificate(
         certificate_number=cert_number,
     )
 
-    # Persist the signed PDF (Supabase Storage bucket in production, DB row in
-    # dev). Storage upload happens BEFORE the certificate row is committed so
-    # a storage failure can never yield an issued-but-unretrievable cert.
+    # Persist the signed PDF to the Supabase Storage bucket BEFORE the
+    # certificate row is committed so a storage failure can never yield an
+    # issued-but-unretrievable certificate.
     storage_ref = pdf_store.put(cert_number, result.signed_pdf)
 
     cert = Certificate(
@@ -166,7 +158,6 @@ def sign_certificate(
         form_json=form,
         unsigned_pdf_sha256=submission["pdfSha256"],
         signed_pdf_sha256=result.signed_pdf_sha256,
-        signed_pdf=None if storage_ref else result.signed_pdf,
         storage_ref=storage_ref,
         signature_id=result.signature_id,
         signed_at=result.signed_at,

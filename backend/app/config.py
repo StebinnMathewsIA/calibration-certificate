@@ -7,33 +7,29 @@ BACKEND_DIR = Path(__file__).resolve().parent.parent
 REPO_ROOT = BACKEND_DIR.parent
 SHARED_SCHEMA_JSON_DIR = REPO_ROOT / "shared" / "schema" / "json"
 PROMPTS_DIR = Path(__file__).resolve().parent / "prompts"
+MIGRATIONS_DIR = BACKEND_DIR / "migrations"
 
 
 class Settings(BaseSettings):
+    """There is ONE architecture: Supabase Postgres + Supabase Storage +
+    Supabase Auth, in every environment including tests. Startup fails fast
+    if the Supabase configuration is missing (app/main.py)."""
+
     model_config = SettingsConfigDict(env_file=BACKEND_DIR / ".env", extra="ignore")
 
-    # Supabase Postgres in production (see docs/supabase-setup.md);
-    # local SQLite by default for dev and tests.
-    database_url: str = "sqlite:///./prowalco_dev.sqlite3"
+    # Supabase Postgres connection string (session pooler, sslmode=require) —
+    # see docs/supabase-setup.md.
+    database_url: str = ""
 
-    # Auth: "supabase" verifies Supabase Auth JWTs (JWKS or legacy HS256
-    # secret); "jwks" is a generic OIDC broker; "disabled" is dev only.
-    auth_mode: str = "disabled"
-    auth_jwks_url: str = ""
-    auth_issuer: str = ""
-    auth_audience: str = ""
-
-    # Supabase project (auth + storage)
+    # Supabase project
     supabase_url: str = ""  # https://<project-ref>.supabase.co
     supabase_service_role_key: str = ""  # server-only; NEVER in the app
+    supabase_anon_key: str = ""  # publishable; used by tests to sign in
     supabase_jwt_secret: str = ""  # only for legacy HS256 projects; prefer JWKS
     supabase_storage_bucket: str = "certificates"
 
-    # Where signed PDFs live: "db" (dev/tests) | "supabase" (Storage bucket)
-    pdf_storage: str = "db"
-
     # Signing
-    signing_key_provider: str = "local"  # "local" | "aws_kms" | "azure_kv"
+    signing_key_provider: str = "local"  # "local" | "aws_kms" (stub)
     signing_key_dir: str = str(BACKEND_DIR / "dev-keys")
     tsa_url: str = ""
 
@@ -45,3 +41,18 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
+
+
+def validate_settings(settings: Settings) -> list[str]:
+    """Returns human-readable configuration problems (empty = OK)."""
+    problems = []
+    if not settings.database_url.startswith(("postgresql://", "postgresql+psycopg2://")):
+        problems.append(
+            "DATABASE_URL must be the Supabase Postgres connection string "
+            "(postgresql+psycopg2://... — see docs/supabase-setup.md)"
+        )
+    if not settings.supabase_url.startswith("https://"):
+        problems.append("SUPABASE_URL must be set (https://<project-ref>.supabase.co)")
+    if not settings.supabase_service_role_key:
+        problems.append("SUPABASE_SERVICE_ROLE_KEY must be set (server-only key)")
+    return problems

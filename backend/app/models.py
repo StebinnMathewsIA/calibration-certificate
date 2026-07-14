@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import JSON, DateTime, LargeBinary, String, Text
+from sqlalchemy import JSON, DateTime, String
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -32,11 +32,9 @@ class Certificate(Base):
     form_json: Mapped[dict] = mapped_column(JSON)
     unsigned_pdf_sha256: Mapped[str] = mapped_column(String(64))
     signed_pdf_sha256: Mapped[str] = mapped_column(String(64))
-    # PDF_STORAGE=db keeps the signed PDF here (dev/tests). With
-    # PDF_STORAGE=supabase the bytes live in a private Supabase Storage
-    # bucket and storage_ref holds the object path (app/pdf_store.py).
-    signed_pdf: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
-    storage_ref: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # The signed PDF lives in the private Supabase Storage bucket;
+    # storage_ref is the object path (app/pdf_store.py).
+    storage_ref: Mapped[str] = mapped_column(String(255))
     signature_id: Mapped[str] = mapped_column(String(64))
     signed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     supersedes: Mapped[str | None] = mapped_column(String(64), nullable=True)

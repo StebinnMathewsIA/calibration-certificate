@@ -35,23 +35,26 @@ backend/         FastAPI: Supabase JWT verification, schema re-validation,
 docs/            E-signature procedure, key rotation runbook, Supabase setup.
 ```
 
-## Backend — run locally
+## Backend — run
+
+There is **one architecture, no dev mode**: every environment — including
+the test suite — runs against a real Supabase project (Postgres + Storage +
+Auth). The API refuses to start and the tests refuse to run without one.
 
 ```bash
 cd backend
 python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
-.venv/bin/python scripts/generate_dev_signing_cert.py   # dev-only signing key
-cp .env.example .env                                    # defaults are dev-safe
+cp .env.example .env    # fill in the Supabase values (docs/supabase-setup.md)
+.venv/bin/python scripts/generate_dev_signing_cert.py   # local signing key (until KMS)
+.venv/bin/python scripts/apply_migrations.py            # schema + bucket ("db push")
 .venv/bin/uvicorn app.main:app --reload
 ```
 
-The dev defaults (SQLite, PDFs in the DB, auth disabled) need no external
-services. For production, point it at Supabase — database, storage bucket,
-and auth mode — following [docs/supabase-setup.md](docs/supabase-setup.md).
-
-Tests (37, including a full sign flow that validates the PAdES signature on
-the output PDF, idempotent replay, cross-check rejection, Supabase Storage
-round-trips, and Supabase JWT verification):
+Tests run against the same Supabase project: they apply the (idempotent)
+schema, provision a technician account through the Auth admin API, sign in
+for a real JWT, and exercise the full sign flow — PAdES signature validation
+on the output PDF, storage-bucket round-trip, idempotent replay, cross-check
+rejection, and the auth gates:
 
 ```bash
 .venv/bin/python -m pytest tests/ -q

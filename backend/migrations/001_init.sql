@@ -1,11 +1,8 @@
--- Prowalco calibration backend — Postgres schema (Supabase)
--- Run in the Supabase SQL editor (or psql against the project database).
--- Dev/SQLite uses SQLAlchemy create_all; this migration is the production
--- source of truth, including the append-only lockdown of the audit table.
+-- Prowalco calibration backend — Supabase Postgres schema.
+-- Idempotent: safe to re-run. Applied by scripts/apply_migrations.py (which
+-- owns the transaction) or by pasting into the Supabase SQL editor.
 
-BEGIN;
-
-CREATE TABLE certificates (
+CREATE TABLE IF NOT EXISTS certificates (
     id                  uuid PRIMARY KEY,
     certificate_number  varchar(64)  NOT NULL UNIQUE,
     idempotency_key     uuid         NOT NULL UNIQUE,
@@ -14,19 +11,16 @@ CREATE TABLE certificates (
     form_json           jsonb        NOT NULL,
     unsigned_pdf_sha256 char(64)     NOT NULL,
     signed_pdf_sha256   char(64)     NOT NULL,
-    -- With PDF_STORAGE=supabase the signed PDF lives in the private
-    -- "certificates" Storage bucket and storage_ref holds the object path;
-    -- signed_pdf stays NULL. (PDF_STORAGE=db keeps the bytes here instead.)
-    signed_pdf          bytea,
-    storage_ref         varchar(255),
+    -- The signed PDF lives in the private "certificates" Storage bucket;
+    -- storage_ref is the object path.
+    storage_ref         varchar(255) NOT NULL,
     signature_id        varchar(64)  NOT NULL,
     signed_at           timestamptz  NOT NULL,
     supersedes          varchar(64),
-    created_at          timestamptz  NOT NULL DEFAULT now(),
-    CONSTRAINT signed_pdf_somewhere CHECK (signed_pdf IS NOT NULL OR storage_ref IS NOT NULL)
+    created_at          timestamptz  NOT NULL DEFAULT now()
 );
 
-CREATE TABLE audit_events (
+CREATE TABLE IF NOT EXISTS audit_events (
     id                  uuid PRIMARY KEY,
     certificate_number  varchar(64)  NOT NULL,
     event_type          varchar(64)  NOT NULL,
@@ -34,9 +28,10 @@ CREATE TABLE audit_events (
     payload             jsonb        NOT NULL,
     created_at          timestamptz  NOT NULL DEFAULT now()
 );
-CREATE INDEX audit_events_cert_idx ON audit_events (certificate_number, created_at);
+CREATE INDEX IF NOT EXISTS audit_events_cert_idx
+    ON audit_events (certificate_number, created_at);
 
-CREATE TABLE sequence_counters (
+CREATE TABLE IF NOT EXISTS sequence_counters (
     branch      varchar(8) PRIMARY KEY,
     next_value  integer NOT NULL DEFAULT 1
 );
@@ -59,9 +54,9 @@ REVOKE ALL ON certificates, audit_events, sequence_counters FROM anon, authentic
 -- Append-only enforcement
 -- ---------------------------------------------------------------------------
 -- Signed certificates and audit events are immutable: amendments create a
--- NEW certificate number that supersedes the old one (docs/
--- e-signature-procedure.md). The trigger applies to every role, including
--- the backend's own connection — there is no update path at all.
+-- NEW certificate number that supersedes the old one
+-- (docs/e-signature-procedure.md). The trigger applies to every role,
+-- including the backend's own connection — there is no update path at all.
 
 CREATE OR REPLACE FUNCTION forbid_mutation() RETURNS trigger AS $$
 BEGIN
@@ -69,10 +64,12 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS audit_events_append_only ON audit_events;
 CREATE TRIGGER audit_events_append_only
     BEFORE UPDATE OR DELETE ON audit_events
     FOR EACH ROW EXECUTE FUNCTION forbid_mutation();
 
+DROP TRIGGER IF EXISTS certificates_append_only ON certificates;
 CREATE TRIGGER certificates_append_only
     BEFORE UPDATE OR DELETE ON certificates
     FOR EACH ROW EXECUTE FUNCTION forbid_mutation();
@@ -84,5 +81,3 @@ CREATE TRIGGER certificates_append_only
 -- GRANT USAGE ON SCHEMA public TO prowalco_app;
 -- GRANT SELECT, INSERT ON certificates, audit_events TO prowalco_app;
 -- GRANT SELECT, INSERT, UPDATE ON sequence_counters TO prowalco_app;
-
-COMMIT;

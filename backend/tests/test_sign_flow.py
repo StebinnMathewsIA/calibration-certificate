@@ -9,7 +9,12 @@ from pyhanko.pdf_utils.reader import PdfFileReader
 from pyhanko.sign.validation import validate_pdf_signature
 from pyhanko_certvalidator import ValidationContext
 
-from tests.conftest import build_certificate_pdf, make_submission, make_valid_form
+from tests.conftest import (
+    build_certificate_pdf,
+    make_submission,
+    make_valid_form,
+    pdf_bucket_store,
+)
 
 
 def _fresh_cert_number() -> str:
@@ -31,6 +36,10 @@ def test_sign_happy_path_produces_valid_pades_signature(client):
 
     signed = base64.b64decode(body["signedPdfBase64"])
     assert hashlib.sha256(signed).hexdigest() == body["signedPdfSha256"]
+
+    # The signed PDF landed in the real Supabase Storage bucket.
+    cert_number = sub["form"]["job"]["certificateNumber"]
+    assert pdf_bucket_store.get(f"{cert_number}.pdf") == signed
 
     # The signed PDF must carry an intact, cryptographically valid signature
     # chaining to the dev signing cert.
@@ -94,6 +103,13 @@ def test_tampered_results_rejected_before_signing(client):
     sub = make_submission(form)
     resp = client.post("/v1/certificates/sign", json=sub)
     assert resp.status_code == 422
+
+
+def test_token_subject_must_match_technician(client):
+    form = make_valid_form(cert_number=_fresh_cert_number())
+    form["signOff"]["calibratedBy"]["subject"] = "someone-else-uuid"
+    resp = client.post("/v1/certificates/sign", json=make_submission(form))
+    assert resp.status_code == 403
 
 
 def test_structurally_invalid_submission_rejected(client):

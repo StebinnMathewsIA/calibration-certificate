@@ -4,11 +4,12 @@ name: backend-live-tests
 # full backend test suite against it — production parity, no test doubles.
 #
 # Required repository secrets (Settings -> Secrets and variables -> Actions):
-#   DATABASE_URL               Supabase SESSION POOLER connection string, e.g.
-#                              postgresql+psycopg2://postgres.<ref>:<password>@aws-0-<region>.pooler.supabase.com:5432/postgres?sslmode=require
 #   SUPABASE_URL               https://<project-ref>.supabase.co
 #   SUPABASE_SERVICE_ROLE_KEY  service_role secret (server-only)
 #   SUPABASE_ANON_KEY          anon / publishable key
+#   SUPABASE_DB_PASSWORD       raw database password (CI derives the pooler
+#                              connection string automatically), OR set
+#   DATABASE_URL               full session-pooler connection string instead
 
 on:
   workflow_dispatch:
@@ -51,6 +52,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
       SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
@@ -63,9 +65,9 @@ jobs:
       - name: Check secrets are configured
         run: |
           missing=""
-          [ -z "$DATABASE_URL" ] && missing="$missing DATABASE_URL"
           [ -z "$SUPABASE_URL" ] && missing="$missing SUPABASE_URL"
           [ -z "$SUPABASE_SERVICE_ROLE_KEY" ] && missing="$missing SUPABASE_SERVICE_ROLE_KEY"
+          [ -z "$DATABASE_URL" ] && [ -z "$SUPABASE_DB_PASSWORD" ] && missing="$missing DATABASE_URL-or-SUPABASE_DB_PASSWORD"
           if [ -n "$missing" ]; then
             echo "::error::Missing repository secrets:$missing — see the header of this workflow file"
             exit 1
@@ -79,6 +81,9 @@ jobs:
 
       - name: Install dependencies
         run: pip install -r requirements-dev.txt
+
+      - name: Resolve DATABASE_URL from password (if not set directly)
+        run: python scripts/resolve_database_url.py
 
       - name: Apply schema + ensure storage bucket (db push)
         run: python scripts/apply_migrations.py

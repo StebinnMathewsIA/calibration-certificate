@@ -49,8 +49,15 @@ from app.pdf_store import SupabaseStoragePdfStore  # noqa: E402
 
 _engine = create_engine(_settings.database_url)
 for _path in sorted(MIGRATIONS_DIR.glob("*.sql")):
-    with _engine.begin() as _conn:
-        _conn.exec_driver_sql(_path.read_text())
+    # Raw DBAPI cursor with parameters=None: the SQL contains literal '%'
+    # (trigger error message), which psycopg2 would otherwise treat as a
+    # format placeholder.
+    _raw = _engine.raw_connection()
+    try:
+        _raw.cursor().execute(_path.read_text())
+        _raw.commit()
+    finally:
+        _raw.close()
 
 pdf_bucket_store = SupabaseStoragePdfStore(
     _settings.supabase_url,

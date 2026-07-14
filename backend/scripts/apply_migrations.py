@@ -30,8 +30,16 @@ def main() -> int:
     engine = create_engine(settings.database_url)
     for path in sorted(MIGRATIONS_DIR.glob("*.sql")):
         sql = path.read_text()
-        with engine.begin() as conn:
-            conn.exec_driver_sql(sql)
+        # Raw DBAPI cursor with parameters=None: the SQL contains literal '%'
+        # (trigger error message), which psycopg2 would otherwise treat as a
+        # format placeholder.
+        raw = engine.raw_connection()
+        try:
+            cur = raw.cursor()
+            cur.execute(sql)
+            raw.commit()
+        finally:
+            raw.close()
         print(f"applied {path.name}")
 
     store = SupabaseStoragePdfStore(

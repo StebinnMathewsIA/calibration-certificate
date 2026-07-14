@@ -1,0 +1,11 @@
+fastapi>=0.115
+uvicorn[standard]>=0.30
+pydantic>=2.8
+pydantic-settings>=2.4
+SQLAlchemy>=2.0
+jsonschema>=4.22
+pyHanko>=0.25
+pypdf>=4.3
+cryptography>=43
+PyJWT[crypto]>=2.9
+anthropic>=0.40

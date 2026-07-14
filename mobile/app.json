@@ -1,0 +1,54 @@
+{
+  "expo": {
+    "name": "Prowalco Calibration",
+    "slug": "prowalco-cal",
+    "version": "0.1.0",
+    "scheme": "prowalco-cal",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "bundleIdentifier": "za.co.prowalco.calibration",
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Location is recorded with your consent as part of the calibration audit trail.",
+        "NSCameraUsageDescription": "The camera is used to photograph seals, totalisers and displays, and to scan serial number barcodes.",
+        "NSFaceIDUsageDescription": "Face ID confirms your identity before signing a certificate."
+      }
+    },
+    "android": {
+      "package": "za.co.prowalco.calibration",
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "CAMERA",
+        "USE_BIOMETRIC"
+      ]
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-sqlite",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Location is recorded with your consent as part of the calibration audit trail."
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "The camera is used to photograph seals, totalisers and displays, and to scan serial number barcodes."
+        }
+      ],
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Face ID confirms your identity before signing a certificate."
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

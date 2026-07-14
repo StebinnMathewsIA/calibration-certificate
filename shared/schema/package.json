@@ -1,0 +1,24 @@
+{
+  "name": "@prowalco/schema",
+  "version": "0.1.0",
+  "description": "Shared zod schemas + tolerance math for the Prowalco calibration app (mobile + backend validation parity)",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "json"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "node --test --import tsx test/*.test.ts",
+    "export-json-schema": "tsx scripts/export-json-schema.ts"
+  },
+  "dependencies": {
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0",
+    "typescript": "^5.5.4",
+    "zod-to-json-schema": "^3.23.2"
+  }
+}

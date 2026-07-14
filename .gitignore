@@ -1,0 +1,39 @@
+# Node
+node_modules/
+dist/
+*.tsbuildinfo
+npm-debug.log*
+
+# Expo
+.expo/
+.expo-shared/
+web-build/
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+*.egg-info/
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# Dev signing material (generated locally, never committed)
+backend/dev-keys/
+
+# Local databases
+*.sqlite
+*.sqlite3
+*.db
+
+# OS
+.DS_Store

@@ -1,0 +1,10 @@
+{
+  "name": "prowalco-calibration",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "schema:build": "npm --prefix shared/schema run build",
+    "schema:test": "npm --prefix shared/schema test",
+    "schema:export": "npm --prefix shared/schema run export-json-schema"
+  }
+}

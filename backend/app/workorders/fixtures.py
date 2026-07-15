@@ -13,9 +13,14 @@ orders end-to-end.
 
 E2E_TECHNICIAN_EMAIL = "calibration-e2e@example.com"
 
+# Demo technician so the owner sees work orders on first sign-in. Add more
+# real technician sign-in emails here (or swap in the real OnKeyProvider).
+DEMO_TECHNICIAN_EMAIL = "stebinn@gmail.com"
+
 TECHNICIANS: dict[str, dict] = {
     E2E_TECHNICIAN_EMAIL: {"email": E2E_TECHNICIAN_EMAIL, "name": "E2E Technician"},
     "thabo@prowalco.example": {"email": "thabo@prowalco.example", "name": "Thabo M."},
+    DEMO_TECHNICIAN_EMAIL: {"email": DEMO_TECHNICIAN_EMAIL, "name": "Prowalco Demo"},
 }
 
 SITES: dict[str, dict] = {
@@ -31,6 +36,13 @@ SITES: dict[str, dict] = {
         "id": "SITE-002",
         "customerName": "Shell",
         "siteName": "Rivonia Service Station",
+    },
+    "SITE-003": {
+        "id": "SITE-003",
+        "customerName": "BP",
+        "siteName": "Midrand Truck Stop",
+        "address": "Old Pretoria Rd, Midrand, 1685",
+        "telephone": "011 000 1234",
     },
 }
 
@@ -56,6 +68,19 @@ DISPENSERS: dict[str, dict] = {
         "serialNumber": "TSN-10233",
         "saApprovalNumber": "119-AA20",
     },
+    "DISP-201": {
+        "id": "DISP-201",
+        "siteId": "SITE-003",
+        "make": "Tatsuno",
+        "model": "SS-LX-E",
+        "serialNumber": "TSN-20455",
+        "saApprovalNumber": "119-AA20",
+    },
+    # Deliberately partial — the demo technician completes its identity on-site.
+    "DISP-202": {
+        "id": "DISP-202",
+        "siteId": "SITE-003",
+    },
 }
 
 WORK_ORDERS: dict[str, dict] = {
@@ -76,5 +101,14 @@ WORK_ORDERS: dict[str, dict] = {
         "dispenserIds": ["DISP-101"],
         "status": "open",
         "scheduledDate": "2026-07-17",
+    },
+    "WO-003": {
+        "id": "WO-003",
+        "reference": "WO-4713",
+        "assignedTechnicianEmail": DEMO_TECHNICIAN_EMAIL,
+        "siteId": "SITE-003",
+        "dispenserIds": ["DISP-201", "DISP-202"],
+        "status": "open",
+        "scheduledDate": "2026-07-18",
     },
 }

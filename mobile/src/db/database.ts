@@ -34,6 +34,15 @@ const MIGRATIONS: string[] = [
      response_json TEXT NOT NULL,
      created_at TEXT NOT NULL
    );`,
+  // Read-through cache for work orders / sites / dispensers / registers so
+  // forecourt work needs no signal (CLAUDE.md offline requirement). Keyed by
+  // a logical cache key, e.g. "workorders", "workorder:WO-001",
+  // "dispenser-detail:DISP-001".
+  `CREATE TABLE IF NOT EXISTS api_cache (
+     cache_key TEXT PRIMARY KEY,
+     value_json TEXT NOT NULL,
+     updated_at TEXT NOT NULL
+   );`,
 ];
 
 export function migrate(): void {

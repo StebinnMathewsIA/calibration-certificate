@@ -44,22 +44,38 @@ upload — the sign step will error in Expo Go by design.
 - [ ] Session survives app kill/restart; expired token refreshes on launch
 - [ ] Sign out clears the session
 
-## Calibration form (on-device UX)
+## Work orders → dispensers (simulated OnKey)
 
-- [ ] Draft autosaves on every field change and survives app kill/restart
-- [ ] Error (mL / %) and pass/fail compute live as volumes are typed
-- [ ] Expired reference standard blocks signing with a visible reason
-- [ ] As-left table appears only when "Adjustment performed" is on
+- [ ] Home lists the work orders assigned to the signed-in email; pull to
+      refresh caches them (works again offline)
+- [ ] Open a work order → site summary + dispenser pick list
+- [ ] A dispenser with missing identity (e.g. DISP-002) shows "identity
+      incomplete"; completing it on the identity screen persists and the next
+      visit prefills from our store (source stays "onkey")
+- [ ] **Add a dispenser** OnKey doesn't know about → appears as source "added"
+- [ ] **Retire a dispenser** → drops off the active list, shown under Retired
+- [ ] Component register (hoses + meter/PC board/pulsar/solenoid + Qmin/Qmax)
+      saves and prefills on the next verification of the same dispenser
+
+## Verification results (on-device UX)
+
+- [ ] Draft autosaves as fields change and survives app kill/restart
+- [ ] EFD (%) and pass/fail compute live as VFD/VREF are typed
+- [ ] A failed checklist item or out-of-tolerance delivery flips the suggested
+      outcome to Rejected and requires a Rejection Cert. No. before signing
+- [ ] Expired reference measure blocks signing with a visible reason
 
 ## Signing & offline queue (the milestone-5 acceptance test)
 
+- [ ] Client draws a signature on the pad; "Sign" is blocked until they do
 - [ ] Biometric/PIN re-prompt appears on Sign and cancelling aborts cleanly
 - [ ] GPS consent toggle off ⇒ no location in the audit payload
 - [ ] **Airplane-mode test:** sign offline → package queues → reconnect →
       certificate issues exactly once (check Supabase: one row, one PDF)
 - [ ] Kill the app while QUEUED_FOR_SIGNING → relaunch → upload still happens
-- [ ] Signed PDF opens and shares from the Issued screen
-- [ ] Visible signature widget shows on the last page of the signed PDF
+- [ ] Signed PDF opens and shares from the Issued screen; the client's drawn
+      signature is embedded in the PDF
+- [ ] Visible VO signature widget shows on the last page of the signed PDF
 - [ ] Adobe Reader signature panel validates the signature once a trusted
       (non-dev) signing certificate is configured — dev cert will show as
       untrusted, which is expected
@@ -73,8 +89,9 @@ upload — the sign step will error in Expo Go by design.
 
 ## PDF fidelity
 
-- [ ] Pixel-review rendered certificate against a sample SANAS certificate
-      (layout, fonts, tables, footer page numbers)
+- [ ] Pixel-review rendered certificate against the NRCS Verification
+      Certificate + Metrologist Note (header/logo, reference measures,
+      component tables, checklist, EFD deliveries, sign-off, footer)
 
 ## Not yet implemented (do not test — future issues)
 

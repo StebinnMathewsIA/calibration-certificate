@@ -25,10 +25,13 @@ export default function RootLayout() {
         }}
       >
         <Stack.Screen name="index" options={{ title: 'Prowalco Calibration' }} />
-        <Stack.Screen name="home" options={{ title: 'Calibrations' }} />
-        <Stack.Screen name="certificate/[id]/edit" options={{ title: 'Calibration form' }} />
-        <Stack.Screen name="certificate/[id]/review" options={{ title: 'Review & sign' }} />
-        <Stack.Screen name="certificate/[id]/issued" options={{ title: 'Certificate' }} />
+        <Stack.Screen name="home" options={{ title: 'Work orders' }} />
+        <Stack.Screen name="workorder/[id]" options={{ title: 'Work order' }} />
+        <Stack.Screen name="dispenser/[id]/identity" options={{ title: 'Dispenser identity' }} />
+        <Stack.Screen name="dispenser/[id]/register" options={{ title: 'Components' }} />
+        <Stack.Screen name="verification/[id]/results" options={{ title: 'Verification results' }} />
+        <Stack.Screen name="verification/[id]/sign" options={{ title: 'Review & sign' }} />
+        <Stack.Screen name="verification/[id]/issued" options={{ title: 'Certificate' }} />
       </Stack>
     </AuthProvider>
   );

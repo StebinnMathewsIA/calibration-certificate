@@ -1,88 +1,117 @@
 /**
- * SANAS-style certificate HTML template rendered to PDF by expo-print.
+ * NRCS Verification Certificate (Liquid Fuel Dispensers, LM01HV) rendered to
+ * PDF by expo-print. Models both faces of Prowalco's real document: the
+ * Verification Certificate (identity + components + sign-off) and the
+ * Metrologist Note (per-hose checklist + EFD deliveries).
  *
- * Layout order follows CLAUDE.md "Certificate PDF content": header/logo,
- * title + number, details, standards table, procedure/traceability/
- * uncertainty, results tables, clauses, footer with page numbers and
- * "END OF CERTIFICATE". The signature block bottom-left of the last page is
- * intentionally left clear — the backend places the visible PAdES signature
- * widget there (box 42,40 → 300,90).
+ * The signature block bottom-left of the last page is intentionally left clear
+ * — the backend places the visible PAdES signature widget there
+ * (box 42,40 → 300,90).
  *
- * NUMBER FORMATTING CONTRACT: volumes 3 dp, error mL 1 dp, error % 3 dp.
- * The backend cross-checks these strings against the form JSON before
- * signing (backend/app/signing/crosscheck.py) — change both together.
+ * NUMBER FORMATTING CONTRACT: VFD/VREF are rendered as whole millilitres and
+ * EFD to 2 dp. The backend cross-checks the VFD/VREF strings against the
+ * verification JSON before signing (backend/app/signing/crosscheck.py) —
+ * change both together.
  */
-import type { CalibrationForm, ResultRow } from '@prowalco/schema';
-import { TOLERANCE_CLASSES } from '@prowalco/schema';
+import type { Component, HoseResult, Verification } from '@prowalco/schema';
+import { CHECKLIST_ITEMS, DELIVERY_POINT_LABELS } from '@prowalco/schema';
 import { PROWALCO_LOGO_BASE64 } from '../../assets/logo-base64';
 
 const esc = (s: string) =>
-  s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-
-const PRODUCT_LABELS: Record<string, string> = {
-  ulp_93: 'ULP 93',
-  ulp_95: 'ULP 95',
-  diesel_50ppm: 'Diesel 50ppm',
-  diesel_500ppm: 'Diesel 500ppm',
-  paraffin: 'Paraffin',
-  other: 'Other',
-};
-
-const EQUIPMENT_LABELS: Record<string, string> = {
-  fuel_dispenser: 'Fuel dispenser',
-  pump: 'Pump',
-  flow_meter: 'Flow meter',
-  pressure_transmitter: 'Pressure transmitter',
-  other: 'Other',
-};
-
-function resultsTable(rows: ResultRow[], title: string): string {
-  const body = rows
-    .map(
-      (r) => `
-      <tr>
-        <td>${r.nominalDeliveryL.toFixed(2)}</td>
-        <td>${r.flowRateLpm.toFixed(1)}</td>
-        <td>${r.indicatedVolumeL.toFixed(3)}</td>
-        <td>${r.measuredVolumeL.toFixed(3)}</td>
-        <td>${r.errorMl.toFixed(1)}</td>
-        <td class="${r.pass ? '' : 'oot'}">${r.errorPercent.toFixed(3)}</td>
-        <td>±${(TOLERANCE_CLASSES[r.toleranceClassId]?.mpePercent ?? 0).toFixed(2)} %</td>
-        <td class="${r.pass ? 'pass' : 'fail'}">${r.pass ? 'PASS' : 'FAIL'}</td>
-      </tr>`,
-    )
-    .join('');
-  return `
-    <h3>${esc(title)}</h3>
-    <table class="results">
-      <thead>
-        <tr>
-          <th>Nominal (L)</th><th>Flow (L/min)</th><th>Indicated (L)</th>
-          <th>Measured (L)</th><th>Error (mL)</th><th>Error (%)</th>
-          <th>MPE</th><th>Result</th>
-        </tr>
-      </thead>
-      <tbody>${body}</tbody>
-    </table>`;
-}
+  String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 export interface RenderOptions {
   /** Accreditation mark slot — feature-flagged OFF until Prowalco holds
    * accreditation (CLAUDE.md "Branding"). */
   showAccreditationMark?: boolean;
+  /** Drawn client signature as a standalone SVG string (embedded before the
+   * technician's cryptographic signature so it is sealed inside it). */
+  customerSignatureSvg?: string;
 }
 
-export function certificateHtml(form: CalibrationForm, opts: RenderOptions = {}): string {
-  const { job, uut, referenceStandards, environment, results, signOff } = form;
+function componentRows(label: string, c: Component): string {
+  return `
+    <tr><td class="k">${esc(label)} — make</td><td>${esc(c.make ?? '')}</td>
+        <td class="k">model</td><td>${esc(c.model ?? '')}</td></tr>
+    <tr><td class="k">serial</td><td>${esc(c.serial ?? '')}</td>
+        <td class="k">SA approval</td><td>${esc(c.saApproval ?? '')}</td></tr>`;
+}
 
-  const standardsRows = referenceStandards
+function checklistTable(hose: HoseResult): string {
+  const rows = CHECKLIST_ITEMS.map((item) => {
+    const v = hose.checklist[item.key];
+    const cls = v === 'fail' ? 'fail' : v === 'pass' ? 'pass' : 'na';
+    return `<tr><td>${esc(item.label)}</td><td class="${cls}">${v.toUpperCase()}</td></tr>`;
+  }).join('');
+  return `<table class="checklist"><tbody>${rows}</tbody></table>`;
+}
+
+function deliveriesTable(hose: HoseResult): string {
+  const body = hose.deliveries
     .map(
-      (s) => `
+      (d) => `
       <tr>
-        <td>${esc(s.description)}</td>
-        <td>${esc(s.serialNumber)}</td>
-        <td>${esc(s.certificateNumber)}</td>
-        <td>${esc(s.calibrationDueDate)}</td>
+        <td>${esc(DELIVERY_POINT_LABELS[d.point])}</td>
+        <td>${d.flowRateLpm.toFixed(1)}</td>
+        <td>${d.vfdMl.toFixed(0)}</td>
+        <td>${d.vrefMl.toFixed(0)}</td>
+        <td class="${d.pass ? '' : 'oot'}">${d.efdPercent.toFixed(2)}</td>
+        <td class="${d.pass ? 'pass' : 'fail'}">${d.pass ? 'PASS' : 'FAIL'}</td>
+      </tr>`,
+    )
+    .join('');
+  return `
+    <table class="results">
+      <thead><tr>
+        <th>Delivery</th><th>Flow (L/min)</th><th>VFD (mL)</th>
+        <th>VREF (mL)</th><th>EFD (%)</th><th>Result</th>
+      </tr></thead>
+      <tbody>${body}</tbody>
+    </table>`;
+}
+
+function hoseSection(hose: HoseResult, i: number): string {
+  const tot = [
+    hose.totalizerBefore != null ? `before ${hose.totalizerBefore}` : '',
+    hose.totalizerAfter != null ? `after ${hose.totalizerAfter}` : '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
+  return `
+  <div class="hose">
+    <h3>Hose / Pump ${esc(hose.hoseNumber)} — ${esc(hose.product)}</h3>
+    <table class="detail">
+      <tr><td class="k">Status</td><td>${esc(hose.status)}</td>
+          <td class="k">Condition</td><td>${esc(hose.testCondition)}</td></tr>
+      <tr><td class="k">Totalizer</td><td>${esc(tot || '—')}</td>
+          <td class="k">Quantity delivered</td><td>${hose.quantityDelivered ?? '—'}</td></tr>
+      <tr><td class="k">Qmin / Qmax (L/min)</td><td>${hose.qMinLpm ?? '—'} / ${hose.qMaxLpm ?? '—'}</td>
+          <td class="k">Security seal</td><td>${esc(hose.securitySeal ?? '—')}</td></tr>
+      ${componentRows('Meter', hose.components.meter)}
+      ${componentRows('PC board', hose.components.pcBoard)}
+      ${componentRows('Pulsar', hose.components.pulsar)}
+      ${componentRows('Solenoid', hose.components.solenoid)}
+    </table>
+    <div class="two-col">
+      <div>${checklistTable(hose)}</div>
+      <div>${deliveriesTable(hose)}
+        <p class="outcome ${hose.outcome === 'certified' ? 'pass' : 'fail'}">
+          Instrument ${hose.outcome === 'certified' ? 'CERTIFIED (C)' : 'REJECTED (R)'}</p>
+        ${hose.comments ? `<p class="cmt">${esc(hose.comments)}</p>` : ''}
+      </div>
+    </div>
+  </div>`;
+}
+
+export function certificateHtml(v: Verification, opts: RenderOptions = {}): string {
+  const { site, dispenser, referenceMeasures, hoses, signOff } = v;
+
+  const measureRows = referenceMeasures
+    .map(
+      (m) => `
+      <tr>
+        <td>${esc(m.size)}</td><td>${esc(m.serialNumber)}</td><td>${esc(m.certificateNumber)}</td>
+        <td>${esc(m.calibrationDate)}</td><td>${esc(m.expiryDate)}</td>
       </tr>`,
     )
     .join('');
@@ -92,117 +121,113 @@ export function certificateHtml(form: CalibrationForm, opts: RenderOptions = {})
 <head>
 <meta charset="utf-8" />
 <style>
-  @page { size: A4; margin: 18mm 15mm 22mm 15mm; }
-  body { font-family: Helvetica, Arial, sans-serif; font-size: 9.5pt; color: #111; }
+  @page { size: A4; margin: 16mm 12mm 20mm 12mm; }
+  body { font-family: Helvetica, Arial, sans-serif; font-size: 9pt; color: #111; }
   header { display: flex; justify-content: space-between; align-items: flex-start;
            border-bottom: 2px solid #1a7a3a; padding-bottom: 6px; }
-  header img.logo { height: 44px; }
+  header img.logo { height: 42px; }
+  .titles { text-align: center; }
+  .titles h1 { font-size: 14pt; letter-spacing: 1px; margin: 0; }
+  .titles .sub { font-size: 9pt; color: #444; }
   .reg { font-size: 7.5pt; color: #555; text-align: right; }
-  h1 { text-align: center; font-size: 15pt; letter-spacing: 2px; margin: 14px 0 2px; }
-  .certno { text-align: center; font-size: 11pt; font-weight: bold; margin-bottom: 12px; }
-  h3 { font-size: 10pt; border-bottom: 1px solid #999; margin: 14px 0 4px; }
+  .certno { text-align: right; font-size: 11pt; font-weight: bold; color: #b00020; }
+  h3 { font-size: 10pt; border-bottom: 1px solid #999; margin: 12px 0 4px; }
   table { width: 100%; border-collapse: collapse; }
   table.detail td { padding: 2px 4px; vertical-align: top; }
-  table.detail td.k { width: 32%; color: #444; }
-  table.results th, table.results td, table.standards th, table.standards td {
+  table.detail td.k { width: 16%; color: #444; font-size: 8pt; }
+  table.results th, table.results td, table.standards th, table.standards td,
+  table.checklist td {
     border: 1px solid #999; padding: 3px 5px; text-align: right; }
   table.results th, table.standards th { background: #eef4ee; text-align: center; }
   table.standards td { text-align: left; }
+  table.checklist td { text-align: left; font-size: 8pt; }
+  table.checklist td:last-child { text-align: center; width: 42px; font-weight: bold; }
   td.pass { color: #1a7a3a; font-weight: bold; text-align: center; }
   td.fail, td.oot { color: #b00020; font-weight: bold; text-align: center; }
+  td.na { color: #777; text-align: center; }
+  .two-col { display: flex; gap: 10px; margin-top: 6px; }
+  .two-col > div { flex: 1; }
+  .hose { border: 1px solid #ccc; border-radius: 4px; padding: 6px 8px; margin-top: 10px; }
+  .outcome { font-weight: bold; margin: 6px 0 0; }
+  .cmt { font-size: 8pt; color: #444; }
   .clauses { font-size: 8pt; color: #444; margin-top: 12px; }
-  .sigblock { margin-top: 28px; display: flex; justify-content: space-between; }
+  .sigblock { margin-top: 22px; display: flex; justify-content: space-between; }
   .sigslot { width: 46%; }
-  .sigslot .line { border-top: 1px solid #333; margin-top: 56px; padding-top: 3px; font-size: 8.5pt; }
+  .sigslot .line { border-top: 1px solid #333; margin-top: 40px; padding-top: 3px; font-size: 8.5pt; }
+  .sig-img { height: 70px; }
   .digital-note { font-size: 7.5pt; color: #666; }
-  .end { text-align: center; font-weight: bold; letter-spacing: 2px; margin-top: 18px; }
-  footer { position: fixed; bottom: -14mm; left: 0; right: 0; font-size: 7.5pt;
+  .end { text-align: center; font-weight: bold; letter-spacing: 2px; margin-top: 16px; }
+  footer { position: fixed; bottom: -13mm; left: 0; right: 0; font-size: 7.5pt;
            color: #555; text-align: center; border-top: 1px solid #ccc; padding-top: 3px; }
 </style>
 </head>
 <body>
 <header>
   <img class="logo" src="data:image/png;base64,${PROWALCO_LOGO_BASE64}" alt="Prowalco TATSUNO" />
+  <div class="titles">
+    <h1>VERIFICATION CERTIFICATE</h1>
+    <div class="sub">LIQUID FUEL DISPENSERS · NRCS Designated Verification LM01HV</div>
+  </div>
   <div class="reg">
-    Prowalco (Pty) Ltd — Reg. 20XX/XXXXXX/07<br/>
-    ${opts.showAccreditationMark ? '<em>[Accreditation mark]</em>' : ''}
+    ${opts.showAccreditationMark ? '<em>[Accreditation mark]</em><br/>' : ''}
+    ${v.nrcsBookNumber ? `<div class="certno">${esc(v.nrcsBookNumber)}</div>` : ''}
+    Cert: ${esc(v.certificateNumber)}
   </div>
 </header>
 
-<h1>CERTIFICATE OF CALIBRATION</h1>
-<div class="certno">Certificate number: ${esc(job.certificateNumber)}</div>
-
-<h3>Customer &amp; job details</h3>
 <table class="detail">
-  <tr><td class="k">Customer</td><td>${esc(job.customerName)}</td></tr>
-  <tr><td class="k">Site address</td><td>${esc(job.siteAddress)}</td></tr>
-  ${job.siteAssetNumber ? `<tr><td class="k">Site / asset number</td><td>${esc(job.siteAssetNumber)}</td></tr>` : ''}
-  ${job.workOrderNumber ? `<tr><td class="k">Work order</td><td>${esc(job.workOrderNumber)}</td></tr>` : ''}
-  <tr><td class="k">Date of calibration</td><td>${esc(job.calibrationDate)}</td></tr>
-  <tr><td class="k">Date of issue</td><td>Date of digital signature (see signature panel)</td></tr>
+  <tr><td class="k">Name (User)</td><td>${esc(site.siteName)}</td>
+      <td class="k">Oil Company</td><td>${esc(site.customerName)}</td></tr>
+  <tr><td class="k">Address</td><td colspan="3">${esc(site.address)}${site.telephone ? ` · Tel: ${esc(site.telephone)}` : ''}</td></tr>
+  <tr><td class="k">Job Ref.</td><td>${esc(v.jobReference ?? '')}</td>
+      <td class="k">Report type</td><td>${esc(v.reportType)}</td></tr>
 </table>
 
-<h3>Unit under test</h3>
-<table class="detail">
-  <tr><td class="k">Equipment type</td><td>${esc(EQUIPMENT_LABELS[uut.equipmentType] ?? uut.equipmentType)}</td></tr>
-  <tr><td class="k">Manufacturer / model</td><td>${esc(uut.manufacturer)} ${esc(uut.modelNumber)}</td></tr>
-  <tr><td class="k">Serial number</td><td>${esc(uut.serialNumber)}</td></tr>
-  ${uut.nozzleId ? `<tr><td class="k">Pump / hose / nozzle</td><td>${esc(uut.nozzleId)}</td></tr>` : ''}
-  <tr><td class="k">Product / grade</td><td>${esc(PRODUCT_LABELS[uut.productGrade] ?? uut.productGrade)}</td></tr>
-  ${uut.meterKFactorBefore != null ? `<tr><td class="k">Meter K-factor (before)</td><td>${uut.meterKFactorBefore}</td></tr>` : ''}
-  ${results.meterKFactorAfter != null ? `<tr><td class="k">Meter K-factor (after)</td><td>${results.meterKFactorAfter}</td></tr>` : ''}
-</table>
-
-<h3>Reference standards used</h3>
+<h3>Reference measures used (traceable to the national standard)</h3>
 <table class="standards">
-  <thead><tr><th>Description</th><th>Serial no.</th><th>Certificate no.</th><th>Cal. due</th></tr></thead>
-  <tbody>${standardsRows}</tbody>
+  <thead><tr><th>Measure</th><th>Serial no.</th><th>Certificate no.</th><th>Cal. date</th><th>Exp. date</th></tr></thead>
+  <tbody>${measureRows}</tbody>
 </table>
-<p class="clauses">All reference standards are traceable to national measurement standards
-through an unbroken chain of calibrations.</p>
+<p class="clauses">Method: ${esc(v.methodReference)}</p>
 
-<h3>Method &amp; conditions</h3>
+<h3>Dispenser (LFD)</h3>
 <table class="detail">
-  <tr><td class="k">Procedure</td><td>${esc(environment.procedureRef)}</td></tr>
-  <tr><td class="k">Ambient temperature</td><td>${environment.ambientTempC.toFixed(1)} °C</td></tr>
-  <tr><td class="k">Product temperature</td><td>${environment.productTempC.toFixed(1)} °C</td></tr>
-  <tr><td class="k">Condition of UUT</td><td>${esc(environment.uutCondition)}${environment.conditionNotes ? ` — ${esc(environment.conditionNotes)}` : ''}</td></tr>
-  <tr><td class="k">Uncertainty</td><td>${esc(results.uncertaintyStatement)}</td></tr>
+  <tr><td class="k">Make &amp; model</td><td>${esc(dispenser.makeModel)}</td>
+      <td class="k">Serial no.</td><td>${esc(dispenser.serialNumber)}</td></tr>
+  <tr><td class="k">SA approval no.</td><td>${esc(dispenser.saApprovalNumber)}</td>
+      <td class="k">Security seal no.</td><td>${esc(dispenser.securitySealNumber ?? '')}</td></tr>
 </table>
 
-${resultsTable(results.asFound, 'Results — as found')}
-${results.asLeft && results.asLeft.length ? resultsTable(results.asLeft, 'Results — as left (after adjustment)') : ''}
-
-${results.remarks ? `<h3>Remarks</h3><p>${esc(results.remarks)}</p>` : ''}
-${
-  results.verificationSealNumbers.length
-    ? `<p><strong>Verification seal(s):</strong> ${results.verificationSealNumbers.map(esc).join(', ')}</p>`
-    : ''
-}
+${hoses.map(hoseSection).join('')}
 
 <div class="clauses">
-  <p>This certificate may only be reproduced in full. Results relate only to the
-  item calibrated and are valid at the time of calibration.</p>
-  <p>This certificate is digitally signed. The embedded digital signature and
-  trusted timestamp are the authoritative record of issue; an unsigned copy of
-  this document is not a certificate.</p>
+  <p>The measuring instrument(s) was/were tested and found to comply in all respects with the
+  requirements of the Legal Metrology Act, 2014 (Act No. 9 of 2014) and may be used for a
+  prescribed purpose as intended by the Act.</p>
+  <p>This certificate may only be reproduced in full and is valid at the time of verification.
+  The embedded digital signature and trusted timestamp are the authoritative record of issue —
+  an unsigned copy of this document is not a certificate.</p>
 </div>
 
 <div class="sigblock">
   <div class="sigslot">
     <!-- Visible PAdES signature widget is applied here by the signing service -->
     <div class="digital-note">Digital signature panel — applied at issue</div>
-    <div class="line">Calibrated by: ${esc(signOff.calibratedBy.name)}</div>
+    <div class="line">VO (Initial &amp; Surname): ${esc(signOff.vo.identity.name)}
+      · Pliers No.: ${esc(signOff.vo.pliersNumber)}</div>
+    ${signOff.expiryDate ? `<div class="digital-note">Expiry date of certificate: ${esc(signOff.expiryDate)}</div>` : ''}
+    ${signOff.rejectionCertNumber ? `<div class="digital-note">Rejection Cert. No.: ${esc(signOff.rejectionCertNumber)}</div>` : ''}
   </div>
   <div class="sigslot">
-    <div class="line">Technical signatory: ${esc(signOff.technicalSignatory.name)}</div>
+    ${opts.customerSignatureSvg ? `<div class="sig-img">${opts.customerSignatureSvg}</div>` : ''}
+    <div class="line">Client (Initial &amp; Surname): ${esc(signOff.client.name)}</div>
   </div>
 </div>
 
-<div class="end">— END OF CERTIFICATE —</div>
+<div class="end">— END OF VERIFICATION CERTIFICATE —</div>
 
 <footer>
-  Prowalco (Pty) Ltd · Tatsuno distributor — Southern Africa · info@prowalco.co.za · +27 (0)11 000 0000
+  Prowalco (Pty) Ltd · 2 Cedar Street, Lords View Industrial Park, Midrand 1619 · Tel: (011) 617 6000
 </footer>
 </body>
 </html>`;

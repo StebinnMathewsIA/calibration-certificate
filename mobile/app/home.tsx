@@ -1,11 +1,11 @@
 import { Redirect, useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useState } from 'react';
-import { Alert, FlatList, Pressable, Text, View } from 'react-native';
+import { FlatList, Pressable, Text, View } from 'react-native';
 import type { CertificateState } from '@prowalco/schema';
-import { reserveCertificateNumber } from '../src/api/client';
+import { listWorkOrders, WorkOrderSummary } from '../src/api/client';
 import { useAuth } from '../src/auth/AuthContext';
+import { fetchThrough } from '../src/db/cache';
 import { Badge, Button, colors, styles } from '../src/components/ui';
-import { config } from '../src/config';
 import * as repo from '../src/db/certificateRepo';
 
 const STATE_TONE: Record<CertificateState, 'ok' | 'warn' | 'bad' | 'muted'> = {
@@ -20,87 +20,100 @@ const STATE_TONE: Record<CertificateState, 'ok' | 'warn' | 'bad' | 'muted'> = {
 export default function HomeScreen() {
   const { identity, accessToken, loading, signOut } = useAuth();
   const router = useRouter();
-  const [items, setItems] = useState<repo.CertificateRecord[]>([]);
-  const [creating, setCreating] = useState(false);
+  const [workOrders, setWorkOrders] = useState<WorkOrderSummary[]>([]);
+  const [issued, setIssued] = useState<repo.CertificateRecord[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const load = useCallback(async () => {
+    setIssued(repo.listAll().filter((c) => c.state === 'SIGNED' || c.state === 'SYNCED'));
+    setRefreshing(true);
+    try {
+      const wo = await fetchThrough('workorders', () => listWorkOrders(accessToken));
+      setWorkOrders(wo);
+    } catch {
+      // offline with no cache — leave the list empty
+    } finally {
+      setRefreshing(false);
+    }
+  }, [accessToken]);
 
   useFocusEffect(
     useCallback(() => {
-      setItems(repo.listAll());
-    }, []),
+      load();
+    }, [load]),
   );
 
   if (!loading && !identity) return <Redirect href="/" />;
-
-  const newCalibration = async () => {
-    if (!identity) return;
-    setCreating(true);
-    try {
-      // Certificate numbers are allocated server-side per branch. Offline
-      // pre-allocation of number blocks is a post-PoC item.
-      const certificateNumber = await reserveCertificateNumber(accessToken, config.branchCode);
-      const id = repo.createDraft(certificateNumber, {
-        schemaVersion: 1,
-        job: { certificateNumber, calibrationDate: new Date().toISOString().slice(0, 10) } as never,
-        signOff: {
-          calibratedBy: identity,
-          technicalSignatory: { id: '', name: '' },
-          declarationAccepted: false,
-        } as never,
-      });
-      router.push({ pathname: '/certificate/[id]/edit', params: { id } });
-    } catch (err) {
-      Alert.alert(
-        'Cannot start a calibration',
-        'A certificate number could not be reserved. Check connectivity and try again.\n\n' +
-          (err instanceof Error ? err.message : String(err)),
-      );
-    } finally {
-      setCreating(false);
-    }
-  };
 
   return (
     <View style={styles.screen}>
       <View style={{ padding: 12 }}>
         <Text style={{ color: colors.muted }}>Signed in as {identity?.name}</Text>
-        <Button title="New calibration" onPress={newCalibration} busy={creating} />
+        <Button title={refreshing ? 'Refreshing…' : 'Refresh work orders'} kind="secondary" onPress={load} busy={refreshing} />
       </View>
       <FlatList
-        data={items}
+        data={workOrders}
         keyExtractor={(x) => x.id}
-        contentContainerStyle={{ paddingBottom: 24 }}
+        contentContainerStyle={{ paddingBottom: 12 }}
+        ListHeaderComponent={
+          <Text style={{ marginHorizontal: 12, marginTop: 4, fontWeight: '700', color: colors.ink }}>
+            My work orders
+          </Text>
+        }
         renderItem={({ item }) => (
           <Pressable
-            onPress={() =>
-              router.push({
-                pathname:
-                  item.state === 'SIGNED' || item.state === 'SYNCED'
-                    ? '/certificate/[id]/issued'
-                    : '/certificate/[id]/edit',
-                params: { id: item.id },
-              })
-            }
+            onPress={() => router.push({ pathname: '/workorder/[id]', params: { id: item.id } })}
           >
             <View style={[styles.card, { flexDirection: 'row', alignItems: 'center' }]}>
               <View style={{ flex: 1 }}>
-                <Text style={{ fontWeight: '700', color: colors.ink }}>
-                  {item.certificateNumber ?? '(no number)'}
-                </Text>
+                <Text style={{ fontWeight: '700', color: colors.ink }}>{item.reference}</Text>
                 <Text style={{ color: colors.muted, fontSize: 12 }}>
-                  {(item.form.job as { customerName?: string } | undefined)?.customerName ?? 'New calibration'}
+                  {item.site.customerName} · {item.site.siteName}
                 </Text>
-                {item.lastError ? (
-                  <Text style={{ color: colors.red, fontSize: 11 }}>{item.lastError}</Text>
-                ) : null}
+                <Text style={{ color: colors.muted, fontSize: 11 }}>
+                  {item.dispenserIds.length} dispenser(s)
+                  {item.scheduledDate ? ` · ${item.scheduledDate}` : ''}
+                </Text>
               </View>
-              <Badge text={item.state.replaceAll('_', ' ')} tone={STATE_TONE[item.state]} />
+              <Badge text={item.status.replaceAll('_', ' ')} tone="muted" />
             </View>
           </Pressable>
         )}
         ListEmptyComponent={
-          <Text style={{ textAlign: 'center', color: colors.muted, marginTop: 40 }}>
-            No calibrations yet.
+          <Text style={{ textAlign: 'center', color: colors.muted, marginTop: 20 }}>
+            No work orders assigned. Pull refresh when online.
           </Text>
+        }
+        ListFooterComponent={
+          <View>
+            <Text style={{ marginHorizontal: 12, marginTop: 16, fontWeight: '700', color: colors.ink }}>
+              Issued certificates
+            </Text>
+            {issued.length === 0 ? (
+              <Text style={{ marginHorizontal: 12, color: colors.muted, marginTop: 6 }}>None yet.</Text>
+            ) : (
+              issued.map((item) => (
+                <Pressable
+                  key={item.id}
+                  onPress={() =>
+                    router.push({ pathname: '/verification/[id]/issued', params: { id: item.id } })
+                  }
+                >
+                  <View style={[styles.card, { flexDirection: 'row', alignItems: 'center' }]}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontWeight: '700', color: colors.ink }}>
+                        {item.certificateNumber ?? '(no number)'}
+                      </Text>
+                      <Text style={{ color: colors.muted, fontSize: 12 }}>
+                        {(item.form.site as { customerName?: string } | undefined)?.customerName ?? ''}
+                      </Text>
+                    </View>
+                    <Badge text={item.state.replaceAll('_', ' ')} tone={STATE_TONE[item.state]} />
+                  </View>
+                </Pressable>
+              ))
+            )}
+          </View>
         }
       />
       <View style={{ padding: 12 }}>

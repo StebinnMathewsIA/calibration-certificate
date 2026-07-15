@@ -1,5 +1,5 @@
 import * as Crypto from 'expo-crypto';
-import type { CalibrationForm, CertificateState, IntentToSign } from '@prowalco/schema';
+import type { CertificateState, IntentToSign, Verification } from '@prowalco/schema';
 import { canTransition } from '@prowalco/schema';
 import { db } from './database';
 
@@ -7,7 +7,7 @@ export interface CertificateRecord {
   id: string;
   certificateNumber: string | null;
   state: CertificateState;
-  form: Partial<CalibrationForm>;
+  form: Partial<Verification>;
   idempotencyKey: string | null;
   pdfUri: string | null;
   pdfSha256: string | null;
@@ -49,7 +49,7 @@ function fromRow(r: Row): CertificateRecord {
 
 const now = () => new Date().toISOString();
 
-export function createDraft(certificateNumber: string | null, form: Partial<CalibrationForm>): string {
+export function createDraft(certificateNumber: string | null, form: Partial<Verification>): string {
   const id = Crypto.randomUUID();
   db.runSync(
     `INSERT INTO certificates (id, certificate_number, state, form_json, created_at, updated_at)
@@ -76,7 +76,7 @@ export function listInState(state: CertificateState): CertificateRecord[] {
     .map(fromRow);
 }
 
-export function saveDraftForm(id: string, form: Partial<CalibrationForm>): void {
+export function saveDraftForm(id: string, form: Partial<Verification>): void {
   // Any edit puts the certificate back into DRAFT (READY_TO_SIGN is only a
   // validation gate, never a resting place for edited content).
   db.runSync(

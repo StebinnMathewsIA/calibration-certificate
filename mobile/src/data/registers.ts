@@ -1,40 +1,68 @@
 /**
- * PoC stand-ins for controlled registers. Production syncs these from the
- * backend (equipment register, controlled procedures, authorised
- * signatories) so due dates and certificate numbers cannot be typed in.
+ * PoC stand-ins for controlled internal registers. Production syncs these from
+ * the backend so serials, certificate numbers and expiry dates cannot be typed
+ * in. Reference measures are Prowalco's own proving measures (200/20/5 L).
  */
-import type { ReferenceStandard } from '@prowalco/schema';
+import type { Checklist, DeliveryPoint, ReferenceMeasure } from '@prowalco/schema';
+import { DEFAULT_METHOD_REFERENCE } from '@prowalco/schema';
 
-export const EQUIPMENT_REGISTER: ReferenceStandard[] = [
+export const REFERENCE_MEASURES: ReferenceMeasure[] = [
   {
-    registerId: 'STD-001',
-    description: '20 L proving measure',
-    serialNumber: 'PM-2044',
-    certificateNumber: 'SANAS-CAL-8871',
-    calibrationDueDate: '2027-01-31',
+    size: '200L',
+    serialNumber: 'PRO-1148D',
+    certificateNumber: 'D83126',
+    calibrationDate: '2026-03-19',
+    expiryDate: '2027-03-19',
   },
   {
-    registerId: 'STD-002',
-    description: '5 L proving measure',
-    serialNumber: 'PM-1180',
-    certificateNumber: 'SANAS-CAL-8412',
-    calibrationDueDate: '2026-11-30',
+    size: '20L',
+    serialNumber: 'PRO-1103T',
+    certificateNumber: 'D83126',
+    calibrationDate: '2026-03-19',
+    expiryDate: '2027-03-19',
   },
   {
-    registerId: 'STD-003',
-    description: 'Digital thermometer',
-    serialNumber: 'TH-0332',
-    certificateNumber: 'SANAS-CAL-9102',
-    calibrationDueDate: '2027-03-15',
+    size: '5L',
+    serialNumber: 'PRO-1181Z',
+    certificateNumber: 'D88126',
+    calibrationDate: '2026-03-19',
+    expiryDate: '2027-03-19',
   },
 ];
 
-export const PROCEDURES = [
-  { value: 'PWC-CP-001', label: 'PWC-CP-001 Dispenser volumetric calibration' },
-  { value: 'PWC-CP-002', label: 'PWC-CP-002 Flow meter calibration' },
+export const METHOD_REFERENCE = DEFAULT_METHOD_REFERENCE;
+
+export const PRODUCT_OPTIONS = [
+  { value: 'ULP 93', label: 'ULP 93' },
+  { value: 'ULP 95', label: 'ULP 95' },
+  { value: 'Diesel 50ppm', label: 'Diesel 50ppm' },
+  { value: 'Diesel 500ppm', label: 'Diesel 500ppm' },
+  { value: 'Paraffin', label: 'Paraffin' },
 ];
 
-export const SIGNATORIES = [
-  { id: 'SIG-01', name: 'P. van Wyk' },
-  { id: 'SIG-02', name: 'L. Dlamini' },
-];
+/** A fresh checklist with every item unset-but-defaulted to pass; the
+ * technician flips the ones that fail. */
+export function blankChecklist(): Checklist {
+  return {
+    constructionMarking: 'pass',
+    computerComputation: 'pass',
+    hydraulics: 'pass',
+    interlockingDevices: 'pass',
+    hoseNozzleAutoStop: 'pass',
+    solenoidValveTest: 'pass',
+    presetTest: 'pass',
+    measuresConformSans1698: 'pass',
+    timeOut: 'pass',
+    nozzleBurst: 'pass',
+    zeroSetting: 'pass',
+  };
+}
+
+/** Nominal delivery volume (mL) for each delivery point, used to seed VFD. */
+export const DELIVERY_NOMINAL_ML: Record<DeliveryPoint, number> = {
+  del1_max: 20000,
+  del2_max: 20000,
+  del3_max: 20000,
+  min_flow: 5000,
+  preset: 20000,
+};

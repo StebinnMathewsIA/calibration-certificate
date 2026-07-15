@@ -14,7 +14,7 @@ import * as Crypto from 'expo-crypto';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as Location from 'expo-location';
-import type { CalibrationForm, IntentToSign, SignSubmission } from '@prowalco/schema';
+import type { IntentToSign, SignSubmission, Verification } from '@prowalco/schema';
 import { validateReadyToSign } from '@prowalco/schema';
 import { confirmReceipt, submitForSigning } from '../api/client';
 import * as repo from '../db/certificateRepo';
@@ -30,16 +30,17 @@ export class SignQueueError extends Error {}
  */
 export async function enqueueForSigning(
   certificateId: string,
-  form: CalibrationForm,
+  verification: Verification,
   gpsConsentGiven: boolean,
+  customerSignatureSvg?: string,
 ): Promise<void> {
-  const readiness = validateReadyToSign(form);
+  const readiness = validateReadyToSign(verification);
   if (!readiness.ready) {
     throw new SignQueueError(`Not ready to sign:\n${readiness.reasons.join('\n')}`);
   }
 
   const auth = await LocalAuthentication.authenticateAsync({
-    promptMessage: `Sign certificate ${form.job.certificateNumber}`,
+    promptMessage: `Sign certificate ${verification.certificateNumber}`,
     disableDeviceFallback: false,
   });
   if (!auth.success) throw new SignQueueError('Identity confirmation cancelled');
@@ -68,13 +69,13 @@ export async function enqueueForSigning(
     gps,
   };
 
-  const pdf = await renderCertificatePdf(form);
+  const pdf = await renderCertificatePdf(verification, customerSignatureSvg);
 
   // READY_TO_SIGN is a checkpoint between validation and biometric; we pass
   // through it and land in the durable queue in one save.
   repo.transition(certificateId, 'READY_TO_SIGN');
   repo.transition(certificateId, 'QUEUED_FOR_SIGNING', {
-    form_json: JSON.stringify(form),
+    form_json: JSON.stringify(verification),
     idempotency_key: Crypto.randomUUID(),
     pdf_uri: pdf.uri,
     pdf_sha256: pdf.sha256,
@@ -106,7 +107,7 @@ export async function processQueue(accessToken: string | null): Promise<void> {
       repo.transition(item.id, 'UPLOADING');
       const submission: SignSubmission = {
         idempotencyKey: item.idempotencyKey,
-        form: item.form as CalibrationForm,
+        verification: item.form as Verification,
         pdfSha256: item.pdfSha256,
         pdfBase64: base64,
         intentToSign: item.intent,

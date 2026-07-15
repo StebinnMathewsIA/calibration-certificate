@@ -1,69 +1,79 @@
 """Python mirror of shared/schema/src/readiness.ts (cross-field checks).
 
-Run AFTER schema_validation.validate_calibration_form — this module assumes
-the structural shape is already valid.
+Run AFTER schema_validation.validate_verification — this module assumes the
+structural shape is already valid.
 """
-from datetime import date, datetime, timezone
+from datetime import datetime, timezone
 
-from .tolerance import TOLERANCE_CLASSES, compute_row
+from .tolerance import compute_efd
 
-_EPSILON_ML = 0.05001
-_EPSILON_PCT = 0.0005001
+_EPSILON_PCT = 0.005001
 
 
-def _check_row(row: dict, label: str, reasons: list[str]) -> None:
-    tol_id = row["toleranceClassId"]
-    if tol_id not in TOLERANCE_CLASSES:
-        reasons.append(f'{label}: unknown tolerance class "{tol_id}"')
+def _check_delivery(d: dict, label: str, reasons: list[str]) -> None:
+    if d["vrefMl"] <= 0:
+        reasons.append(f"{label}: VREF must be greater than 0")
         return
-    expected = compute_row(row["indicatedVolumeL"], row["measuredVolumeL"], tol_id)
-    if abs(expected.error_ml - row["errorMl"]) > _EPSILON_ML:
-        reasons.append(f"{label}: error (mL) does not match recomputed value")
-    if abs(expected.error_percent - row["errorPercent"]) > _EPSILON_PCT:
-        reasons.append(f"{label}: error (%) does not match recomputed value")
-    if expected.passed != row["pass"]:
+    expected = compute_efd(d["vfdMl"], d["vrefMl"])
+    if abs(expected.efd_percent - d["efdPercent"]) > _EPSILON_PCT:
+        reasons.append(f"{label}: EFD (%) does not match recomputed value")
+    if expected.passed != d["pass"]:
         reasons.append(f"{label}: pass/fail flag does not match recomputed value")
-    if abs(row["indicatedVolumeL"] - row["nominalDeliveryL"]) > row["nominalDeliveryL"] * 0.5:
-        reasons.append(f"{label}: indicated volume differs from nominal by more than 50%")
 
 
-def validate_ready_to_sign(form: dict, now: datetime | None = None) -> list[str]:
-    """Returns a list of reasons the form may NOT be signed (empty = ready)."""
+def _check_hose(hose: dict, label: str, reasons: list[str]) -> None:
+    for i, d in enumerate(hose["deliveries"]):
+        _check_delivery(d, f'{label}.deliveries[{i}] ({d["point"]})', reasons)
+
+    any_delivery_failed = any(not d["pass"] for d in hose["deliveries"])
+    any_checklist_failed = any(v == "fail" for v in hose["checklist"].values())
+    if hose["outcome"] == "certified" and (any_delivery_failed or any_checklist_failed):
+        reasons.append(
+            f'{label}: outcome is "certified" but a delivery or checklist item failed'
+        )
+    if hose["outcome"] == "rejected" and not any_delivery_failed and not any_checklist_failed:
+        reasons.append(
+            f'{label}: outcome is "rejected" but no delivery or checklist item failed'
+        )
+
+
+def validate_ready_to_sign(verification: dict, now: datetime | None = None) -> list[str]:
+    """Returns a list of reasons the verification may NOT be signed (empty = ready)."""
     reasons: list[str] = []
     now = now or datetime.now(timezone.utc)
     today = now.date().isoformat()
 
-    if not form["signOff"]["declarationAccepted"]:
+    sign_off = verification["signOff"]
+    if not sign_off["declarationAccepted"]:
         reasons.append(
             "signOff.declarationAccepted: the declaration must be accepted before signing"
         )
+    if not sign_off["vo"].get("pliersNumber"):
+        reasons.append("signOff.vo.pliersNumber: the VO pliers number is required")
 
-    cal_date = form["job"]["calibrationDate"]
-    for std in form["referenceStandards"]:
-        due = std["calibrationDueDate"]
-        if due < cal_date:
+    ver_date = verification["verificationDate"]
+    for m in verification["referenceMeasures"]:
+        exp = m["expiryDate"]
+        if exp < ver_date:
             reasons.append(
-                f'referenceStandards: "{std["description"]}" ({std["serialNumber"]}) '
-                f"calibration expired {due}, before the calibration date {cal_date}"
+                f'referenceMeasures: {m["size"]} measure ({m["serialNumber"]}) expired '
+                f"{exp}, before the verification date {ver_date}"
             )
-        elif due < today:
+        elif exp < today:
             reasons.append(
-                f'referenceStandards: "{std["description"]}" ({std["serialNumber"]}) '
-                f"calibration expired {due}"
+                f'referenceMeasures: {m["size"]} measure ({m["serialNumber"]}) expired {exp}'
             )
 
-    if cal_date > today:
-        reasons.append("job.calibrationDate: calibration date is in the future")
+    if ver_date > today:
+        reasons.append("verificationDate: verification date is in the future")
 
-    results = form["results"]
-    if results["adjustmentPerformed"] and not results.get("asLeft"):
-        reasons.append("results.asLeft: as-left results are required when an adjustment was performed")
-    if not results["adjustmentPerformed"] and results.get("asLeft"):
-        reasons.append("results.asLeft: as-left results present but adjustmentPerformed is false")
+    any_rejected = any(h["outcome"] == "rejected" for h in verification["hoses"])
+    if any_rejected and not sign_off.get("rejectionCertNumber"):
+        reasons.append(
+            "signOff.rejectionCertNumber: required because at least one hose was rejected"
+        )
 
-    for i, row in enumerate(results["asFound"]):
-        _check_row(row, f"results.asFound[{i}]", reasons)
-    for i, row in enumerate(results.get("asLeft") or []):
-        _check_row(row, f"results.asLeft[{i}]", reasons)
+    for i, hose in enumerate(verification["hoses"]):
+        _check_hose(hose, f"hoses[{i}]", reasons)
 
     return reasons

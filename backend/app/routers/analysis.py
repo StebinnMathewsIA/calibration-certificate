@@ -4,11 +4,11 @@ from sqlalchemy.orm import Session
 
 from .. import audit
 from ..auth import Identity, get_identity
-from ..claude_analysis import analyze_calibration
+from ..claude_analysis import analyze_verification
 from ..config import Settings, get_settings
 from ..db import get_db
 from ..notifier import MANAGER_NOTIFY_VERDICTS, default_notifier
-from ..schema_validation import validate_calibration_form
+from ..schema_validation import validate_verification
 
 router = APIRouter(prefix="/v1/analysis", tags=["analysis"])
 
@@ -20,21 +20,21 @@ def analyze(
     identity: Identity = Depends(get_identity),
     settings: Settings = Depends(get_settings),
 ) -> dict:
-    """Runs the Claude review of a calibration BEFORE signing so the
+    """Runs the Claude review of a verification BEFORE signing so the
     technician can react on-site. The verdict is advisory and is logged; the
     human signatory remains responsible."""
     if not settings.analysis_enabled:
         raise HTTPException(status_code=503, detail="Analysis is disabled")
 
-    form = payload.get("form")
-    if not isinstance(form, dict):
-        raise HTTPException(status_code=422, detail="Body must be {'form': CalibrationForm}")
-    violations = validate_calibration_form(form)
+    verification = payload.get("verification")
+    if not isinstance(verification, dict):
+        raise HTTPException(status_code=422, detail="Body must be {'verification': Verification}")
+    violations = validate_verification(verification)
     if violations:
         raise HTTPException(status_code=422, detail={"violations": violations})
 
     try:
-        response = analyze_calibration(form)
+        response = analyze_verification(verification)
     except anthropic.RateLimitError as exc:
         raise HTTPException(status_code=429, detail="Analysis temporarily rate limited") from exc
     except anthropic.APIStatusError as exc:
@@ -42,7 +42,7 @@ def analyze(
     except anthropic.APIConnectionError as exc:
         raise HTTPException(status_code=502, detail="Analysis upstream unreachable") from exc
 
-    cert_number = form["job"]["certificateNumber"]
+    cert_number = verification["certificateNumber"]
     verdict = response["result"]["verdict"]
     audit.record(
         db,

@@ -25,6 +25,7 @@ class Identity:
     subject: str
     name: str
     auth_method: str  # microsoft | google | apple
+    email: str = ""  # sign-in email — the join key for work-order assignment
 
 
 # Supabase provider slugs -> the form's authMethod enum
@@ -81,5 +82,6 @@ def get_identity(request: Request, settings: Settings = Depends(get_settings)) -
     if provider is None:
         raise HTTPException(status_code=403, detail="Sign-in provider not permitted")
     subject = claims.get("sub", "")
-    name = user_meta.get("full_name") or user_meta.get("name") or claims.get("email") or subject
-    return Identity(subject=subject, name=str(name), auth_method=provider)
+    email = str(claims.get("email") or "")
+    name = user_meta.get("full_name") or user_meta.get("name") or email or subject
+    return Identity(subject=subject, name=str(name), auth_method=provider, email=email)

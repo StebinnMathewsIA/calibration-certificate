@@ -1,6 +1,6 @@
-"""Claude calibration analysis (backend-only — API key never ships in the app).
+"""Claude verification analysis (backend-only — API key never ships in the app).
 
-Sends the structured calibration JSON to the Claude API and returns a
+Sends the structured verification JSON to the Claude API and returns a
 structured verdict matching shared/schema/src/analysis.ts. The prompt is
 versioned in-repo (app/prompts/) and the verdict + model + prompt version are
 written to the audit trail by the caller.
@@ -12,9 +12,9 @@ from functools import lru_cache
 import anthropic
 
 from .config import PROMPTS_DIR, get_settings
-from .tolerance import TOLERANCE_CLASSES
+from .tolerance import MPE_PERCENT
 
-PROMPT_VERSION = "calibration-analysis-v1"
+PROMPT_VERSION = "verification-analysis-v1"
 
 # Mirrors shared/schema/src/analysis.ts analysisResultSchema.
 ANALYSIS_RESULT_JSON_SCHEMA = {
@@ -32,17 +32,18 @@ ANALYSIS_RESULT_JSON_SCHEMA = {
 
 @lru_cache
 def _system_prompt() -> str:
-    return (PROMPTS_DIR / "calibration_analysis_v1.md").read_text()
+    return (PROMPTS_DIR / "verification_analysis_v1.md").read_text()
 
 
-def _tolerance_context() -> list[dict]:
-    return [
-        {"id": t.id, "name": t.name, "mpePercent": t.mpe_percent, "reference": t.reference}
-        for t in TOLERANCE_CLASSES.values()
-    ]
+def _tolerance_context() -> dict:
+    return {
+        "efdFormula": "EFD = (VFD - VREF) / VREF * 100  [%]",
+        "mpePercent": MPE_PERCENT,
+        "reference": "LM-IR 117-2: 2023 — PROVISIONAL, confirm with NRCS/QM",
+    }
 
 
-def analyze_calibration(form: dict, client: anthropic.Anthropic | None = None) -> dict:
+def analyze_verification(verification: dict, client: anthropic.Anthropic | None = None) -> dict:
     """Returns an AnalysisResponse dict (see shared/schema/src/analysis.ts).
 
     Raises anthropic.APIError subclasses on API failure — the router maps
@@ -53,8 +54,8 @@ def analyze_calibration(form: dict, client: anthropic.Anthropic | None = None) -
 
     user_content = json.dumps(
         {
-            "tolerancesInForce": _tolerance_context(),
-            "calibration": form,
+            "toleranceInForce": _tolerance_context(),
+            "verification": verification,
         },
         indent=2,
         sort_keys=True,

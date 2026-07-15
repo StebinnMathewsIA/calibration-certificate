@@ -77,8 +77,8 @@ def sign_certificate(
     if violations:
         raise HTTPException(status_code=422, detail={"violations": violations})
 
-    form = submission["form"]
-    cert_number = form["job"]["certificateNumber"]
+    verification = submission["verification"]
+    cert_number = verification["certificateNumber"]
     idempotency_key = submission["idempotencyKey"]
 
     # 2. Idempotent replay: same idempotency key => return the stored result.
@@ -95,12 +95,12 @@ def sign_certificate(
             detail=f"Certificate {cert_number} has already been issued",
         )
 
-    # 4. The signed-in identity must be the technician on the form.
-    if form["signOff"]["calibratedBy"]["subject"] != identity.subject:
-        raise HTTPException(status_code=403, detail="Token subject does not match calibratedBy")
+    # 4. The signed-in identity must be the VO (technician) on the verification.
+    if verification["signOff"]["vo"]["identity"]["subject"] != identity.subject:
+        raise HTTPException(status_code=403, detail="Token subject does not match signing VO")
 
-    # 5. Cross-field readiness checks (standards in date, recomputed results, ...)
-    reasons = validate_ready_to_sign(form)
+    # 5. Cross-field readiness checks (measures in date, recomputed EFD, ...)
+    reasons = validate_ready_to_sign(verification)
     if reasons:
         audit.record(db, cert_number, audit.CERT_SIGN_REJECTED, identity.subject, {"reasons": reasons})
         db.commit()
@@ -115,9 +115,9 @@ def sign_certificate(
     if actual_sha != submission["pdfSha256"]:
         raise HTTPException(status_code=400, detail="pdfSha256 does not match uploaded PDF bytes")
 
-    # 7. Cross-check the PDF text layer against the form JSON — a compromised
-    #    client cannot get arbitrary content signed.
-    mismatches = crosscheck_pdf(pdf_bytes, form)
+    # 7. Cross-check the PDF text layer against the verification JSON — a
+    #    compromised client cannot get arbitrary content signed.
+    mismatches = crosscheck_pdf(pdf_bytes, verification)
     if mismatches:
         audit.record(
             db, cert_number, audit.CERT_SIGN_REJECTED, identity.subject, {"reasons": mismatches}
@@ -136,12 +136,12 @@ def sign_certificate(
             "idempotencyKey": idempotency_key,
             "intentToSign": submission["intentToSign"],
             "unsignedPdfSha256": submission["pdfSha256"],
-            "authMethod": form["signOff"]["calibratedBy"]["authMethod"],
+            "authMethod": verification["signOff"]["vo"]["identity"]["authMethod"],
         },
     )
     result = signing_service.sign_certificate_pdf(
         pdf_bytes,
-        technician_name=form["signOff"]["calibratedBy"]["name"],
+        technician_name=verification["signOff"]["vo"]["identity"]["name"],
         certificate_number=cert_number,
     )
 
@@ -153,8 +153,8 @@ def sign_certificate(
     cert = Certificate(
         certificate_number=cert_number,
         idempotency_key=idempotency_key,
-        technician_subject=form["signOff"]["calibratedBy"]["subject"],
-        form_json=form,
+        technician_subject=verification["signOff"]["vo"]["identity"]["subject"],
+        form_json=verification,
         unsigned_pdf_sha256=submission["pdfSha256"],
         signed_pdf_sha256=result.signed_pdf_sha256,
         storage_ref=storage_ref,

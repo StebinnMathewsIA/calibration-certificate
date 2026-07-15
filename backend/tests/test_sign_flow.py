@@ -12,7 +12,7 @@ from pyhanko_certvalidator import ValidationContext
 from tests.conftest import (
     build_certificate_pdf,
     make_submission,
-    make_valid_form,
+    make_valid_verification,
     pdf_bucket_store,
 )
 
@@ -22,8 +22,8 @@ def _fresh_cert_number() -> str:
 
 
 def _fresh_submission():
-    form = make_valid_form(cert_number=_fresh_cert_number())
-    return make_submission(form)
+    v = make_valid_verification(cert_number=_fresh_cert_number())
+    return make_submission(v)
 
 
 def test_sign_happy_path_produces_valid_pades_signature(client):
@@ -32,13 +32,13 @@ def test_sign_happy_path_produces_valid_pades_signature(client):
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert body["status"] == "issued"
-    assert body["certificateNumber"] == sub["form"]["job"]["certificateNumber"]
+    assert body["certificateNumber"] == sub["verification"]["certificateNumber"]
 
     signed = base64.b64decode(body["signedPdfBase64"])
     assert hashlib.sha256(signed).hexdigest() == body["signedPdfSha256"]
 
     # The signed PDF landed in the real Supabase Storage bucket.
-    cert_number = sub["form"]["job"]["certificateNumber"]
+    cert_number = sub["verification"]["certificateNumber"]
     assert pdf_bucket_store.get(f"{cert_number}.pdf") == signed
 
     # The signed PDF must carry an intact, cryptographically valid signature
@@ -70,7 +70,7 @@ def test_idempotent_replay_returns_same_certificate(client):
 def test_same_certificate_number_different_key_conflicts(client):
     sub = _fresh_submission()
     assert client.post("/v1/certificates/sign", json=sub).status_code == 200
-    dup = make_submission(sub["form"])  # new idempotency key, same cert number
+    dup = make_submission(sub["verification"])  # new idempotency key, same cert number
     resp = client.post("/v1/certificates/sign", json=dup)
     assert resp.status_code == 409
 
@@ -84,44 +84,44 @@ def test_pdf_hash_mismatch_rejected(client):
 
 
 def test_crosscheck_blocks_mismatched_pdf(client):
-    # PDF rendered for a DIFFERENT form (wrong cert number / values) must not
-    # be signed even though hash and schema are fine.
-    form = make_valid_form(cert_number=_fresh_cert_number())
-    other = make_valid_form(cert_number=_fresh_cert_number())
-    other["signOff"]["calibratedBy"]["name"] = "Someone Else"
+    # PDF rendered for a DIFFERENT verification (wrong VO name) must not be
+    # signed even though hash and schema are fine.
+    v = make_valid_verification(cert_number=_fresh_cert_number())
+    other = make_valid_verification(cert_number=_fresh_cert_number())
+    other["signOff"]["vo"]["identity"]["name"] = "Someone Else"
     mismatched_pdf = build_certificate_pdf(other)
-    sub = make_submission(form, pdf=mismatched_pdf)
+    sub = make_submission(v, pdf=mismatched_pdf)
     resp = client.post("/v1/certificates/sign", json=sub)
     assert resp.status_code == 422
     assert "text layer" in resp.text
 
 
 def test_tampered_results_rejected_before_signing(client):
-    form = make_valid_form(cert_number=_fresh_cert_number())
-    form["results"]["asFound"][0]["pass"] = True
-    form["results"]["asFound"][0]["errorPercent"] = 0.01
-    sub = make_submission(form)
+    v = make_valid_verification(cert_number=_fresh_cert_number())
+    v["hoses"][0]["deliveries"][0]["pass"] = True
+    v["hoses"][0]["deliveries"][0]["efdPercent"] = 0.01
+    sub = make_submission(v)
     resp = client.post("/v1/certificates/sign", json=sub)
     assert resp.status_code == 422
 
 
 def test_token_subject_must_match_technician(client):
-    form = make_valid_form(cert_number=_fresh_cert_number())
-    form["signOff"]["calibratedBy"]["subject"] = "someone-else-uuid"
-    resp = client.post("/v1/certificates/sign", json=make_submission(form))
+    v = make_valid_verification(cert_number=_fresh_cert_number())
+    v["signOff"]["vo"]["identity"]["subject"] = "someone-else-uuid"
+    resp = client.post("/v1/certificates/sign", json=make_submission(v))
     assert resp.status_code == 403
 
 
 def test_structurally_invalid_submission_rejected(client):
     sub = _fresh_submission()
-    del sub["form"]["referenceStandards"]
+    del sub["verification"]["referenceMeasures"]
     resp = client.post("/v1/certificates/sign", json=sub)
     assert resp.status_code == 422
 
 
 def test_receipt_confirms_sync(client):
     sub = _fresh_submission()
-    cert_number = sub["form"]["job"]["certificateNumber"]
+    cert_number = sub["verification"]["certificateNumber"]
     assert client.post("/v1/certificates/sign", json=sub).status_code == 200
     resp = client.get(f"/v1/certificates/{cert_number}/receipt")
     assert resp.status_code == 200

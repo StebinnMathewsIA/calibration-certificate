@@ -1,45 +1,30 @@
 """Python mirror of shared/schema/src/tolerance.ts.
 
-Keep behaviour byte-for-byte consistent with the TypeScript implementation:
-the backend recomputes every result row and rejects submissions whose
-client-computed values disagree.
+Keep behaviour consistent with the TypeScript implementation: the backend
+recomputes every delivery's EFD and rejects submissions whose client-computed
+values disagree.
 
-The MPE values are PROVISIONAL — confirm the exact NRCS / OIML R117 accuracy
-class per dispenser type with Prowalco's quality manager (CLAUDE.md, open
-question #1).
+    EFD = (VFD - VREF) / VREF * 100   [%]
+
+VFD = volume indicated by the dispenser, VREF = volume indicated by the
+reference measure. A delivery passes when |EFD| <= MPE.
+
+The MPE is PROVISIONAL — confirm the exact NRCS / LM-IR 117-2 maximum
+permissible error and EFD sign convention with Prowalco's quality manager
+(CLAUDE.md open questions).
 """
+import math
 from dataclasses import dataclass
 
+# Maximum permissible error for a fuel-dispenser delivery, in percent.
+MPE_PERCENT = 0.5
 
-@dataclass(frozen=True)
-class ToleranceClass:
-    id: str
-    name: str
-    mpe_percent: float
-    reference: str
-
-
-TOLERANCE_CLASSES: dict[str, ToleranceClass] = {
-    "oiml_r117_class_0_5": ToleranceClass(
-        id="oiml_r117_class_0_5",
-        name="OIML R117 accuracy class 0.5 (fuel dispenser)",
-        mpe_percent=0.5,
-        reference="OIML R117-1 — PROVISIONAL, confirm with NRCS/QM",
-    ),
-    "oiml_r117_class_0_3": ToleranceClass(
-        id="oiml_r117_class_0_3",
-        name="OIML R117 accuracy class 0.3",
-        mpe_percent=0.3,
-        reference="OIML R117-1 — PROVISIONAL, confirm with NRCS/QM",
-    ),
-}
-
-DEFAULT_TOLERANCE_CLASS_ID = "oiml_r117_class_0_5"
+# The delivery test points on the Metrologist Note, in report order.
+DELIVERY_POINTS = ("del1_max", "del2_max", "del3_max", "min_flow", "preset")
 
 # Match the TS EPSILON nudge in roundTo(): Python's round() uses banker's
 # rounding, so implement half-up rounding with the same epsilon behaviour.
 _EPSILON = 2.220446049250313e-16
-import math
 
 
 def round_to(value: float, decimals: int) -> float:
@@ -50,27 +35,16 @@ def round_to(value: float, decimals: int) -> float:
 
 
 @dataclass(frozen=True)
-class RowComputation:
-    error_ml: float
-    error_percent: float
+class EfdComputation:
+    efd_percent: float
     passed: bool
 
 
-def compute_row(
-    indicated_volume_l: float,
-    measured_volume_l: float,
-    tolerance_class_id: str = DEFAULT_TOLERANCE_CLASS_ID,
-) -> RowComputation:
-    tol = TOLERANCE_CLASSES.get(tolerance_class_id)
-    if tol is None:
-        raise ValueError(f"Unknown tolerance class: {tolerance_class_id}")
-    if measured_volume_l <= 0:
-        raise ValueError("Measured volume must be > 0")
-    error_l = indicated_volume_l - measured_volume_l
-    error_ml = round_to(error_l * 1000, 1)
-    error_percent = round_to((error_l / measured_volume_l) * 100, 3)
-    return RowComputation(
-        error_ml=error_ml,
-        error_percent=error_percent,
-        passed=abs(error_percent) <= tol.mpe_percent,
+def compute_efd(vfd_ml: float, vref_ml: float) -> EfdComputation:
+    if vref_ml <= 0:
+        raise ValueError("Reference volume (VREF) must be > 0")
+    efd_percent = round_to(((vfd_ml - vref_ml) / vref_ml) * 100, 2)
+    return EfdComputation(
+        efd_percent=efd_percent,
+        passed=abs(efd_percent) <= MPE_PERCENT,
     )

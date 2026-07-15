@@ -1,42 +1,45 @@
 """Parity tests — must agree with shared/schema/test/tolerance.test.ts."""
 import pytest
 
-from app.tolerance import compute_row
+from app.tolerance import MPE_PERCENT, compute_efd
 
 
-def test_error_ml():
-    r = compute_row(20.05, 20.0)
-    assert r.error_ml == 50
-    assert r.error_percent == 0.25
+def test_efd_at_mpe_boundary():
+    r = compute_efd(20100, 20000)
+    assert r.efd_percent == 0.5
     assert r.passed is True
 
 
-def test_negative_error_at_mpe_boundary():
-    r = compute_row(19.9, 20.0)
-    assert r.error_ml == -100
-    assert r.error_percent == -0.5
+def test_negative_efd_at_boundary():
+    r = compute_efd(19900, 20000)
+    assert r.efd_percent == -0.5
     assert r.passed is True
 
 
-def test_outside_tolerance_fails():
-    r = compute_row(20.15, 20.0)
-    assert r.error_percent == 0.75
+def test_outside_mpe_fails():
+    r = compute_efd(20150, 20000)
+    assert r.efd_percent == 0.75
     assert r.passed is False
 
 
-def test_tighter_class():
-    r = compute_row(20.08, 20.0, "oiml_r117_class_0_3")
-    assert r.error_percent == 0.4
-    assert r.passed is False
+def test_small_efd_passes():
+    r = compute_efd(20010, 20000)
+    assert r.efd_percent == 0.05
+    assert r.passed is True
 
 
 def test_rounding_boundary():
-    r = compute_row(20.0001, 20.0)
-    assert r.error_ml == 0.1
+    # 20005/20000 = 1.00025 -> 0.025% -> rounds to 0.03 at 2 dp
+    r = compute_efd(20005, 20000)
+    assert r.efd_percent == 0.03
+
+
+def test_mpe_is_half_percent():
+    assert MPE_PERCENT == 0.5
 
 
 def test_invalid_inputs():
     with pytest.raises(ValueError):
-        compute_row(20, 20, "nope")
+        compute_efd(20000, 0)
     with pytest.raises(ValueError):
-        compute_row(20, 0)
+        compute_efd(20000, -1)

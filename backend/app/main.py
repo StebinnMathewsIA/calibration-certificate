@@ -6,7 +6,7 @@ from sqlalchemy import text
 from .config import get_settings, validate_settings
 from .db import get_engine
 from .pdf_store import SupabaseStoragePdfStore
-from .routers import analysis, certificates
+from .routers import analysis, certificates, workorders
 
 
 @asynccontextmanager
@@ -50,6 +50,7 @@ app = FastAPI(
 
 app.include_router(certificates.router)
 app.include_router(analysis.router)
+app.include_router(workorders.router)
 
 
 @app.get("/healthz")

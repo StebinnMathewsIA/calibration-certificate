@@ -6,7 +6,7 @@ from app import audit
 from app.db import SessionLocal
 from app.models import AuditEvent
 from app.routers import analysis as analysis_router
-from tests.conftest import make_valid_form
+from tests.conftest import make_valid_verification
 
 
 def _canned_response(verdict: str) -> dict:
@@ -18,21 +18,22 @@ def _canned_response(verdict: str) -> dict:
             "recommendations": [],
         },
         "model": "claude-opus-4-8",
-        "promptVersion": "calibration-analysis-v1",
+        "promptVersion": "verification-analysis-v1",
         "analyzedAt": "2026-07-14T09:00:00+00:00",
     }
 
 
-def _form():
+def _verification():
     n = f"PWC-DBN-{uuid.uuid4().int % 1_000_000:06d}-00"
-    form = make_valid_form(cert_number=n)
-    return form, n
+    return make_valid_verification(cert_number=n), n
 
 
 def test_analysis_returns_verdict_and_audits(client, monkeypatch):
-    form, cert_number = _form()
-    monkeypatch.setattr(analysis_router, "analyze_calibration", lambda f: _canned_response("pass"))
-    resp = client.post("/v1/analysis", json={"form": form})
+    verification, cert_number = _verification()
+    monkeypatch.setattr(
+        analysis_router, "analyze_verification", lambda v: _canned_response("pass")
+    )
+    resp = client.post("/v1/analysis", json={"verification": verification})
     assert resp.status_code == 200
     assert resp.json()["result"]["verdict"] == "pass"
 
@@ -46,9 +47,11 @@ def test_analysis_returns_verdict_and_audits(client, monkeypatch):
 
 
 def test_fail_verdict_notifies_manager(client, monkeypatch):
-    form, cert_number = _form()
-    monkeypatch.setattr(analysis_router, "analyze_calibration", lambda f: _canned_response("fail"))
-    resp = client.post("/v1/analysis", json={"form": form})
+    verification, cert_number = _verification()
+    monkeypatch.setattr(
+        analysis_router, "analyze_verification", lambda v: _canned_response("fail")
+    )
+    resp = client.post("/v1/analysis", json={"verification": verification})
     assert resp.status_code == 200
 
     with SessionLocal() as db:
@@ -59,16 +62,18 @@ def test_fail_verdict_notifies_manager(client, monkeypatch):
     assert audit.MANAGER_NOTIFIED in types
     completed = next(e for e in events if e.event_type == audit.ANALYSIS_COMPLETED)
     assert completed.payload["model"] == "claude-opus-4-8"
-    assert completed.payload["promptVersion"] == "calibration-analysis-v1"
+    assert completed.payload["promptVersion"] == "verification-analysis-v1"
 
 
-def test_invalid_form_rejected_before_calling_claude(client, monkeypatch):
+def test_invalid_verification_rejected_before_calling_claude(client, monkeypatch):
     called = []
     monkeypatch.setattr(
-        analysis_router, "analyze_calibration", lambda f: called.append(1) or _canned_response("pass")
+        analysis_router,
+        "analyze_verification",
+        lambda v: called.append(1) or _canned_response("pass"),
     )
-    form, _ = _form()
-    del form["results"]
-    resp = client.post("/v1/analysis", json={"form": form})
+    verification, _ = _verification()
+    del verification["hoses"]
+    resp = client.post("/v1/analysis", json={"verification": verification})
     assert resp.status_code == 422
     assert called == []

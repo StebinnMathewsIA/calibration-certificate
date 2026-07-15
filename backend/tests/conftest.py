@@ -147,107 +147,144 @@ from reportlab.pdfgen import canvas  # noqa: E402
 
 from scripts.generate_dev_signing_cert import generate as generate_dev_cert  # noqa: E402
 from app.main import app  # noqa: E402
-from app.tolerance import DEFAULT_TOLERANCE_CLASS_ID, compute_row  # noqa: E402
+from app.tolerance import compute_efd  # noqa: E402
 
 generate_dev_cert(_KEYS)
 
-UNCERTAINTY = (
-    "Expanded uncertainty of measurement: ±0.15 % of reading, coverage factor k=2 "
-    "(approx. 95 % confidence). PROVISIONAL — pending Prowalco uncertainty budget."
-)
 
-
-def make_row(indicated: float, measured: float, nominal: float = 20.0) -> dict:
-    c = compute_row(indicated, measured, DEFAULT_TOLERANCE_CLASS_ID)
+def make_delivery(point: str, vfd_ml: float, vref_ml: float, flow_rate_lpm: float = 40.0) -> dict:
+    c = compute_efd(vfd_ml, vref_ml)
     return {
-        "nominalDeliveryL": nominal,
-        "flowRateLpm": 38.5,
-        "indicatedVolumeL": indicated,
-        "measuredVolumeL": measured,
-        "errorMl": c.error_ml,
-        "errorPercent": c.error_percent,
+        "point": point,
+        "flowRateLpm": flow_rate_lpm,
+        "vfdMl": vfd_ml,
+        "vrefMl": vref_ml,
+        "efdPercent": c.efd_percent,
         "pass": c.passed,
-        "toleranceClassId": DEFAULT_TOLERANCE_CLASS_ID,
     }
 
 
-def make_valid_form(cert_number: str | None = None) -> dict:
+def _all_pass_checklist() -> dict:
+    return {
+        "constructionMarking": "pass",
+        "computerComputation": "pass",
+        "hydraulics": "pass",
+        "interlockingDevices": "pass",
+        "hoseNozzleAutoStop": "pass",
+        "solenoidValveTest": "pass",
+        "presetTest": "pass",
+        "measuresConformSans1698": "pass",
+        "timeOut": "pass",
+        "nozzleBurst": "pass",
+        "zeroSetting": "pass",
+    }
+
+
+def make_hose(**overrides) -> dict:
+    hose = {
+        "hoseNumber": "1",
+        "product": "ULP 95",
+        "status": "new",
+        "components": {
+            "meter": {"make": "Tatsuno", "model": "TF", "serial": "M-001", "saApproval": "119-AA20"},
+            "pcBoard": {"make": "Tatsuno", "model": "PB", "serial": "P-001", "saApproval": "119-AA20"},
+            "pulsar": {"make": "Tatsuno", "model": "PL", "serial": "PU-001", "saApproval": "119-AA20"},
+            "solenoid": {"make": "Tatsuno", "model": "SV", "serial": "S-001", "saApproval": "119-AA20"},
+        },
+        "testCondition": "cold",
+        "qMinLpm": 15,
+        "qMaxLpm": 130,
+        "checklist": _all_pass_checklist(),
+        "deliveries": [
+            make_delivery("del1_max", 20010, 20000),
+            make_delivery("del2_max", 20010, 20000),
+            make_delivery("del3_max", 20000, 20000),
+            make_delivery("min_flow", 5005, 5000),
+        ],
+        "outcome": "certified",
+    }
+    hose.update(overrides)
+    return hose
+
+
+def make_valid_verification(cert_number: str | None = None) -> dict:
     cert_number = cert_number or f"PWC-JHB-{uuid.uuid4().int % 1_000_000:06d}-00"
     return {
-        "schemaVersion": 1,
-        "job": {
-            "certificateNumber": cert_number,
-            "workOrderNumber": "WO-4711",
-            "customerName": "Engen Riverside",
-            "siteAddress": "1 Main Rd, Johannesburg, 2001",
-            "siteAssetNumber": "FC-07",
-            "calibrationDate": "2026-07-10",
+        "schemaVersion": 2,
+        "certificateNumber": cert_number,
+        "nrcsBookNumber": "139458",
+        "reportType": "verification",
+        "site": {
+            "customerName": "Engen",
+            "siteName": "North Road Fuel Depot",
+            "address": "75 North Road, O.R. Tambo, Boksburg, 1459",
+            "telephone": "011 617 6000",
         },
-        "uut": {
-            "equipmentType": "fuel_dispenser",
-            "manufacturer": "Tatsuno",
-            "modelNumber": "SS-LX-E",
+        "jobReference": "WO-4711",
+        "workOrderId": "WO-001",
+        "dispenser": {
+            "dispenserId": "DISP-001",
+            "makeModel": "Tatsuno SS-LX-E",
+            "saApprovalNumber": "119-AA20",
             "serialNumber": "TSN-99812",
-            "nozzleId": "A1",
-            "productGrade": "ulp_95",
-            "meterKFactorBefore": 1.0012,
+            "securitySealNumber": "SEC-114281",
         },
-        "referenceStandards": [
+        "referenceMeasures": [
             {
-                "registerId": "STD-001",
-                "description": "20 L proving measure",
-                "serialNumber": "PM-2044",
-                "certificateNumber": "SANAS-CAL-8871",
-                "calibrationDueDate": "2027-01-31",
-            }
+                "size": "200L",
+                "serialNumber": "PRO-1148D",
+                "certificateNumber": "D83126",
+                "calibrationDate": "2026-03-19",
+                "expiryDate": "2027-03-19",
+            },
+            {
+                "size": "20L",
+                "serialNumber": "PRO-1103T",
+                "certificateNumber": "D83126",
+                "calibrationDate": "2026-03-19",
+                "expiryDate": "2027-03-19",
+            },
         ],
-        "environment": {
-            "ambientTempC": 24.5,
-            "productTempC": 21.0,
-            "procedureRef": "PWC-CP-001",
-            "uutCondition": "good",
-        },
-        "results": {
-            "asFound": [make_row(20.05, 20.0), make_row(19.98, 20.0)],
-            "adjustmentPerformed": False,
-            "uncertaintyStatement": UNCERTAINTY,
-            "verificationSealNumbers": ["SEAL-1234"],
-            "photos": [],
-        },
+        "methodReference": "SANS Test Proc 01 & SANS Test Proc 02 based on LM-IR 117-2: 2023",
+        "hoses": [make_hose()],
         "signOff": {
             # The real Supabase user — the backend enforces that the token
-            # subject matches calibratedBy.subject.
-            "calibratedBy": {
-                "subject": TECHNICIAN_SUBJECT,
-                "name": TECHNICIAN_NAME,
-                "authMethod": "microsoft",
+            # subject matches the signing VO's subject.
+            "vo": {
+                "identity": {
+                    "subject": TECHNICIAN_SUBJECT,
+                    "name": TECHNICIAN_NAME,
+                    "authMethod": "microsoft",
+                },
+                "pliersNumber": "PRO 399",
             },
-            "technicalSignatory": {"id": "SIG-01", "name": "P. van Wyk"},
+            "client": {"name": "K. Moja"},
             "declarationAccepted": True,
+            "expiryDate": "2027-07-14",
         },
+        "verificationDate": "2026-07-10",
     }
 
 
-def build_certificate_pdf(form: dict) -> bytes:
+def build_certificate_pdf(verification: dict) -> bytes:
     """Minimal stand-in for the expo-print rendering: a PDF whose text layer
     contains the fields the backend cross-checks."""
     buf = io.BytesIO()
     c = canvas.Canvas(buf, pagesize=A4)
     y = 800
     lines = [
-        "CERTIFICATE OF CALIBRATION",
-        f"Certificate number: {form['job']['certificateNumber']}",
-        f"Customer: {form['job']['customerName']}",
-        f"UUT serial number: {form['uut']['serialNumber']}",
-        f"Calibrated by: {form['signOff']['calibratedBy']['name']}",
+        "VERIFICATION CERTIFICATE — LIQUID FUEL DISPENSERS",
+        f"Certificate number: {verification['certificateNumber']}",
+        f"Oil Company: {verification['site']['customerName']}",
+        f"Serial No.: {verification['dispenser']['serialNumber']}",
+        f"VO: {verification['signOff']['vo']['identity']['name']}",
     ]
-    for table in ("asFound", "asLeft"):
-        for row in form["results"].get(table) or []:
+    for hi, hose in enumerate(verification["hoses"]):
+        for d in hose["deliveries"]:
             lines.append(
-                f"{table}: nominal {row['nominalDeliveryL']:.2f} L "
-                f"indicated {row['indicatedVolumeL']:.3f} L "
-                f"measured {row['measuredVolumeL']:.3f} L "
-                f"error {row['errorMl']:.1f} mL ({row['errorPercent']:.3f} %)"
+                f"Hose {hose['hoseNumber']} {d['point']}: "
+                f"VFD {d['vfdMl']:.0f} ml VREF {d['vrefMl']:.0f} ml "
+                f"EFD {d['efdPercent']:.2f} %"
             )
     for line in lines:
         c.drawString(40, y, line)
@@ -257,12 +294,12 @@ def build_certificate_pdf(form: dict) -> bytes:
     return buf.getvalue()
 
 
-def make_submission(form: dict | None = None, pdf: bytes | None = None) -> dict:
-    form = form or make_valid_form()
-    pdf = pdf if pdf is not None else build_certificate_pdf(form)
+def make_submission(verification: dict | None = None, pdf: bytes | None = None) -> dict:
+    verification = verification or make_valid_verification()
+    pdf = pdf if pdf is not None else build_certificate_pdf(verification)
     return {
         "idempotencyKey": str(uuid.uuid4()),
-        "form": form,
+        "verification": verification,
         "pdfSha256": hashlib.sha256(pdf).hexdigest(),
         "pdfBase64": base64.b64encode(pdf).decode(),
         "intentToSign": {

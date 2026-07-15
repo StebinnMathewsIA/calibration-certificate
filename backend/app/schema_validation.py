@@ -37,5 +37,5 @@ def validate_sign_submission(payload: dict) -> list[str]:
     return validate_against("sign-submission.schema.json", payload)
 
 
-def validate_calibration_form(payload: dict) -> list[str]:
-    return validate_against("calibration-form.schema.json", payload)
+def validate_verification(payload: dict) -> list[str]:
+    return validate_against("verification.schema.json", payload)

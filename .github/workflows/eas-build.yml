@@ -21,8 +21,8 @@ on:
       platform:
         description: "Platform to build"
         type: choice
-        default: android
-        options: [android, ios, all]
+        default: ios
+        options: [ios, android, all]
       profile:
         description: "eas.json build profile (preview = standalone installable; development needs a dev server)"
         type: choice

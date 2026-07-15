@@ -8,27 +8,27 @@
       "developmentClient": true,
       "distribution": "internal",
       "env": {
-        "EXPO_PUBLIC_API_URL": "http://10.0.2.2:8000",
-        "EXPO_PUBLIC_SUPABASE_URL": "https://YOUR_PROJECT_REF.supabase.co",
-        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "YOUR_ANON_KEY",
+        "EXPO_PUBLIC_API_URL": "https://prowalco-calibration-api.onrender.com",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://pkaadtgmdouuhgrcshft.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_bwmhQApmp2TqgPPQzhR8mQ_dCApwLgd",
         "EXPO_PUBLIC_BRANCH_CODE": "JHB"
       }
     },
     "preview": {
       "distribution": "internal",
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://calibration-api.staging.prowalco.example",
-        "EXPO_PUBLIC_SUPABASE_URL": "https://YOUR_PROJECT_REF.supabase.co",
-        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "YOUR_ANON_KEY",
+        "EXPO_PUBLIC_API_URL": "https://prowalco-calibration-api.onrender.com",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://pkaadtgmdouuhgrcshft.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_bwmhQApmp2TqgPPQzhR8mQ_dCApwLgd",
         "EXPO_PUBLIC_BRANCH_CODE": "JHB"
       }
     },
     "production": {
       "autoIncrement": true,
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://calibration-api.prowalco.example",
-        "EXPO_PUBLIC_SUPABASE_URL": "https://YOUR_PROJECT_REF.supabase.co",
-        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "YOUR_ANON_KEY",
+        "EXPO_PUBLIC_API_URL": "https://prowalco-calibration-api.onrender.com",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://pkaadtgmdouuhgrcshft.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_bwmhQApmp2TqgPPQzhR8mQ_dCApwLgd",
         "EXPO_PUBLIC_BRANCH_CODE": "JHB"
       }
     }

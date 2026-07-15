@@ -7,7 +7,8 @@
     "start": "expo start --dev-client",
     "android": "expo run:android",
     "ios": "expo run:ios",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "postinstall": "npm --prefix ../shared/schema install --no-audit --no-fund && npm --prefix ../shared/schema run build"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",

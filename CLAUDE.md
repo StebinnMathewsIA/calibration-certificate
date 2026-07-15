@@ -13,6 +13,48 @@ Target compliance context: **ISO/IEC 17025**-style traceability and SANAS-aligne
 
 ---
 
+## ⚠️ IMPLEMENTED MODEL (v1) — read this before the spec below
+
+The app implements Prowalco's **real** document: the **NRCS Verification
+Certificate for Liquid Fuel Dispensers (LM01HV)** + its **Metrologist Note**,
+not the generic ISO-17025 calibration form. The single source of truth is
+`shared/schema/src/verification.ts` (mobile zod + backend JSON Schema). Where the
+"Calibration form specification" section below differs, **the code wins.**
+
+Key differences from the original brief:
+- **Accuracy** is reported as **EFD = (VFD − VREF)/VREF × 100** per delivery
+  (VFD = volume the dispenser shows, VREF = volume in the reference measure),
+  MPE **±0.5 %** (provisional — confirm with QM). See `tolerance.ts`.
+- **Per hose:** four components (meter / PC board / pulsar / solenoid), an
+  11-item pass/fail checklist, EFD deliveries (Del 1/2/3 max, min flow, preset),
+  and a **Certified/Rejected** outcome.
+- **Reference measures** are Prowalco's own 200/20/5 L proving measures (expiry
+  blocks signing).
+- **Two signatures:** the **VO/technician** signs cryptographically (PAdES + KMS
+  key + RFC 3161 + biometric intent); the **client** draws a handwritten
+  signature on the touchscreen that is embedded in the PDF **before** the VO
+  signature, so it is sealed inside it.
+
+### OnKey object split (external seed vs internal store)
+OnKey (Prowalco's asset system) is **simulated** for now behind the
+`WorkOrderProvider` seam (`backend/app/workorders/`), nothing is written back.
+- **External seed (read-only, may be partial):** Technician (email = sign-in
+  identity), WorkOrder (assigned by email; 1 WO = one site), Site/Customer,
+  Dispenser — **dispenser-level granularity only**.
+- **Internal, we own + persist (Supabase, migration 002 + offline mirror):**
+  canonical Site + Dispenser records (with `source` onkey/manual and a soft
+  `active/retired` lifecycle — never hard-deleted), the per-dispenser
+  **component register** (`dispenser-detail.ts`) OnKey lacks, and the
+  Verification itself.
+- **Resolution rule:** our stored record → OnKey seed → blank (technician
+  enters); every entry writes back to our store and prefills next visit.
+
+Mobile flow: home = my work orders → site → pick a dispenser (add/retire) →
+complete identity + component register → NRCS results (live EFD) → client draws
+signature → VO biometric sign → backend seals PAdES → issued.
+
+---
+
 ## Repository layout
 
 ```

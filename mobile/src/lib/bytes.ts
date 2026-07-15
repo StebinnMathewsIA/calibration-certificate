@@ -1,4 +1,4 @@
-import { createHash } from 'react-native-quick-crypto';
+import QuickCrypto from 'react-native-quick-crypto';
 
 const B64_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
 const B64_LOOKUP = new Uint8Array(128);
@@ -24,5 +24,5 @@ export function base64ToUint8Array(b64: string): Uint8Array {
 /** Binary SHA-256 of base64-encoded content (e.g. the rendered PDF), hex. */
 export function sha256HexOfBase64(b64: string): string {
   const bytes = base64ToUint8Array(b64);
-  return createHash('sha256').update(bytes.buffer as ArrayBuffer).digest('hex');
+  return QuickCrypto.createHash('sha256').update(bytes.buffer as ArrayBuffer).digest('hex');
 }

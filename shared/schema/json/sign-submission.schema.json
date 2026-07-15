@@ -8,74 +8,80 @@
           "type": "string",
           "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
         },
-        "form": {
+        "verification": {
           "type": "object",
           "properties": {
             "schemaVersion": {
               "type": "number",
-              "const": 1
+              "const": 2
             },
-            "job": {
+            "certificateNumber": {
+              "type": "string",
+              "pattern": "^PWC-[A-Z]{2,5}-\\d{6}-\\d{2}$"
+            },
+            "nrcsBookNumber": {
+              "type": "string",
+              "maxLength": 32
+            },
+            "reportType": {
+              "type": "string",
+              "enum": [
+                "verification",
+                "repair"
+              ]
+            },
+            "site": {
               "type": "object",
               "properties": {
-                "certificateNumber": {
-                  "type": "string",
-                  "pattern": "^PWC-[A-Z]{2,5}-\\d{6}-\\d{2}$"
-                },
-                "workOrderNumber": {
-                  "type": "string",
-                  "maxLength": 64
-                },
-                "customerId": {
-                  "type": "string",
-                  "maxLength": 64
-                },
                 "customerName": {
                   "type": "string",
                   "minLength": 1,
                   "maxLength": 200
                 },
-                "siteAddress": {
+                "siteName": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "address": {
                   "type": "string",
                   "minLength": 1,
                   "maxLength": 500
                 },
-                "siteAssetNumber": {
+                "telephone": {
                   "type": "string",
                   "maxLength": 64
-                },
-                "calibrationDate": {
-                  "type": "string",
-                  "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
                 }
               },
               "required": [
-                "certificateNumber",
                 "customerName",
-                "siteAddress",
-                "calibrationDate"
+                "siteName",
+                "address"
               ],
               "additionalProperties": false
             },
-            "uut": {
+            "jobReference": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "workOrderId": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "dispenser": {
               "type": "object",
               "properties": {
-                "equipmentType": {
-                  "type": "string",
-                  "enum": [
-                    "fuel_dispenser",
-                    "pump",
-                    "flow_meter",
-                    "pressure_transmitter",
-                    "other"
-                  ]
-                },
-                "manufacturer": {
+                "dispenserId": {
                   "type": "string",
                   "minLength": 1,
-                  "maxLength": 100
+                  "maxLength": 64
                 },
-                "modelNumber": {
+                "makeModel": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "saApprovalNumber": {
                   "type": "string",
                   "minLength": 1,
                   "maxLength": 100
@@ -85,52 +91,31 @@
                   "minLength": 1,
                   "maxLength": 100
                 },
-                "nozzleId": {
+                "securitySealNumber": {
                   "type": "string",
                   "maxLength": 64
-                },
-                "productGrade": {
-                  "type": "string",
-                  "enum": [
-                    "ulp_93",
-                    "ulp_95",
-                    "diesel_50ppm",
-                    "diesel_500ppm",
-                    "paraffin",
-                    "other"
-                  ]
-                },
-                "productGradeOther": {
-                  "type": "string",
-                  "maxLength": 100
-                },
-                "meterKFactorBefore": {
-                  "type": "number"
                 }
               },
               "required": [
-                "equipmentType",
-                "manufacturer",
-                "modelNumber",
-                "serialNumber",
-                "productGrade"
+                "dispenserId",
+                "makeModel",
+                "saApprovalNumber",
+                "serialNumber"
               ],
               "additionalProperties": false
             },
-            "referenceStandards": {
+            "referenceMeasures": {
               "type": "array",
               "items": {
                 "type": "object",
                 "properties": {
-                  "registerId": {
+                  "size": {
                     "type": "string",
-                    "minLength": 1,
-                    "maxLength": 64
-                  },
-                  "description": {
-                    "type": "string",
-                    "minLength": 1,
-                    "maxLength": 200
+                    "enum": [
+                      "200L",
+                      "20L",
+                      "5L"
+                    ]
                   },
                   "serialNumber": {
                     "type": "string",
@@ -142,229 +127,304 @@
                     "minLength": 1,
                     "maxLength": 100
                   },
-                  "calibrationDueDate": {
-                    "$ref": "#/definitions/SignSubmission/properties/form/properties/job/properties/calibrationDate"
+                  "calibrationDate": {
+                    "type": "string",
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                  },
+                  "expiryDate": {
+                    "$ref": "#/definitions/SignSubmission/properties/verification/properties/referenceMeasures/items/properties/calibrationDate"
                   }
                 },
                 "required": [
-                  "registerId",
-                  "description",
+                  "size",
                   "serialNumber",
                   "certificateNumber",
-                  "calibrationDueDate"
+                  "calibrationDate",
+                  "expiryDate"
                 ],
                 "additionalProperties": false
               },
               "minItems": 1
             },
-            "environment": {
-              "type": "object",
-              "properties": {
-                "ambientTempC": {
-                  "type": "number",
-                  "minimum": -20,
-                  "maximum": 60
-                },
-                "productTempC": {
-                  "type": "number",
-                  "minimum": -20,
-                  "maximum": 80
-                },
-                "procedureRef": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 64
-                },
-                "uutCondition": {
-                  "type": "string",
-                  "enum": [
-                    "good",
-                    "damaged",
-                    "leaks_noted",
-                    "other"
-                  ]
-                },
-                "conditionNotes": {
-                  "type": "string",
-                  "maxLength": 1000
-                }
-              },
-              "required": [
-                "ambientTempC",
-                "productTempC",
-                "procedureRef",
-                "uutCondition"
-              ],
-              "additionalProperties": false
+            "methodReference": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
             },
-            "results": {
-              "type": "object",
-              "properties": {
-                "asFound": {
-                  "type": "array",
-                  "items": {
-                    "type": "object",
-                    "properties": {
-                      "nominalDeliveryL": {
-                        "type": "number",
-                        "exclusiveMinimum": 0
-                      },
-                      "flowRateLpm": {
-                        "type": "number",
-                        "exclusiveMinimum": 0
-                      },
-                      "indicatedVolumeL": {
-                        "type": "number",
-                        "exclusiveMinimum": 0
-                      },
-                      "measuredVolumeL": {
-                        "type": "number",
-                        "exclusiveMinimum": 0
-                      },
-                      "errorMl": {
-                        "type": "number"
-                      },
-                      "errorPercent": {
-                        "type": "number"
-                      },
-                      "pass": {
-                        "type": "boolean"
-                      },
-                      "toleranceClassId": {
-                        "type": "string",
-                        "minLength": 1
-                      }
-                    },
-                    "required": [
-                      "nominalDeliveryL",
-                      "flowRateLpm",
-                      "indicatedVolumeL",
-                      "measuredVolumeL",
-                      "errorMl",
-                      "errorPercent",
-                      "pass",
-                      "toleranceClassId"
-                    ],
-                    "additionalProperties": false
+            "hoses": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "hoseNumber": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 32
                   },
-                  "minItems": 1
-                },
-                "adjustmentPerformed": {
-                  "type": "boolean"
-                },
-                "asLeft": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/definitions/SignSubmission/properties/form/properties/results/properties/asFound/items"
-                  }
-                },
-                "meterKFactorAfter": {
-                  "type": "number"
-                },
-                "uncertaintyStatement": {
-                  "type": "string",
-                  "minLength": 1,
-                  "maxLength": 500
-                },
-                "remarks": {
-                  "type": "string",
-                  "maxLength": 2000
-                },
-                "verificationSealNumbers": {
-                  "type": "array",
-                  "items": {
+                  "product": {
                     "type": "string",
                     "minLength": 1,
                     "maxLength": 64
                   },
-                  "default": []
-                },
-                "photos": {
-                  "type": "array",
-                  "items": {
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "new",
+                      "repaired",
+                      "atu",
+                      "rejected"
+                    ]
+                  },
+                  "components": {
                     "type": "object",
                     "properties": {
-                      "id": {
-                        "type": "string",
-                        "minLength": 1,
-                        "maxLength": 64
+                      "meter": {
+                        "type": "object",
+                        "properties": {
+                          "make": {
+                            "type": "string",
+                            "maxLength": 100
+                          },
+                          "model": {
+                            "type": "string",
+                            "maxLength": 100
+                          },
+                          "serial": {
+                            "type": "string",
+                            "maxLength": 100
+                          },
+                          "saApproval": {
+                            "type": "string",
+                            "maxLength": 100
+                          }
+                        },
+                        "additionalProperties": false
                       },
-                      "kind": {
-                        "type": "string",
-                        "enum": [
-                          "seal",
-                          "totaliser",
-                          "display",
-                          "other"
-                        ]
+                      "pcBoard": {
+                        "$ref": "#/definitions/SignSubmission/properties/verification/properties/hoses/items/properties/components/properties/meter"
                       },
-                      "capturedAt": {
-                        "type": "string",
-                        "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?(Z|[+-]\\d{2}:\\d{2})$"
+                      "pulsar": {
+                        "$ref": "#/definitions/SignSubmission/properties/verification/properties/hoses/items/properties/components/properties/meter"
                       },
-                      "sha256": {
-                        "type": "string",
-                        "pattern": "^[0-9a-f]{64}$"
+                      "solenoid": {
+                        "$ref": "#/definitions/SignSubmission/properties/verification/properties/hoses/items/properties/components/properties/meter"
                       }
                     },
                     "required": [
-                      "id",
-                      "kind",
-                      "capturedAt",
-                      "sha256"
+                      "meter",
+                      "pcBoard",
+                      "pulsar",
+                      "solenoid"
                     ],
                     "additionalProperties": false
                   },
-                  "default": []
-                }
+                  "securitySeal": {
+                    "type": "string",
+                    "maxLength": 64
+                  },
+                  "totalizerBefore": {
+                    "type": "number"
+                  },
+                  "totalizerAfter": {
+                    "type": "number"
+                  },
+                  "quantityDelivered": {
+                    "type": "number"
+                  },
+                  "testCondition": {
+                    "type": "string",
+                    "enum": [
+                      "hot",
+                      "cold"
+                    ]
+                  },
+                  "qMinLpm": {
+                    "type": "number",
+                    "exclusiveMinimum": 0
+                  },
+                  "qMaxLpm": {
+                    "type": "number",
+                    "exclusiveMinimum": 0
+                  },
+                  "checklist": {
+                    "type": "object",
+                    "properties": {
+                      "constructionMarking": {
+                        "type": "string",
+                        "enum": [
+                          "pass",
+                          "fail",
+                          "na"
+                        ]
+                      },
+                      "computerComputation": {
+                        "$ref": "#/definitions/SignSubmission/properties/verification/properties/hoses/items/properties/checklist/properties/constructionMarking"
+                      },
+                      "hydraulics": {
+                        "$ref": "#/definitions/SignSubmission/properties/verification/properties/hoses/items/properties/checklist/properties/constructionMarking"
+                      },
+                      "interlockingDevices": {
+                        "$ref": "#/definitions/SignSubmission/properties/verification/properties/hoses/items/properties/checklist/properties/constructionMarking"
+                      },
+                      "hoseNozzleAutoStop": {
+                        "$ref": "#/definitions/SignSubmission/properties/verification/properties/hoses/items/properties/checklist/properties/constructionMarking"
+                      },
+                      "solenoidValveTest": {
+                        "$ref": "#/definitions/SignSubmission/properties/verification/properties/hoses/items/properties/checklist/properties/constructionMarking"
+                      },
+                      "presetTest": {
+                        "$ref": "#/definitions/SignSubmission/properties/verification/properties/hoses/items/properties/checklist/properties/constructionMarking"
+                      },
+                      "measuresConformSans1698": {
+                        "$ref": "#/definitions/SignSubmission/properties/verification/properties/hoses/items/properties/checklist/properties/constructionMarking"
+                      },
+                      "timeOut": {
+                        "$ref": "#/definitions/SignSubmission/properties/verification/properties/hoses/items/properties/checklist/properties/constructionMarking"
+                      },
+                      "nozzleBurst": {
+                        "$ref": "#/definitions/SignSubmission/properties/verification/properties/hoses/items/properties/checklist/properties/constructionMarking"
+                      },
+                      "zeroSetting": {
+                        "$ref": "#/definitions/SignSubmission/properties/verification/properties/hoses/items/properties/checklist/properties/constructionMarking"
+                      }
+                    },
+                    "required": [
+                      "constructionMarking",
+                      "computerComputation",
+                      "hydraulics",
+                      "interlockingDevices",
+                      "hoseNozzleAutoStop",
+                      "solenoidValveTest",
+                      "presetTest",
+                      "measuresConformSans1698",
+                      "timeOut",
+                      "nozzleBurst",
+                      "zeroSetting"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "deliveries": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "point": {
+                          "type": "string",
+                          "enum": [
+                            "del1_max",
+                            "del2_max",
+                            "del3_max",
+                            "min_flow",
+                            "preset"
+                          ]
+                        },
+                        "flowRateLpm": {
+                          "type": "number",
+                          "exclusiveMinimum": 0
+                        },
+                        "vfdMl": {
+                          "type": "number",
+                          "exclusiveMinimum": 0
+                        },
+                        "vrefMl": {
+                          "type": "number",
+                          "exclusiveMinimum": 0
+                        },
+                        "efdPercent": {
+                          "type": "number"
+                        },
+                        "pass": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "point",
+                        "flowRateLpm",
+                        "vfdMl",
+                        "vrefMl",
+                        "efdPercent",
+                        "pass"
+                      ],
+                      "additionalProperties": false
+                    },
+                    "minItems": 1
+                  },
+                  "outcome": {
+                    "type": "string",
+                    "enum": [
+                      "certified",
+                      "rejected"
+                    ]
+                  },
+                  "comments": {
+                    "type": "string",
+                    "maxLength": 2000
+                  }
+                },
+                "required": [
+                  "hoseNumber",
+                  "product",
+                  "status",
+                  "components",
+                  "testCondition",
+                  "checklist",
+                  "deliveries",
+                  "outcome"
+                ],
+                "additionalProperties": false
               },
-              "required": [
-                "asFound",
-                "adjustmentPerformed",
-                "uncertaintyStatement"
-              ],
-              "additionalProperties": false
+              "minItems": 1
             },
             "signOff": {
               "type": "object",
               "properties": {
-                "calibratedBy": {
+                "vo": {
                   "type": "object",
                   "properties": {
-                    "subject": {
-                      "type": "string",
-                      "minLength": 1,
-                      "maxLength": 200
+                    "identity": {
+                      "type": "object",
+                      "properties": {
+                        "subject": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        },
+                        "name": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 200
+                        },
+                        "authMethod": {
+                          "type": "string",
+                          "enum": [
+                            "microsoft",
+                            "google",
+                            "apple"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "subject",
+                        "name",
+                        "authMethod"
+                      ],
+                      "additionalProperties": false
                     },
-                    "name": {
-                      "type": "string",
-                      "minLength": 1,
-                      "maxLength": 200
-                    },
-                    "authMethod": {
-                      "type": "string",
-                      "enum": [
-                        "microsoft",
-                        "google",
-                        "apple"
-                      ]
-                    }
-                  },
-                  "required": [
-                    "subject",
-                    "name",
-                    "authMethod"
-                  ],
-                  "additionalProperties": false
-                },
-                "technicalSignatory": {
-                  "type": "object",
-                  "properties": {
-                    "id": {
+                    "pliersNumber": {
                       "type": "string",
                       "minLength": 1,
                       "maxLength": 64
-                    },
+                    }
+                  },
+                  "required": [
+                    "identity",
+                    "pliersNumber"
+                  ],
+                  "additionalProperties": false
+                },
+                "client": {
+                  "type": "object",
+                  "properties": {
                     "name": {
                       "type": "string",
                       "minLength": 1,
@@ -372,21 +432,30 @@
                     }
                   },
                   "required": [
-                    "id",
                     "name"
                   ],
                   "additionalProperties": false
                 },
                 "declarationAccepted": {
                   "type": "boolean"
+                },
+                "expiryDate": {
+                  "$ref": "#/definitions/SignSubmission/properties/verification/properties/referenceMeasures/items/properties/calibrationDate"
+                },
+                "rejectionCertNumber": {
+                  "type": "string",
+                  "maxLength": 100
                 }
               },
               "required": [
-                "calibratedBy",
-                "technicalSignatory",
+                "vo",
+                "client",
                 "declarationAccepted"
               ],
               "additionalProperties": false
+            },
+            "verificationDate": {
+              "$ref": "#/definitions/SignSubmission/properties/verification/properties/referenceMeasures/items/properties/calibrationDate"
             },
             "provenance": {
               "type": "object",
@@ -417,12 +486,15 @@
           },
           "required": [
             "schemaVersion",
-            "job",
-            "uut",
-            "referenceStandards",
-            "environment",
-            "results",
-            "signOff"
+            "certificateNumber",
+            "reportType",
+            "site",
+            "dispenser",
+            "referenceMeasures",
+            "methodReference",
+            "hoses",
+            "signOff",
+            "verificationDate"
           ],
           "additionalProperties": false
         },
@@ -486,7 +558,7 @@
       },
       "required": [
         "idempotencyKey",
-        "form",
+        "verification",
         "pdfSha256",
         "pdfBase64",
         "intentToSign"

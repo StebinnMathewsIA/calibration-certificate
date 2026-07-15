@@ -1,71 +1,106 @@
-import { CalibrationForm } from '../src/calibration';
-import { computeRow, DEFAULT_TOLERANCE_CLASS_ID, UNCERTAINTY_STATEMENT } from '../src/tolerance';
+import { Verification, Checklist, HoseResult, Delivery } from '../src/verification';
+import { computeEfd, DeliveryPoint } from '../src/tolerance';
 
-export function makeRow(indicated: number, measured: number, nominal = 20) {
-  const c = computeRow(indicated, measured, DEFAULT_TOLERANCE_CLASS_ID);
+/** A delivery row with EFD/pass computed from VFD vs VREF. */
+export function makeDelivery(
+  point: DeliveryPoint,
+  vfdMl: number,
+  vrefMl: number,
+  flowRateLpm = 40,
+): Delivery {
+  const c = computeEfd(vfdMl, vrefMl);
+  return { point, flowRateLpm, vfdMl, vrefMl, efdPercent: c.efdPercent, pass: c.pass };
+}
+
+const ALL_PASS: Checklist = {
+  constructionMarking: 'pass',
+  computerComputation: 'pass',
+  hydraulics: 'pass',
+  interlockingDevices: 'pass',
+  hoseNozzleAutoStop: 'pass',
+  solenoidValveTest: 'pass',
+  presetTest: 'pass',
+  measuresConformSans1698: 'pass',
+  timeOut: 'pass',
+  nozzleBurst: 'pass',
+  zeroSetting: 'pass',
+};
+
+export function makeHose(overrides: Partial<HoseResult> = {}): HoseResult {
   return {
-    nominalDeliveryL: nominal,
-    flowRateLpm: 38.5,
-    indicatedVolumeL: indicated,
-    measuredVolumeL: measured,
-    errorMl: c.errorMl,
-    errorPercent: c.errorPercent,
-    pass: c.pass,
-    toleranceClassId: DEFAULT_TOLERANCE_CLASS_ID,
+    hoseNumber: '1',
+    product: 'ULP 95',
+    status: 'new',
+    components: {
+      meter: { make: 'Tatsuno', model: 'TF', serial: 'M-001', saApproval: '119-AA20' },
+      pcBoard: { make: 'Tatsuno', model: 'PB', serial: 'P-001', saApproval: '119-AA20' },
+      pulsar: { make: 'Tatsuno', model: 'PL', serial: 'PU-001', saApproval: '119-AA20' },
+      solenoid: { make: 'Tatsuno', model: 'SV', serial: 'S-001', saApproval: '119-AA20' },
+    },
+    testCondition: 'cold',
+    qMinLpm: 15,
+    qMaxLpm: 130,
+    checklist: { ...ALL_PASS },
+    deliveries: [
+      makeDelivery('del1_max', 20010, 20000),
+      makeDelivery('del2_max', 20010, 20000),
+      makeDelivery('del3_max', 20000, 20000),
+      makeDelivery('min_flow', 5005, 5000),
+    ],
+    outcome: 'certified',
+    ...overrides,
   };
 }
 
-export function makeValidForm(overrides: Partial<CalibrationForm> = {}): CalibrationForm {
+export function makeValidVerification(overrides: Partial<Verification> = {}): Verification {
   return {
-    schemaVersion: 1,
-    job: {
-      certificateNumber: 'PWC-JHB-000123-00',
-      workOrderNumber: 'WO-4711',
-      customerName: 'Engen Riverside',
-      siteAddress: '1 Main Rd, Johannesburg, 2001',
-      siteAssetNumber: 'FC-07',
-      calibrationDate: '2026-07-10',
+    schemaVersion: 2,
+    certificateNumber: 'PWC-JHB-000123-00',
+    nrcsBookNumber: '139458',
+    reportType: 'verification',
+    site: {
+      customerName: 'Engen',
+      siteName: 'North Road Fuel Depot',
+      address: '75 North Road, O.R. Tambo, Boksburg, 1459',
+      telephone: '011 617 6000',
     },
-    uut: {
-      equipmentType: 'fuel_dispenser',
-      manufacturer: 'Tatsuno',
-      modelNumber: 'SS-LX-E',
+    jobReference: 'WO-4711',
+    workOrderId: 'WO-001',
+    dispenser: {
+      dispenserId: 'DISP-001',
+      makeModel: 'Tatsuno SS-LX-E',
+      saApprovalNumber: '119-AA20',
       serialNumber: 'TSN-99812',
-      nozzleId: 'A1',
-      productGrade: 'ulp_95',
-      meterKFactorBefore: 1.0012,
+      securitySealNumber: 'SEC-114281',
     },
-    referenceStandards: [
+    referenceMeasures: [
       {
-        registerId: 'STD-001',
-        description: '20 L proving measure',
-        serialNumber: 'PM-2044',
-        certificateNumber: 'SANAS-CAL-8871',
-        calibrationDueDate: '2027-01-31',
+        size: '200L',
+        serialNumber: 'PRO-1148D',
+        certificateNumber: 'D83126',
+        calibrationDate: '2026-03-19',
+        expiryDate: '2027-03-19',
+      },
+      {
+        size: '20L',
+        serialNumber: 'PRO-1103T',
+        certificateNumber: 'D83126',
+        calibrationDate: '2026-03-19',
+        expiryDate: '2027-03-19',
       },
     ],
-    environment: {
-      ambientTempC: 24.5,
-      productTempC: 21.0,
-      procedureRef: 'PWC-CP-001',
-      uutCondition: 'good',
-    },
-    results: {
-      asFound: [makeRow(20.05, 20.0), makeRow(19.98, 20.0)],
-      adjustmentPerformed: false,
-      uncertaintyStatement: UNCERTAINTY_STATEMENT,
-      verificationSealNumbers: ['SEAL-1234'],
-      photos: [],
-    },
+    methodReference: 'SANS Test Proc 01 & SANS Test Proc 02 based on LM-IR 117-2: 2023',
+    hoses: [makeHose()],
     signOff: {
-      calibratedBy: {
-        subject: 'ms|abc-123',
-        name: 'T. Ngcobo',
-        authMethod: 'microsoft',
+      vo: {
+        identity: { subject: 'ms|abc-123', name: 'E. Sibisi', authMethod: 'microsoft' },
+        pliersNumber: 'PRO 399',
       },
-      technicalSignatory: { id: 'SIG-01', name: 'P. van Wyk' },
+      client: { name: 'K. Moja' },
       declarationAccepted: true,
+      expiryDate: '2027-07-14',
     },
+    verificationDate: '2026-07-10',
     ...overrides,
   };
 }

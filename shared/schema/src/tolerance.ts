@@ -1,55 +1,50 @@
 /**
- * Tolerance classes and error math for fuel dispenser calibration.
+ * Accuracy math for NRCS liquid-fuel-dispenser verification.
  *
- * IMPORTANT: the MPE values below are provisional. Confirm the exact NRCS /
- * OIML R117 accuracy class per dispenser type with Prowalco's quality manager
- * before production use (see CLAUDE.md "Open questions" #1).
+ * The certificate reports, per delivery, the **EFD** (relative error of the
+ * dispenser against the reference measure):
  *
- * This module is mirrored in Python at backend/app/tolerance.py — keep the
- * two implementations byte-for-byte consistent in behaviour. The backend
- * recomputes every row and rejects submissions whose client-computed values
- * disagree.
+ *     EFD = (VFD − VREF) / VREF × 100   [%]
+ *
+ * where VFD = volume indicated by the dispenser (LFD) and VREF = volume
+ * indicated by the reference proving measure. A delivery passes when
+ * |EFD| ≤ MPE.
+ *
+ * IMPORTANT: the MPE below is provisional. Confirm the exact NRCS / LM-IR
+ * 117-2 maximum permissible error and the EFD sign convention with Prowalco's
+ * quality manager before production use (see CLAUDE.md open questions).
+ *
+ * This module is mirrored in Python at backend/app/tolerance.py — keep the two
+ * implementations consistent in behaviour. The backend recomputes every
+ * delivery and rejects submissions whose client-computed EFD/outcome disagree.
  */
 
-export interface ToleranceClass {
-  id: string;
-  name: string;
-  /** Maximum permissible error as a percentage of the measured volume. */
-  mpePercent: number;
-  reference: string;
-}
+/** Maximum permissible error for a fuel-dispenser delivery, in percent.
+ * PROVISIONAL — confirm with NRCS/QM. */
+export const MPE_PERCENT = 0.5;
 
-export const TOLERANCE_CLASSES: Record<string, ToleranceClass> = {
-  oiml_r117_class_0_5: {
-    id: 'oiml_r117_class_0_5',
-    name: 'OIML R117 accuracy class 0.5 (fuel dispenser)',
-    mpePercent: 0.5,
-    reference: 'OIML R117-1 — PROVISIONAL, confirm with NRCS/QM',
-  },
-  oiml_r117_class_0_3: {
-    id: 'oiml_r117_class_0_3',
-    name: 'OIML R117 accuracy class 0.3',
-    mpePercent: 0.3,
-    reference: 'OIML R117-1 — PROVISIONAL, confirm with NRCS/QM',
-  },
+/** The delivery test points on the Metrologist Note, in report order. */
+export const DELIVERY_POINTS = [
+  'del1_max',
+  'del2_max',
+  'del3_max',
+  'min_flow',
+  'preset',
+] as const;
+export type DeliveryPoint = (typeof DELIVERY_POINTS)[number];
+
+export const DELIVERY_POINT_LABELS: Record<DeliveryPoint, string> = {
+  del1_max: 'Delivery 1 at max. achievable flow rate',
+  del2_max: 'Delivery 2 at max. achievable flow rate',
+  del3_max: 'Delivery 3 at max. achievable flow rate',
+  min_flow: 'Delivery at minimum flow rate',
+  preset: 'Preset delivery',
 };
 
-export const DEFAULT_TOLERANCE_CLASS_ID = 'oiml_r117_class_0_5';
-
-/**
- * Uncertainty statement from the lab uncertainty budget. Placeholder until
- * Prowalco's uncertainty budget is finalised; the value is configuration,
- * not measurement data.
- */
-export const UNCERTAINTY_STATEMENT =
-  'Expanded uncertainty of measurement: ±0.15 % of reading, coverage factor k=2 ' +
-  '(approx. 95 % confidence). PROVISIONAL — pending Prowalco uncertainty budget.';
-
-export interface RowComputation {
-  /** (indicated − measured) × 1000, rounded to 1 decimal place (mL). */
-  errorMl: number;
-  /** (indicated − measured) / measured × 100, rounded to 3 decimal places (%). */
-  errorPercent: number;
+export interface EfdComputation {
+  /** (VFD − VREF) / VREF × 100, rounded to 2 decimal places (%). */
+  efdPercent: number;
+  /** true when |EFD| ≤ MPE. */
   pass: boolean;
 }
 
@@ -59,24 +54,18 @@ export function roundTo(value: number, decimals: number): number {
   return Math.round((value + Number.EPSILON) * f) / f;
 }
 
-export function computeRow(
-  indicatedVolumeL: number,
-  measuredVolumeL: number,
-  toleranceClassId: string = DEFAULT_TOLERANCE_CLASS_ID,
-): RowComputation {
-  const tol = TOLERANCE_CLASSES[toleranceClassId];
-  if (!tol) {
-    throw new Error(`Unknown tolerance class: ${toleranceClassId}`);
+/**
+ * Compute the EFD (%) and pass/fail for one delivery.
+ * @param vfdMl  volume indicated by the dispenser (mL or L — units cancel)
+ * @param vrefMl volume indicated by the reference measure (same unit as vfd)
+ */
+export function computeEfd(vfdMl: number, vrefMl: number): EfdComputation {
+  if (vrefMl <= 0) {
+    throw new Error('Reference volume (VREF) must be > 0');
   }
-  if (measuredVolumeL <= 0) {
-    throw new Error('Measured volume must be > 0');
-  }
-  const errorL = indicatedVolumeL - measuredVolumeL;
-  const errorMl = roundTo(errorL * 1000, 1);
-  const errorPercent = roundTo((errorL / measuredVolumeL) * 100, 3);
+  const efdPercent = roundTo(((vfdMl - vrefMl) / vrefMl) * 100, 2);
   return {
-    errorMl,
-    errorPercent,
-    pass: Math.abs(errorPercent) <= tol.mpePercent,
+    efdPercent,
+    pass: Math.abs(efdPercent) <= MPE_PERCENT,
   };
 }

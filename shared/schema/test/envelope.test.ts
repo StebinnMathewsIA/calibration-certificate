@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { canTransition, CERTIFICATE_STATES, signSubmissionSchema } from '../src/envelope';
-import { makeValidForm } from './fixtures';
+import { makeValidVerification } from './fixtures';
 
 test('happy-path state transitions', () => {
   assert.ok(canTransition('DRAFT', 'READY_TO_SIGN'));
@@ -28,7 +28,7 @@ test('illegal transitions are rejected', () => {
 test('sign submission envelope validates', () => {
   const submission = {
     idempotencyKey: '7f9c24e5-3b2a-4d1c-9e8f-1a2b3c4d5e6f',
-    form: makeValidForm(),
+    verification: makeValidVerification(),
     pdfSha256: 'a'.repeat(64),
     pdfBase64: 'JVBERi0xLjQ=',
     intentToSign: {
@@ -44,7 +44,7 @@ test('sign submission envelope validates', () => {
 test('gps without consent is rejected (POPIA)', () => {
   const submission: any = {
     idempotencyKey: '7f9c24e5-3b2a-4d1c-9e8f-1a2b3c4d5e6f',
-    form: makeValidForm(),
+    verification: makeValidVerification(),
     pdfSha256: 'a'.repeat(64),
     pdfBase64: 'JVBERi0xLjQ=',
     intentToSign: {

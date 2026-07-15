@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { calibrationFormSchema } from './calibration';
+import { verificationSchema } from './verification';
 
 /**
  * Sign-queue / signing API envelope shared by the mobile queue and the
@@ -32,7 +32,7 @@ export const intentToSignSchema = z.object({
 export const signSubmissionSchema = z.object({
   /** Client-generated UUID — retries never double-sign or double-issue. */
   idempotencyKey: uuid,
-  form: calibrationFormSchema,
+  verification: verificationSchema,
   /** SHA-256 of the unsigned PDF bytes, computed on-device. */
   pdfSha256: sha256Hex,
   /** Unsigned PDF rendered on-device by expo-print, base64-encoded. */

@@ -1,0 +1,104 @@
+{
+  "$ref": "#/definitions/DispenserDetail",
+  "definitions": {
+    "DispenserDetail": {
+      "type": "object",
+      "properties": {
+        "dispenserId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "qMinLpm": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "qMaxLpm": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "hoses": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "hoseNumber": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 32
+              },
+              "product": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 64
+              },
+              "securitySeal": {
+                "type": "string",
+                "maxLength": 64
+              },
+              "components": {
+                "type": "object",
+                "properties": {
+                  "meter": {
+                    "type": "object",
+                    "properties": {
+                      "make": {
+                        "type": "string",
+                        "maxLength": 100
+                      },
+                      "model": {
+                        "type": "string",
+                        "maxLength": 100
+                      },
+                      "serial": {
+                        "type": "string",
+                        "maxLength": 100
+                      },
+                      "saApproval": {
+                        "type": "string",
+                        "maxLength": 100
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "pcBoard": {
+                    "$ref": "#/definitions/DispenserDetail/properties/hoses/items/properties/components/properties/meter"
+                  },
+                  "pulsar": {
+                    "$ref": "#/definitions/DispenserDetail/properties/hoses/items/properties/components/properties/meter"
+                  },
+                  "solenoid": {
+                    "$ref": "#/definitions/DispenserDetail/properties/hoses/items/properties/components/properties/meter"
+                  }
+                },
+                "required": [
+                  "meter",
+                  "pcBoard",
+                  "pulsar",
+                  "solenoid"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "hoseNumber",
+              "product",
+              "components"
+            ],
+            "additionalProperties": false
+          },
+          "default": []
+        },
+        "updatedAt": {
+          "type": "string",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?(Z|[+-]\\d{2}:\\d{2})$"
+        }
+      },
+      "required": [
+        "dispenserId"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

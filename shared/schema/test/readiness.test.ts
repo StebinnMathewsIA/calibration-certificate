@@ -1,69 +1,109 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { validateReadyToSign } from '../src/readiness';
-import { makeValidForm, makeRow } from './fixtures';
+import { makeValidVerification, makeHose, makeDelivery } from './fixtures';
 
 const NOW = new Date('2026-07-14T09:00:00Z');
 
-test('valid form is ready to sign', () => {
-  const r = validateReadyToSign(makeValidForm(), { now: NOW });
+test('valid verification is ready to sign', () => {
+  const r = validateReadyToSign(makeValidVerification(), { now: NOW });
   assert.deepEqual(r, { ready: true, reasons: [] });
 });
 
 test('declaration not ticked blocks signing', () => {
-  const form = makeValidForm();
-  form.signOff.declarationAccepted = false;
-  const r = validateReadyToSign(form, { now: NOW });
+  const v = makeValidVerification();
+  v.signOff.declarationAccepted = false;
+  const r = validateReadyToSign(v, { now: NOW });
   assert.equal(r.ready, false);
   assert.ok(r.reasons.some((x) => x.includes('declaration')));
 });
 
-test('expired reference standard blocks signing', () => {
-  const form = makeValidForm();
-  form.referenceStandards[0].calibrationDueDate = '2026-01-01';
-  const r = validateReadyToSign(form, { now: NOW });
+test('expired reference measure blocks signing', () => {
+  const v = makeValidVerification();
+  v.referenceMeasures[0].expiryDate = '2026-01-01';
+  const r = validateReadyToSign(v, { now: NOW });
   assert.equal(r.ready, false);
   assert.ok(r.reasons.some((x) => x.includes('expired')));
 });
 
-test('tampered errorPercent is rejected', () => {
-  const form = makeValidForm();
-  form.results.asFound[0].errorPercent = 0.01; // real value is 0.25
-  const r = validateReadyToSign(form, { now: NOW });
+test('tampered EFD is rejected', () => {
+  const v = makeValidVerification();
+  v.hoses[0].deliveries[0].efdPercent = 0.01; // real value is 0.05
+  const r = validateReadyToSign(v, { now: NOW });
   assert.equal(r.ready, false);
-  assert.ok(r.reasons.some((x) => x.includes('error (%)')));
+  assert.ok(r.reasons.some((x) => x.includes('EFD')));
 });
 
 test('tampered pass flag is rejected', () => {
-  const form = makeValidForm();
-  form.results.asFound.push(makeRow(20.15, 20.0)); // genuinely out of tolerance
-  form.results.asFound[2].pass = true; // lie about it
-  const r = validateReadyToSign(form, { now: NOW });
+  const v = makeValidVerification();
+  // genuinely out-of-tolerance delivery, but flagged pass
+  v.hoses[0].deliveries.push({
+    point: 'preset',
+    flowRateLpm: 40,
+    vfdMl: 20150,
+    vrefMl: 20000,
+    efdPercent: 0.75,
+    pass: true, // lie
+  });
+  const r = validateReadyToSign(v, { now: NOW });
   assert.equal(r.ready, false);
   assert.ok(r.reasons.some((x) => x.includes('pass/fail')));
 });
 
-test('adjustment performed requires as-left rows', () => {
-  const form = makeValidForm();
-  form.results.adjustmentPerformed = true;
-  const r = validateReadyToSign(form, { now: NOW });
+test('certified outcome with a failing checklist item is rejected', () => {
+  const v = makeValidVerification();
+  v.hoses[0].checklist.hydraulics = 'fail';
+  const r = validateReadyToSign(v, { now: NOW });
   assert.equal(r.ready, false);
-  assert.ok(r.reasons.some((x) => x.toLowerCase().includes('as-left')));
+  assert.ok(r.reasons.some((x) => x.includes('certified')));
 });
 
-test('future calibration date blocks signing', () => {
-  const form = makeValidForm();
-  form.job.calibrationDate = '2026-12-25';
-  // keep standards in date relative to the (invalid) cal date
-  const r = validateReadyToSign(form, { now: NOW });
+test('rejected hose requires a rejection certificate number', () => {
+  const v = makeValidVerification();
+  v.hoses = [
+    makeHose({
+      checklist: { ...makeHose().checklist, solenoidValveTest: 'fail' },
+      outcome: 'rejected',
+    }),
+  ];
+  const r = validateReadyToSign(v, { now: NOW });
+  assert.equal(r.ready, false);
+  assert.ok(r.reasons.some((x) => x.includes('rejectionCertNumber')));
+});
+
+test('rejected hose with a rejection cert number is accepted', () => {
+  const v = makeValidVerification();
+  v.hoses = [
+    makeHose({
+      checklist: { ...makeHose().checklist, solenoidValveTest: 'fail' },
+      outcome: 'rejected',
+    }),
+  ];
+  v.signOff.rejectionCertNumber = 'REJ-000045';
+  const r = validateReadyToSign(v, { now: NOW });
+  assert.deepEqual(r, { ready: true, reasons: [] });
+});
+
+test('missing VO pliers number blocks signing', () => {
+  const v = makeValidVerification() as any;
+  v.signOff.vo.pliersNumber = '';
+  const r = validateReadyToSign(v, { now: NOW });
+  assert.equal(r.ready, false);
+  assert.ok(r.reasons.some((x) => x.includes('pliersNumber')));
+});
+
+test('future verification date blocks signing', () => {
+  const v = makeValidVerification();
+  v.verificationDate = '2026-12-25';
+  const r = validateReadyToSign(v, { now: NOW });
   assert.equal(r.ready, false);
   assert.ok(r.reasons.some((x) => x.includes('future')));
 });
 
 test('schema violations are reported with paths', () => {
-  const form = makeValidForm() as any;
-  form.job.certificateNumber = 'BAD-FORMAT';
-  const r = validateReadyToSign(form, { now: NOW });
+  const v = makeValidVerification() as any;
+  v.certificateNumber = 'BAD-FORMAT';
+  const r = validateReadyToSign(v, { now: NOW });
   assert.equal(r.ready, false);
-  assert.ok(r.reasons.some((x) => x.startsWith('job.certificateNumber')));
+  assert.ok(r.reasons.some((x) => x.startsWith('certificateNumber')));
 });

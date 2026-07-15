@@ -24,6 +24,14 @@ real devices; anything new that needs human testing gets added here.
       4. Install the build from the QR/link, then `npx expo start --dev-client`
 - [ ] Real Prowalco logo dropped into `mobile/assets/logo-base64.ts`
 
+## Running via Expo Go (quick UI checks only)
+
+`npx expo start` + scanning the QR runs the app in Expo Go with config from
+`mobile/.env`. Good for: sign-in, form UX, drafts, review screen. NOT
+supported in Expo Go (needs a dev/preview build): PDF render+hash
+(react-native-quick-crypto), biometric re-prompt, actual signing/queue
+upload — the sign step will error in Expo Go by design.
+
 ## Auth (Supabase PKCE flow)
 
 - [ ] Sign in with Microsoft (Azure) completes and returns to the app

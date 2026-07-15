@@ -26,6 +26,9 @@ venv/
 .env
 .env.*
 !.env.example
+# mobile/.env holds only PUBLISHABLE client values (they ship in the app
+# bundle anyway) — committed so expo start works out of the box
+!mobile/.env
 
 # Dev signing material (generated locally, never committed)
 backend/dev-keys/

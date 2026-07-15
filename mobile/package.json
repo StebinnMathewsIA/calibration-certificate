@@ -15,6 +15,7 @@
     "@prowalco/schema": "file:../shared/schema",
     "@react-native-community/netinfo": "~11.4.1",
     "expo": "~54.0.0",
+    "expo-apple-authentication": "~8.0.0",
     "expo-camera": "~17.0.0",
     "expo-constants": "~18.0.0",
     "expo-crypto": "~15.0.0",

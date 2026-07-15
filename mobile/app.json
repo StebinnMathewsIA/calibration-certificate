@@ -10,6 +10,7 @@
     "icon": "./assets/icon.png",
     "ios": {
       "bundleIdentifier": "za.co.prowalco.calibration",
+      "usesAppleSignIn": true,
       "supportsTablet": true,
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "Location is recorded with your consent as part of the calibration audit trail.",
@@ -31,6 +32,7 @@
     },
     "plugins": [
       "expo-router",
+      "expo-apple-authentication",
       "expo-secure-store",
       "expo-sqlite",
       [

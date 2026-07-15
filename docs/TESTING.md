@@ -28,8 +28,11 @@ real devices; anything new that needs human testing gets added here.
 
 - [ ] Sign in with Microsoft (Azure) completes and returns to the app
 - [ ] Sign in with Google completes and returns to the app
-- [ ] Sign in with Apple completes and returns to the app (required by App
-      Store rules on iOS)
+- [ ] Sign in with Apple on iOS uses the NATIVE sheet (Face ID, no browser)
+      and lands signed-in on Home — requires the app bundle ID
+      `za.co.prowalco.calibration` added to the Supabase Apple provider's
+      Client IDs (alongside the Services ID)
+- [ ] Sign in with Apple on Android completes via the web flow
 - [ ] Session survives app kill/restart; expired token refreshes on launch
 - [ ] Sign out clears the session
 

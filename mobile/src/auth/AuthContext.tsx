@@ -5,11 +5,13 @@
  * AsyncStorage. The backend verifies the same Supabase JWTs server-side
  * (backend/app/auth.py, AUTH_MODE=supabase).
  */
+import * as AppleAuthentication from 'expo-apple-authentication';
 import * as Crypto from 'expo-crypto';
 import * as Linking from 'expo-linking';
 import * as SecureStore from 'expo-secure-store';
 import * as WebBrowser from 'expo-web-browser';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { Platform } from 'react-native';
 import type { TechnicianIdentity } from '@prowalco/schema';
 import { config } from '../config';
 
@@ -141,10 +143,50 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     })();
   }, []);
 
+  /** Native Sign in with Apple (iOS): Face ID sheet, no browser. The
+   * identity token is exchanged at Supabase's id_token grant, yielding the
+   * same session shape as the web flow. */
+  const signInWithAppleNative = useCallback(async () => {
+    // Nonce binds the Apple token to this exchange: Apple receives the
+    // SHA-256, Supabase receives the raw value and verifies the pair.
+    const rawNonce = base64UrlEncode(await Crypto.getRandomBytesAsync(32));
+    const hashedNonce = await Crypto.digestStringAsync(
+      Crypto.CryptoDigestAlgorithm.SHA256,
+      rawNonce,
+    );
+    const credential = await AppleAuthentication.signInAsync({
+      requestedScopes: [
+        AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+        AppleAuthentication.AppleAuthenticationScope.EMAIL,
+      ],
+      nonce: hashedNonce,
+    });
+    if (!credential.identityToken) throw new Error('Apple returned no identity token');
+
+    const tokens = await tokenRequest('id_token', {
+      provider: 'apple',
+      id_token: credential.identityToken,
+      nonce: rawNonce,
+    });
+    const session = toSession(tokens, 'apple');
+    // Apple only shares the name on the FIRST authorization — prefer it when given.
+    const name = [credential.fullName?.givenName, credential.fullName?.familyName]
+      .filter(Boolean)
+      .join(' ');
+    if (name) session.identity.name = name;
+    await persist(session);
+  }, [persist]);
+
   const signIn = useCallback(
     async (provider: Provider) => {
       if (!config.supabase.url || !config.supabase.anonKey) {
         throw new Error('Supabase is not configured (EXPO_PUBLIC_SUPABASE_URL / _ANON_KEY)');
+      }
+      if (provider === 'apple' && Platform.OS === 'ios') {
+        if (await AppleAuthentication.isAvailableAsync()) {
+          await signInWithAppleNative();
+          return;
+        }
       }
       const redirect = Linking.createURL('auth-callback');
       const { verifier, challenge } = await makePkcePair();
@@ -162,7 +204,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const tokens = await tokenRequest('pkce', { auth_code: code, code_verifier: verifier });
       await persist(toSession(tokens, provider));
     },
-    [persist],
+    [persist, signInWithAppleNative],
   );
 
   const signOut = useCallback(async () => {

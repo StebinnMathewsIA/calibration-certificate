@@ -1,6 +1,7 @@
+import * as AppleAuthentication from 'expo-apple-authentication';
 import { Redirect } from 'expo-router';
 import React, { useState } from 'react';
-import { Alert, Text, View } from 'react-native';
+import { Alert, Platform, Text, View } from 'react-native';
 import { Provider, useAuth } from '../src/auth/AuthContext';
 import { Button, SectionCard, colors, styles } from '../src/components/ui';
 
@@ -29,7 +30,19 @@ export default function SignInScreen() {
         </Text>
         <Button title="Continue with Microsoft" onPress={() => handle('microsoft')} busy={busy === 'microsoft'} />
         <Button title="Continue with Google" onPress={() => handle('google')} busy={busy === 'google'} />
-        <Button title="Continue with Apple" onPress={() => handle('apple')} busy={busy === 'apple'} />
+        {Platform.OS === 'ios' ? (
+          // Apple's official button + native sheet (App Review expects this on iOS)
+          <AppleAuthentication.AppleAuthenticationButton
+            buttonType={AppleAuthentication.AppleAuthenticationButtonType.CONTINUE}
+            buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
+            cornerRadius={8}
+            style={{ height: 46, marginTop: 8 }}
+            onPress={() => handle('apple')}
+          />
+        ) : (
+          // Android: Apple via the web OAuth flow
+          <Button title="Continue with Apple" onPress={() => handle('apple')} busy={busy === 'apple'} />
+        )}
       </SectionCard>
     </View>
   );

@@ -72,11 +72,14 @@ Lock as a post-PoC hardening step.
    - **Azure** (Microsoft work accounts) — create an Entra ID app
      registration, supply client ID + secret, set the tenant.
    - **Google** — OAuth client ID + secret from Google Cloud Console.
-   - **Apple** — Services ID as the Client ID, plus a client-secret JWT
-     generated from the Sign in with Apple key (ES256; Apple caps validity at
-     6 months). ⏰ **Current secret expires 2027-01-11** — regenerate from the
-     `.p8` key and update the Supabase Apple provider before then. (Apple
-     sign-in is required on iOS since Google/Microsoft login is offered.)
+   - **Apple** — Client IDs must list BOTH `za.co.prowalco.calibration.signin`
+     (Services ID — web flow, used on Android) and `za.co.prowalco.calibration`
+     (bundle ID — native iOS sheet), comma-separated. The web flow also needs
+     the client-secret JWT generated from the Sign in with Apple key (ES256;
+     Apple caps validity at 6 months). ⏰ **Current secret expires 2027-01-11**
+     — regenerate from the `.p8` key and update the provider before then.
+     (Apple sign-in is required on iOS since Google/Microsoft login is
+     offered.)
 2. **Authentication → URL Configuration**: add the app's redirect URL to the
    allow-list: `prowalco-cal://auth-callback` (plus the Expo dev-client URL
    printed by `npx expo start` during development).

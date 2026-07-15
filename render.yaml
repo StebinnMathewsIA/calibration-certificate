@@ -1,0 +1,30 @@
+# Render blueprint — deploys the FastAPI signing service from this repo.
+# Dashboard: New -> Blueprint -> select this repository. Fill in the secret
+# env vars when prompted (values match the GitHub Actions secrets; see
+# docs/TESTING.md "Backend deployment" and issue #2).
+services:
+  - type: web
+    name: prowalco-calibration-api
+    runtime: docker
+    plan: free
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: .
+    healthCheckPath: /healthz
+    autoDeploy: true
+    branch: main
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      # PoC signing key: auto-generated at boot (ephemeral, loudly logged).
+      # For a stable key, set SIGNING_KEY_PEM_B64 + SIGNING_CERT_PEM_B64
+      # instead; production milestone is a KMS-held key.
+      - key: SIGNING_AUTOGENERATE_DEV_KEY
+        value: "true"

@@ -60,6 +60,16 @@ rejection, and the auth gates:
 .venv/bin/python -m pytest tests/ -q
 ```
 
+### Hosting (Render)
+
+`render.yaml` + `backend/Dockerfile` deploy the service as a Docker web
+service (free tier, health check on `/healthz`, auto-deploy on every push to
+`main`). In the Render dashboard: New → Blueprint → select this repo → enter
+the secret env vars (same values as the GitHub Actions secrets, plus
+`ANTHROPIC_API_KEY`). The PoC signs with an auto-generated ephemeral dev key
+(`SIGNING_AUTOGENERATE_DEV_KEY=true`); provide `SIGNING_KEY_PEM_B64` /
+`SIGNING_CERT_PEM_B64` for a stable key, with KMS as the production path.
+
 Claude analysis needs `ANTHROPIC_API_KEY` in the environment (model +
 prompt version are logged to the audit trail; prompt lives in
 `backend/app/prompts/`). Everything else works without it.

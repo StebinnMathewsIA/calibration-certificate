@@ -31,6 +31,15 @@ class Settings(BaseSettings):
     # Signing
     signing_key_provider: str = "local"  # "local" | "aws_kms" (stub)
     signing_key_dir: str = str(BACKEND_DIR / "dev-keys")
+    # Diskless hosts (e.g. Render): supply key material as base64 env vars —
+    # takes precedence over signing_key_dir when set.
+    signing_key_pem_b64: str = ""
+    signing_cert_pem_b64: str = ""
+    # PoC convenience: generate an ephemeral self-signed dev key at boot when
+    # no key material exists. NOT for production — the key changes on every
+    # restart/deploy (already-issued PDFs stay verifiable; they embed their
+    # signing cert).
+    signing_autogenerate_dev_key: bool = False
     tsa_url: str = ""
 
     # Claude analysis

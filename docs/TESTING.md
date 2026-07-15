@@ -9,8 +9,12 @@ real devices; anything new that needs human testing gets added here.
 - [ ] Azure / Google / Apple providers enabled in Supabase Auth
       (docs/supabase-setup.md §4), redirect URL `prowalco-cal://auth-callback`
       allow-listed
-- [ ] Backend deployed and reachable at the URL in `mobile/eas.json`
-      (`EXPO_PUBLIC_API_URL`) — note: no backend host has been provisioned yet
+- [ ] Backend deployed on Render (issue #2): create account at render.com →
+      New → Blueprint → select this repo → fill in the secret env vars →
+      deploy. Verify `https://<service>.onrender.com/healthz` returns
+      `{"status":"ok"}` (first hit after idle takes ~30–60 s — free tier wakes
+      from sleep)
+- [ ] `EXPO_PUBLIC_API_URL` in `mobile/eas.json` updated to the Render URL
 - [ ] EAS development build installed on a test device (`eas build --profile
       development`) — requires `eas init` against Prowalco's EAS account
 - [ ] Real Prowalco logo dropped into `mobile/assets/logo-base64.ts`

@@ -8,6 +8,12 @@ name: eas-build
 #
 # The build is queued with --no-wait; the job summary links to the Expo build
 # page where the APK / install QR appears when the build finishes.
+#
+# iOS one-time prerequisites (done interactively from a PC, not from CI):
+#   1. An Apple Developer Program membership for the signing account
+#   2. eas device:create            register each iPhone (internal distribution is ad hoc)
+#   3. eas build -p ios --profile preview   first run signs into Apple and stores
+#      certs/provisioning on EAS servers; CI builds are non-interactive after that
 
 on:
   workflow_dispatch:
@@ -16,7 +22,7 @@ on:
         description: "Platform to build"
         type: choice
         default: android
-        options: [android, ios]
+        options: [android, ios, all]
       profile:
         description: "eas.json build profile (preview = standalone installable; development needs a dev server)"
         type: choice

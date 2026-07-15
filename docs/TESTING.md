@@ -9,10 +9,19 @@ real devices; anything new that needs human testing gets added here.
 - [ ] Azure / Google / Apple providers enabled in Supabase Auth
       (docs/supabase-setup.md §4), redirect URL `prowalco-cal://auth-callback`
       allow-listed
-- [ ] Backend deployed and reachable at the URL in `mobile/eas.json`
-      (`EXPO_PUBLIC_API_URL`) — note: no backend host has been provisioned yet
-- [ ] EAS development build installed on a test device (`eas build --profile
-      development`) — requires `eas init` against Prowalco's EAS account
+- [ ] Backend deployed and Live on Render (issue #2) at
+      https://prowalco-calibration-api.onrender.com — verify `/healthz`
+      returns `{"status":"ok"}` (first hit after idle takes ~30–60 s — free
+      tier wakes from sleep)
+- [x] `mobile/eas.json` points at the live backend + Supabase project
+      (issue #3)
+- [ ] EAS development build installed on a test device (issue #3). On a
+      computer with Node 20+:
+      1. `cd mobile && npm install`
+      2. `npx eas-cli login` then `npx eas-cli init` (Expo account)
+      3. `npx eas-cli build --profile development --platform android`
+         (or `ios` — needs an Apple Developer account)
+      4. Install the build from the QR/link, then `npx expo start --dev-client`
 - [ ] Real Prowalco logo dropped into `mobile/assets/logo-base64.ts`
 
 ## Auth (Supabase PKCE flow)

@@ -22,8 +22,7 @@ router = APIRouter(prefix="/v1/certificates", tags=["certificates"])
 
 
 def get_signing_service(settings: Settings = Depends(get_settings)) -> SigningService:
-    provider = provider_from_settings(settings.signing_key_provider, settings.signing_key_dir)
-    return SigningService(provider, tsa_url=settings.tsa_url)
+    return SigningService(provider_from_settings(settings), tsa_url=settings.tsa_url)
 
 
 def _response_for(cert: Certificate, store: PdfStore) -> dict:

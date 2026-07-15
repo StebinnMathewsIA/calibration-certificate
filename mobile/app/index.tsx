@@ -1,9 +1,11 @@
-import * as AppleAuthentication from 'expo-apple-authentication';
 import { Redirect } from 'expo-router';
 import React, { useState } from 'react';
-import { Alert, Platform, Text, View } from 'react-native';
+import { Alert, Image, Text, View } from 'react-native';
 import { Provider, useAuth } from '../src/auth/AuthContext';
-import { Button, SectionCard, colors, styles } from '../src/components/ui';
+import { ProviderButton } from '../src/components/ProviderButton';
+import { colors, styles } from '../src/components/ui';
+
+const PROVIDERS: Provider[] = ['microsoft', 'google', 'apple'];
 
 export default function SignInScreen() {
   const { identity, loading, signIn } = useAuth();
@@ -23,27 +25,29 @@ export default function SignInScreen() {
   };
 
   return (
-    <View style={[styles.screen, { justifyContent: 'center' }]}>
-      <SectionCard title="Sign in">
-        <Text style={{ color: colors.muted, marginBottom: 10 }}>
-          Use your work account. All three options go through Prowalco's identity broker.
-        </Text>
-        <Button title="Continue with Microsoft" onPress={() => handle('microsoft')} busy={busy === 'microsoft'} />
-        <Button title="Continue with Google" onPress={() => handle('google')} busy={busy === 'google'} />
-        {Platform.OS === 'ios' ? (
-          // Apple's official button + native sheet (App Review expects this on iOS)
-          <AppleAuthentication.AppleAuthenticationButton
-            buttonType={AppleAuthentication.AppleAuthenticationButtonType.CONTINUE}
-            buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
-            cornerRadius={8}
-            style={{ height: 46, marginTop: 8 }}
-            onPress={() => handle('apple')}
+    <View style={[styles.screen, { justifyContent: 'center', alignItems: 'center', padding: 24 }]}>
+      <Image
+        source={require('../assets/prowalco-logo.png')}
+        style={{ width: 220, height: 80, resizeMode: 'contain', marginBottom: 36 }}
+      />
+      <Text style={{ fontSize: 18, fontWeight: '700', color: colors.ink, marginBottom: 6 }}>
+        Calibration
+      </Text>
+      <Text style={{ color: colors.muted, textAlign: 'center', marginBottom: 28 }}>
+        Sign in with your work account
+      </Text>
+
+      <View style={{ flexDirection: 'row', gap: 22 }}>
+        {PROVIDERS.map((provider) => (
+          <ProviderButton
+            key={provider}
+            provider={provider}
+            onPress={() => handle(provider)}
+            busy={busy === provider}
+            disabled={busy !== null && busy !== provider}
           />
-        ) : (
-          // Android: Apple via the web OAuth flow
-          <Button title="Continue with Apple" onPress={() => handle('apple')} busy={busy === 'apple'} />
-        )}
-      </SectionCard>
+        ))}
+      </View>
     </View>
   );
 }

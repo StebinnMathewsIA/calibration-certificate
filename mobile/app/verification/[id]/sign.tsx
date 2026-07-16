@@ -199,7 +199,13 @@ export default function SignScreen() {
               I certify the instrument was tested per the Legal Metrology Act and the procedure was
               followed.
             </Text>
-            <Switch value={declaration} onValueChange={setDeclaration} />
+            <Switch
+              value={declaration}
+              onValueChange={setDeclaration}
+              trackColor={{ false: colors.amber, true: colors.green }}
+              ios_backgroundColor={colors.amber}
+              thumbColor="#ffffff"
+            />
           </View>
           {!declaration ? (
             <Text style={{ color: colors.amber, fontSize: 12, marginTop: 6 }}>
@@ -210,7 +216,13 @@ export default function SignScreen() {
 
         <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
           <Text style={{ flex: 1, color: colors.ink, fontSize: 13 }}>Record GPS with this signature (POPIA consent)</Text>
-          <Switch value={gpsConsent} onValueChange={setGpsConsent} />
+          <Switch
+            value={gpsConsent}
+            onValueChange={setGpsConsent}
+            trackColor={{ false: colors.muted, true: colors.green }}
+            ios_backgroundColor={colors.muted}
+            thumbColor="#ffffff"
+          />
         </View>
 
         <Text style={{ color: colors.muted, fontSize: 12, marginBottom: 8 }}>

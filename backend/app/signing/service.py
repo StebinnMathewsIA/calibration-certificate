@@ -45,11 +45,11 @@ class SigningService:
         signature_id = str(uuid.uuid4())
 
         writer = IncrementalPdfFileWriter(io.BytesIO(pdf_bytes))
-        # Visible widget bottom-left of the last page (the template reserves
-        # this area in its signature block).
+        # Visible widget bottom-left of the FIRST page — the certificate face,
+        # where the VO signature block sits (the Metrologist Note is page 2).
         fields.append_signature_field(
             writer,
-            SigFieldSpec(sig_field_name=SIGNATURE_FIELD, on_page=-1, box=(42, 40, 300, 90)),
+            SigFieldSpec(sig_field_name=SIGNATURE_FIELD, on_page=0, box=(42, 40, 300, 90)),
         )
 
         meta = signers.PdfSignatureMetadata(

@@ -1,6 +1,11 @@
 # Node
 node_modules/
 dist/
+# shared/schema/dist is committed: the mobile app consumes @prowalco/schema as
+# a file: dependency and must not run a build step at install time (that hook
+# fails on Windows). Rebuild with `npm run build` in shared/schema and commit.
+!shared/schema/dist/
+!shared/schema/dist/**
 *.tsbuildinfo
 npm-debug.log*
 

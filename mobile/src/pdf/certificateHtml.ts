@@ -20,6 +20,7 @@
 import type { Component, Delivery, HoseResult, ReferenceMeasure, Verification } from '@prowalco/schema';
 import { CHECKLIST_ITEMS } from '@prowalco/schema';
 import { PROWALCO_LOGO_BASE64 } from '../../assets/logo-base64';
+import { NRCS_LOGO_BASE64, SANAS_LOGO_BASE64 } from '../../assets/agency-logos';
 
 const esc = (s: unknown) =>
   String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -184,8 +185,8 @@ export function certificateHtml(v: Verification, opts: RenderOptions = {}): stri
   header .mid .sub { font-size: 8.5pt; font-weight: bold; }
   header .mid .addr { font-size: 6.5pt; margin-top: 1px; }
   header .rt { text-align: right; font-size: 6.5pt; color: #333; min-width: 190px; }
-  header .rt .n { font-size: 12pt; font-weight: bold; color: #e35205; letter-spacing: 1px; }
-  header .rt .lm { color: #e35205; font-weight: bold; }
+  header .rt img.agency { height: 34px; }
+  header .rt .lm { color: #7a2b12; font-weight: bold; letter-spacing: 0.5px; }
   header .rt .no { color: #cc0000; font-size: 13pt; font-weight: bold; }
 
   .userline { display: flex; gap: 10px; margin: 5px 0; font-size: 8pt; }
@@ -251,8 +252,7 @@ export function certificateHtml(v: Verification, opts: RenderOptions = {}): stri
       Tel: (011) 617 6000 · Fax: (011) 617 6099</div>
   </div>
   <div class="rt">
-    ${opts.showAccreditationMark ? '<em>[Accreditation mark]</em><br/>' : ''}
-    <span class="n">NRCS</span> national regulator for compulsory specifications<br/>
+    <img class="agency" src="data:image/png;base64,${NRCS_LOGO_BASE64}" alt="NRCS" /><br/>
     <span class="lm">DESIGNATED VERIFICATION | LM01HV</span><br/>
     ${v.nrcsBookNumber ? `<span class="no">${esc(v.nrcsBookNumber)}</span><br/>` : ''}
     Cert No.: ${esc(v.certificateNumber)}
@@ -359,7 +359,8 @@ ${certificateGrid(hoses)}
       Tel: (011) 617 6000 · Fax: (011) 617 6099</div>
   </div>
   <div class="rt">
-    <b>SANAS</b> Verification laboratory<br/>
+    <img class="agency" src="data:image/png;base64,${SANAS_LOGO_BASE64}" alt="SANAS" /><br/>
+    Verification laboratory<br/>
     Verification Cert. No.: ${esc(v.certificateNumber)}
   </div>
 </header>

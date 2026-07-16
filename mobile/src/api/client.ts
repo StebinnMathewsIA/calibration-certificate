@@ -123,8 +123,24 @@ export async function getWorkOrder(token: string | null, id: string): Promise<Wo
   return (await request(`/v1/workorders/${encodeURIComponent(id)}`, token)) as WorkOrderBundle;
 }
 
+export async function listSites(token: string | null): Promise<SiteResolved[]> {
+  const body = (await request('/v1/sites', token)) as { sites: SiteResolved[] };
+  return body.sites;
+}
+
 export async function getSite(token: string | null, id: string): Promise<SiteResolved> {
   return (await request(`/v1/sites/${encodeURIComponent(id)}`, token)) as SiteResolved;
+}
+
+export async function listSiteDispensers(
+  token: string | null,
+  siteId: string,
+): Promise<DispenserResolved[]> {
+  const body = (await request(
+    `/v1/sites/${encodeURIComponent(siteId)}/dispensers`,
+    token,
+  )) as { dispensers: DispenserResolved[] };
+  return body.dispensers;
 }
 
 export async function upsertSite(

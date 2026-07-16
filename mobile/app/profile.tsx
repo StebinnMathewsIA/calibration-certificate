@@ -19,7 +19,7 @@ const inputStyle = {
 } as const;
 
 export default function ProfileScreen() {
-  const { identity } = useAuth();
+  const { identity, signOut } = useAuth();
   const router = useRouter();
   const subject = identity?.subject ?? '';
 
@@ -93,6 +93,29 @@ export default function ProfileScreen() {
       <View style={{ marginHorizontal: 12 }}>
         <Button title="Save profile" onPress={save} />
       </View>
+
+      <SectionCard title="Account">
+        <Text style={{ color: colors.muted, fontSize: 12, marginBottom: 8 }}>
+          Signed in as {identity?.name}.
+        </Text>
+        <Button
+          title="Sign out"
+          kind="danger"
+          onPress={() =>
+            Alert.alert('Sign out', 'Sign out of this device?', [
+              { text: 'Cancel', style: 'cancel' },
+              {
+                text: 'Sign out',
+                style: 'destructive',
+                onPress: async () => {
+                  await signOut();
+                  router.replace('/');
+                },
+              },
+            ])
+          }
+        />
+      </SectionCard>
     </FormScrollView>
   );
 }

@@ -30,3 +30,11 @@ class WorkOrderProvider(ABC):
     @abstractmethod
     def get_dispenser(self, dispenser_id: str) -> dict | None:
         """A dispenser (asset) seed, or None if unknown."""
+
+    @abstractmethod
+    def list_dispensers(self, site_id: str) -> list[dict]:
+        """All dispenser seeds OnKey knows about at a site."""
+
+    @abstractmethod
+    def list_sites_for_technician(self, technician_email: str) -> list[dict]:
+        """Site seeds across the technician's work orders (deduped)."""

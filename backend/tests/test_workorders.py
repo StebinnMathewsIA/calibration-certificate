@@ -36,6 +36,20 @@ def test_get_workorder_bundle_resolves_site_and_dispensers(client):
     assert disp1["make"] == "Tatsuno"
 
 
+def test_list_sites_for_technician(client):
+    resp = client.get("/v1/sites")
+    assert resp.status_code == 200, resp.text
+    ids = {s["id"] for s in resp.json()["sites"]}
+    assert "SITE-001" in ids  # the E2E technician's work-order site
+
+
+def test_list_site_dispensers(client):
+    resp = client.get("/v1/sites/SITE-001/dispensers")
+    assert resp.status_code == 200, resp.text
+    ids = {d["id"] for d in resp.json()["dispensers"]}
+    assert {"DISP-001", "DISP-002"} <= ids
+
+
 def test_workorder_not_assigned_is_forbidden(client):
     # WO-002 is assigned to a different technician email in the seed.
     resp = client.get("/v1/workorders/WO-002")

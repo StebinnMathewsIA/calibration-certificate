@@ -192,6 +192,48 @@ def get_workorder(
 # ---------------------------------------------------------------------------
 
 
+@router.get("/sites")
+def list_sites(
+    identity: Identity = Depends(get_identity),
+    db: Session = Depends(get_db),
+    provider: WorkOrderProvider = Depends(get_workorder_provider),
+) -> dict:
+    """Sites across the technician's work orders, resolved against our store."""
+    if not identity.email:
+        raise HTTPException(status_code=400, detail="Token has no email claim")
+    seeds = provider.list_sites_for_technician(identity.email)
+    out = [_resolve_site(db, provider, s["id"]) for s in seeds]
+    return {"sites": [s for s in out if s]}
+
+
+@router.get("/sites/{site_id}/dispensers")
+def list_site_dispensers(
+    site_id: str,
+    identity: Identity = Depends(get_identity),
+    db: Session = Depends(get_db),
+    provider: WorkOrderProvider = Depends(get_workorder_provider),
+) -> dict:
+    """Active + retired dispensers at a site (our store wins over the seed)."""
+    stored = {
+        d.id: d
+        for d in db.scalars(select(Dispenser).where(Dispenser.site_id == site_id)).all()
+    }
+    order: list[str] = [s["id"] for s in provider.list_dispensers(site_id)]
+    for did in stored:
+        if did not in order:
+            order.append(did)
+
+    out: list[dict] = []
+    for did in order:
+        if did in stored:
+            out.append(_dispenser_record(stored[did]))
+        else:
+            seed = provider.get_dispenser(did)
+            if seed:
+                out.append(_dispenser_from_seed(seed))
+    return {"dispensers": out}
+
+
 @router.get("/sites/{site_id}")
 def get_site(
     site_id: str,

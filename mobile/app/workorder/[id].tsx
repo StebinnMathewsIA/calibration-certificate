@@ -144,13 +144,17 @@ export default function WorkOrderScreen() {
         {adding ? (
           <View style={{ marginTop: 10 }}>
             {(['make', 'model', 'serialNumber', 'saApprovalNumber'] as const).map((f) => (
-              <TextInput
-                key={f}
-                style={inputStyle}
-                placeholder={f}
-                value={form[f]}
-                onChangeText={(t) => setForm((prev) => ({ ...prev, [f]: t }))}
-              />
+              <View key={f} style={{ marginBottom: 6 }}>
+                <Text style={{ fontSize: 12, color: colors.muted, marginBottom: 3 }}>
+                  {ADD_FIELD_LABELS[f]}
+                </Text>
+                <TextInput
+                  style={inputStyle}
+                  placeholder={ADD_FIELD_LABELS[f]}
+                  value={form[f]}
+                  onChangeText={(t) => setForm((prev) => ({ ...prev, [f]: t }))}
+                />
+              </View>
             ))}
             <Button title="Save dispenser" onPress={submitAdd} busy={busy} />
             <Button title="Cancel" kind="secondary" onPress={() => setAdding(false)} />
@@ -172,6 +176,13 @@ export default function WorkOrderScreen() {
     </ScrollView>
   );
 }
+
+const ADD_FIELD_LABELS: Record<'make' | 'model' | 'serialNumber' | 'saApprovalNumber', string> = {
+  make: 'Make',
+  model: 'Model',
+  serialNumber: 'Serial number',
+  saApprovalNumber: 'SA approval number',
+};
 
 const inputStyle = {
   borderWidth: 1,

@@ -33,7 +33,9 @@ export default function RootLayout() {
         <Stack.Screen name="verification/[id]/sign" options={{ title: 'Review & sign' }} />
         <Stack.Screen
           name="verification/[id]/signature"
-          options={{ title: 'Client signature', presentation: 'modal' }}
+          // Locked: no swipe-to-dismiss and no back button, so a downward
+          // drawing stroke can never close the window — only Save / Cancel do.
+          options={{ title: 'Client signature', headerBackVisible: false, gestureEnabled: false }}
         />
         <Stack.Screen name="verification/[id]/issued" options={{ title: 'Certificate' }} />
       </Stack>

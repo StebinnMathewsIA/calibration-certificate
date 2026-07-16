@@ -17,6 +17,10 @@ const numInput = {
   fontSize: 13,
 } as const;
 
+/** Show an empty field (not "0"/"undefined") until the VO enters a value. */
+const numStr = (v?: number) => (v == null || Number.isNaN(v) ? '' : String(v));
+const parseNum = (t: string): number | undefined => (t.trim() === '' ? undefined : Number(t));
+
 function Pill({ label, active, tone, onPress }: { label: string; active: boolean; tone: string; onPress: () => void }) {
   return (
     <Text
@@ -79,11 +83,15 @@ export default function ResultsScreen() {
         if (i !== hi) return h;
         const deliveries = h.deliveries.map((d, j) => {
           if (j !== di) return d;
-          const merged = { ...d, ...patch };
-          if (merged.vrefMl > 0) {
+          const merged = { ...d, ...patch } as Delivery;
+          // EFD is only meaningful once both readings are present.
+          if ((merged.vrefMl ?? 0) > 0 && (merged.vfdMl ?? 0) > 0) {
             const c = computeEfd(merged.vfdMl, merged.vrefMl);
             merged.efdPercent = c.efdPercent;
             merged.pass = c.pass;
+          } else {
+            merged.efdPercent = undefined as unknown as number;
+            merged.pass = false;
           }
           return merged;
         });
@@ -93,16 +101,36 @@ export default function ResultsScreen() {
     });
 
   const continueToSign = () => {
-    // Auto-suggest outcome from the evidence before signing.
+    // Every result must be entered before moving on — nothing is pre-judged.
+    const hoses = v.hoses as HoseResult[];
+    for (let i = 0; i < hoses.length; i++) {
+      const h = hoses[i];
+      const label = `Hose ${h.hoseNumber}`;
+      if (!h.status) return complain(`${label}: choose a verification status.`);
+      if (!h.testCondition) return complain(`${label}: choose hot or cold.`);
+      const missingCheck = CHECKLIST_ITEMS.find((it) => !h.checklist[it.key]);
+      if (missingCheck) return complain(`${label}: complete the checklist ("${missingCheck.label}").`);
+      const bad = h.deliveries.find(
+        (d) => !((d.flowRateLpm ?? 0) > 0 && (d.vfdMl ?? 0) > 0 && (d.vrefMl ?? 0) > 0),
+      );
+      if (bad) return complain(`${label}: enter Flow, VFD and VREF for every delivery.`);
+    }
+
+    // Outcome follows the evidence (a failed check or delivery => rejected).
     const withOutcomes: Verification = {
       ...(v as Verification),
-      hoses: (v.hoses as HoseResult[]).map((h) => {
-        const anyFail = h.deliveries.some((d) => !d.pass) || Object.values(h.checklist).some((x) => x === 'fail');
+      hoses: hoses.map((h) => {
+        const anyFail =
+          h.deliveries.some((d) => !d.pass) || Object.values(h.checklist).some((x) => x === 'fail');
         return { ...h, outcome: anyFail ? 'rejected' : 'certified' };
       }),
     };
     repo.saveDraftForm(id, withOutcomes);
     router.push({ pathname: '/verification/[id]/sign', params: { id } });
+  };
+
+  const complain = (msg: string) => {
+    Alert.alert('Results incomplete', msg);
   };
 
   return (
@@ -167,19 +195,22 @@ export default function ResultsScreen() {
               <View style={{ flexDirection: 'row', gap: 6, marginTop: 4 }}>
                 <View style={{ flex: 1 }}>
                   <Text style={{ fontSize: 11, color: colors.muted }}>Flow L/min</Text>
-                  <TextInput style={numInput} keyboardType="decimal-pad" value={String(d.flowRateLpm)} onChangeText={(t) => setDelivery(hi, di, { flowRateLpm: Number(t) || 0 })} />
+                  <TextInput style={numInput} keyboardType="decimal-pad" placeholder="—" value={numStr(d.flowRateLpm)} onChangeText={(t) => setDelivery(hi, di, { flowRateLpm: parseNum(t) })} />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={{ fontSize: 11, color: colors.muted }}>VFD</Text>
-                  <TextInput style={numInput} keyboardType="decimal-pad" value={String(d.vfdMl)} onChangeText={(t) => setDelivery(hi, di, { vfdMl: Number(t) || 0 })} />
+                  <TextInput style={numInput} keyboardType="decimal-pad" placeholder="—" value={numStr(d.vfdMl)} onChangeText={(t) => setDelivery(hi, di, { vfdMl: parseNum(t) })} />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={{ fontSize: 11, color: colors.muted }}>VREF</Text>
-                  <TextInput style={numInput} keyboardType="decimal-pad" value={String(d.vrefMl)} onChangeText={(t) => setDelivery(hi, di, { vrefMl: Number(t) || 0 })} />
+                  <TextInput style={numInput} keyboardType="decimal-pad" placeholder="—" value={numStr(d.vrefMl)} onChangeText={(t) => setDelivery(hi, di, { vrefMl: parseNum(t) })} />
                 </View>
                 <View style={{ width: 84, alignItems: 'center', justifyContent: 'flex-end' }}>
                   <Text style={{ fontSize: 11, color: colors.muted }}>EFD</Text>
-                  <Badge text={`${d.efdPercent.toFixed(2)}% ${d.pass ? '✓' : '✗'}`} tone={d.pass ? 'ok' : 'bad'} />
+                  <Badge
+                    text={d.efdPercent == null ? '—' : `${d.efdPercent.toFixed(2)}% ${d.pass ? '✓' : '✗'}`}
+                    tone={d.efdPercent == null ? 'muted' : d.pass ? 'ok' : 'bad'}
+                  />
                 </View>
               </View>
             </View>

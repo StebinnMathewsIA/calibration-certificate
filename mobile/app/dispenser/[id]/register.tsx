@@ -3,6 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { Alert, ScrollView, Text, TextInput, View } from 'react-native';
 import type {
   Component,
+  Delivery,
   DispenserDetail,
   HoseDetail,
   HoseResult,
@@ -19,12 +20,7 @@ import {
 import { useAuth } from '../../../src/auth/AuthContext';
 import { Button, SectionCard, colors, styles } from '../../../src/components/ui';
 import { config } from '../../../src/config';
-import {
-  DELIVERY_NOMINAL_ML,
-  METHOD_REFERENCE,
-  REFERENCE_MEASURES,
-  blankChecklist,
-} from '../../../src/data/registers';
+import { METHOD_REFERENCE, REFERENCE_MEASURES } from '../../../src/data/registers';
 import * as repo from '../../../src/db/certificateRepo';
 
 const COMPONENT_KEYS: (keyof HoseDetail['components'])[] = ['meter', 'pcBoard', 'pulsar', 'solenoid'];
@@ -109,11 +105,20 @@ export default function RegisterScreen() {
       ),
     );
 
+  // The delivery ROWS are the standard NRCS test structure, but every measured
+  // value starts BLANK — the VO enters the actual flow, VFD and VREF readings.
   const buildDeliveries = () =>
-    (['del1_max', 'del2_max', 'del3_max', 'min_flow', 'preset'] as const).map((point) => {
-      const nominal = DELIVERY_NOMINAL_ML[point];
-      return { point, flowRateLpm: point === 'min_flow' ? 5 : 40, vfdMl: nominal, vrefMl: nominal, efdPercent: 0, pass: true };
-    });
+    (['del1_max', 'del2_max', 'del3_max', 'min_flow', 'preset'] as const).map(
+      (point) =>
+        ({
+          point,
+          flowRateLpm: undefined,
+          vfdMl: undefined,
+          vrefMl: undefined,
+          efdPercent: undefined,
+          pass: false,
+        }) as unknown as Delivery,
+    );
 
   const saveAndStart = async () => {
     for (const h of hoses) {
@@ -138,19 +143,22 @@ export default function RegisterScreen() {
         reserveCertificateNumber(accessToken, config.branchCode),
       ]);
 
-      const hoseResults: HoseResult[] = hoses.map((h) => ({
+      // Identity/components carry over (known data); everything the VO
+      // determines on-site starts UNSET so nothing reads as a result until
+      // they enter it: status, hot/cold, the checklist, and the deliveries.
+      const hoseResults = hoses.map((h) => ({
         hoseNumber: h.hoseNumber,
         product: h.product,
-        status: 'new',
+        status: undefined,
         components: h.components,
         securitySeal: h.securitySeal || undefined,
-        testCondition: 'cold',
+        testCondition: undefined,
         qMinLpm: qMin ? Number(qMin) : undefined,
         qMaxLpm: qMax ? Number(qMax) : undefined,
-        checklist: blankChecklist(),
+        checklist: {},
         deliveries: buildDeliveries(),
         outcome: 'certified',
-      }));
+      })) as unknown as HoseResult[];
 
       const verification: Partial<Verification> = {
         schemaVersion: SCHEMA_VERSION,

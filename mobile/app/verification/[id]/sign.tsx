@@ -1,12 +1,12 @@
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useMemo, useState } from 'react';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import React, { useCallback, useMemo, useState } from 'react';
 import { Alert, ScrollView, Switch, Text, TextInput, View } from 'react-native';
 import type { AnalysisResponse, Verification } from '@prowalco/schema';
 import { analysisResponseSchema, validateReadyToSign } from '@prowalco/schema';
-import { analyzeVerification } from '../../../src/api/client';
+import { ApiError, analyzeVerification } from '../../../src/api/client';
 import { useAuth } from '../../../src/auth/AuthContext';
 import { Badge, Button, SectionCard, colors, styles } from '../../../src/components/ui';
-import { SignaturePad } from '../../../src/components/SignaturePad';
+import { readCache } from '../../../src/db/cache';
 import * as repo from '../../../src/db/certificateRepo';
 import { enqueueForSigning } from '../../../src/queue/signQueue';
 
@@ -43,6 +43,15 @@ export default function SignScreen() {
   const [declaration, setDeclaration] = useState(false);
   const [signatureSvg, setSignatureSvg] = useState('');
   const [gpsConsent, setGpsConsent] = useState(true);
+
+  // The client signature is captured on a dedicated screen and stashed in the
+  // cache; pick it up whenever we return here.
+  useFocusEffect(
+    useCallback(() => {
+      const svg = readCache<string>(`signature:${id}`);
+      if (svg) setSignatureSvg(svg);
+    }, [id]),
+  );
   const [analysis, setAnalysis] = useState<AnalysisResponse | null>(() => {
     const stored = repo.getAnalysis(id);
     return stored ? analysisResponseSchema.parse(JSON.parse(stored)) : null;
@@ -70,14 +79,31 @@ export default function SignScreen() {
   const runAnalysis = async () => {
     setAnalyzing(true);
     try {
-      const response = await analyzeVerification(accessToken, buildVerification());
+      // The advisory review only judges the measurement data. Fill the sign-off
+      // with valid placeholders so an unfinished signature/declaration never
+      // blocks it — the real sign-off is validated at signing time.
+      const base = buildVerification();
+      const forReview: Verification = {
+        ...base,
+        signOff: {
+          vo: { identity: base.signOff.vo.identity, pliersNumber: pliers || 'PENDING' },
+          client: { name: clientName || 'Pending' },
+          declarationAccepted: true,
+          expiryDate: base.signOff.expiryDate,
+          rejectionCertNumber: base.signOff.rejectionCertNumber,
+        },
+      };
+      const response = await analyzeVerification(accessToken, forReview);
       setAnalysis(response);
       repo.saveAnalysis(id, JSON.stringify(response));
     } catch (err) {
+      const incomplete = err instanceof ApiError && err.status === 422;
       Alert.alert(
-        'Analysis unavailable',
-        'The Claude review could not run (offline or server issue). You can still sign — the review is advisory.\n\n' +
-          (err instanceof Error ? err.message : String(err)),
+        incomplete ? 'Results incomplete' : 'Analysis unavailable',
+        incomplete
+          ? 'Go back and complete every delivery reading and checklist item, then run the review.'
+          : 'The Claude review could not run (offline or server issue). You can still sign — the review is advisory.\n\n' +
+              (err instanceof Error ? err.message : String(err)),
       );
     } finally {
       setAnalyzing(false);
@@ -139,24 +165,57 @@ export default function SignScreen() {
       <SectionCard title="Client acknowledgement">
         <Text style={{ fontSize: 12, color: colors.muted }}>Client (Initial &amp; Surname)</Text>
         <TextInput style={inputStyle} value={clientName} onChangeText={setClientName} />
-        <Text style={{ fontSize: 12, color: colors.muted, marginBottom: 6 }}>
-          Ask the client to sign below. Their signature is embedded in the certificate before your
-          cryptographic signature seals it.
+        <Text style={{ fontSize: 12, color: colors.muted, marginBottom: 8 }}>
+          The client draws their signature on a separate screen; it is embedded in the certificate
+          before your signature seals it.
         </Text>
-        <SignaturePad onChange={setSignatureSvg} />
+        <Badge
+          text={signatureSvg ? 'Signature captured ✓' : 'No signature yet'}
+          tone={signatureSvg ? 'ok' : 'warn'}
+        />
+        <Button
+          title={signatureSvg ? 'Re-capture client signature' : 'Capture client signature'}
+          kind="secondary"
+          onPress={() =>
+            router.push({ pathname: '/verification/[id]/signature', params: { id } })
+          }
+        />
       </SectionCard>
 
-      <SectionCard title="Verifying Officer declaration">
-        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
-          <Text style={{ flex: 1, color: colors.ink, fontSize: 13 }}>
-            I certify the instrument was tested per the Legal Metrology Act and the procedure was followed.
-          </Text>
-          <Switch value={declaration} onValueChange={setDeclaration} />
+      <SectionCard title="Verifying Officer signature">
+        <View
+          style={{
+            borderWidth: 1.5,
+            borderColor: declaration ? colors.green : colors.amber,
+            borderRadius: 8,
+            padding: 10,
+            marginBottom: 10,
+            backgroundColor: declaration ? '#f2f8f3' : '#fff8ec',
+          }}
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Text style={{ flex: 1, color: colors.ink, fontSize: 13, fontWeight: '600' }}>
+              I certify the instrument was tested per the Legal Metrology Act and the procedure was
+              followed.
+            </Text>
+            <Switch value={declaration} onValueChange={setDeclaration} />
+          </View>
+          {!declaration ? (
+            <Text style={{ color: colors.amber, fontSize: 12, marginTop: 6 }}>
+              Turn this on to certify — required before you can sign.
+            </Text>
+          ) : null}
         </View>
+
         <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
           <Text style={{ flex: 1, color: colors.ink, fontSize: 13 }}>Record GPS with this signature (POPIA consent)</Text>
           <Switch value={gpsConsent} onValueChange={setGpsConsent} />
         </View>
+
+        <Text style={{ color: colors.muted, fontSize: 12, marginBottom: 8 }}>
+          Tapping “Sign certificate” confirms your identity with Face ID / passcode and applies your
+          legal digital signature — this is the VO signature.
+        </Text>
 
         {readiness.ready ? (
           <Badge text="READY TO SIGN" tone="ok" />

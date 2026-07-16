@@ -31,6 +31,10 @@ export default function RootLayout() {
         <Stack.Screen name="dispenser/[id]/register" options={{ title: 'Components' }} />
         <Stack.Screen name="verification/[id]/results" options={{ title: 'Verification results' }} />
         <Stack.Screen name="verification/[id]/sign" options={{ title: 'Review & sign' }} />
+        <Stack.Screen
+          name="verification/[id]/signature"
+          options={{ title: 'Client signature', presentation: 'modal' }}
+        />
         <Stack.Screen name="verification/[id]/issued" options={{ title: 'Certificate' }} />
       </Stack>
     </AuthProvider>

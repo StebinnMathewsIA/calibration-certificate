@@ -133,7 +133,7 @@ export default function SignScreen() {
   };
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={{ paddingBottom: 40 }}>
+    <ScrollView style={styles.screen} contentContainerStyle={{ paddingBottom: 40 }} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive" automaticallyAdjustKeyboardInsets>
       <SectionCard title="Sign-off details">
         <Text style={{ fontSize: 12, color: colors.muted }}>VO Pliers No.</Text>
         <TextInput style={inputStyle} value={pliers} onChangeText={setPliers} />

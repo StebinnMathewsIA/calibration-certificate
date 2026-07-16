@@ -94,7 +94,7 @@ export default function WorkOrderScreen() {
   const siteIncomplete = !site || !site.address || !site.customerName || !site.siteName;
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={{ paddingBottom: 40 }}>
+    <ScrollView style={styles.screen} contentContainerStyle={{ paddingBottom: 40 }} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive" automaticallyAdjustKeyboardInsets>
       <SectionCard title={`Work order ${bundle.workOrder.reference}`}>
         <Text style={{ color: colors.ink, fontWeight: '600' }}>
           {site?.customerName ?? '—'} · {site?.siteName ?? '—'}

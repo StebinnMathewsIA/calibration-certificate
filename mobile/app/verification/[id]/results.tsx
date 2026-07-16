@@ -134,7 +134,7 @@ export default function ResultsScreen() {
   };
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={{ paddingBottom: 40 }}>
+    <ScrollView style={styles.screen} contentContainerStyle={{ paddingBottom: 40 }} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive" automaticallyAdjustKeyboardInsets>
       <SectionCard title={`Certificate ${v.certificateNumber ?? ''}`}>
         <Text style={{ color: colors.muted, fontSize: 13 }}>
           {v.site?.customerName} · {v.site?.siteName} · {v.dispenser?.serialNumber}

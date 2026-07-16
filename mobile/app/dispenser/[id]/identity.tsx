@@ -114,7 +114,7 @@ export default function DispenserIdentityScreen() {
   };
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={{ paddingBottom: 40 }}>
+    <ScrollView style={styles.screen} contentContainerStyle={{ paddingBottom: 40 }} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive" automaticallyAdjustKeyboardInsets>
       <SectionCard title="Site details">
         <Text style={{ color: colors.muted, fontSize: 12, marginBottom: 8 }}>
           Prefilled from OnKey where available. Complete anything missing — it is saved and reused

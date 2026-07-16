@@ -199,7 +199,7 @@ export default function RegisterScreen() {
   };
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={{ paddingBottom: 40 }}>
+    <ScrollView style={styles.screen} contentContainerStyle={{ paddingBottom: 40 }} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive" automaticallyAdjustKeyboardInsets>
       <SectionCard title="Data plate">
         <Text style={{ color: colors.muted, fontSize: 12, marginBottom: 6 }}>
           Saved against this dispenser and prefilled next verification.

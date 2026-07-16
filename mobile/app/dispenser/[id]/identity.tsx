@@ -1,6 +1,6 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { Alert, ScrollView, Text, TextInput, View } from 'react-native';
+import { Alert, Text, TextInput, View } from 'react-native';
 import {
   DispenserResolved,
   SiteResolved,
@@ -10,7 +10,8 @@ import {
   upsertSite,
 } from '../../../src/api/client';
 import { useAuth } from '../../../src/auth/AuthContext';
-import { Button, SectionCard, colors, styles } from '../../../src/components/ui';
+import { Button, SectionCard, colors } from '../../../src/components/ui';
+import { FormScrollView } from '../../../src/components/FormScrollView';
 
 function Field({
   label,
@@ -114,7 +115,7 @@ export default function DispenserIdentityScreen() {
   };
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={{ paddingBottom: 40 }} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive" automaticallyAdjustKeyboardInsets>
+    <FormScrollView>
       <SectionCard title="Site details">
         <Text style={{ color: colors.muted, fontSize: 12, marginBottom: 8 }}>
           Prefilled from OnKey where available. Complete anything missing — it is saved and reused
@@ -136,6 +137,6 @@ export default function DispenserIdentityScreen() {
       <View style={{ marginHorizontal: 12 }}>
         <Button title="Save & continue to components" onPress={saveAndContinue} busy={busy} />
       </View>
-    </ScrollView>
+    </FormScrollView>
   );
 }

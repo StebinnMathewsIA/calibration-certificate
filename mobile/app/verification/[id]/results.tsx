@@ -1,9 +1,10 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, ScrollView, Text, TextInput, View } from 'react-native';
+import { Alert, Text, TextInput, View } from 'react-native';
 import type { Checklist, Delivery, HoseResult, Verification } from '@prowalco/schema';
 import { CHECKLIST_ITEMS, DELIVERY_POINT_LABELS, computeEfd } from '@prowalco/schema';
-import { Badge, Button, SectionCard, colors, styles } from '../../../src/components/ui';
+import { Badge, Button, SectionCard, colors } from '../../../src/components/ui';
+import { FormScrollView } from '../../../src/components/FormScrollView';
 import * as repo from '../../../src/db/certificateRepo';
 
 const numInput = {
@@ -134,7 +135,7 @@ export default function ResultsScreen() {
   };
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={{ paddingBottom: 40 }} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive" automaticallyAdjustKeyboardInsets>
+    <FormScrollView>
       <SectionCard title={`Certificate ${v.certificateNumber ?? ''}`}>
         <Text style={{ color: colors.muted, fontSize: 13 }}>
           {v.site?.customerName} · {v.site?.siteName} · {v.dispenser?.serialNumber}
@@ -221,6 +222,6 @@ export default function ResultsScreen() {
       <View style={{ marginHorizontal: 12 }}>
         <Button title="Continue to sign" onPress={continueToSign} />
       </View>
-    </ScrollView>
+    </FormScrollView>
   );
 }

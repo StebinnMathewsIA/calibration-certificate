@@ -1,6 +1,6 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { Alert, ScrollView, Text, TextInput, View } from 'react-native';
+import { Alert, Text, TextInput, View } from 'react-native';
 import type {
   Component,
   Delivery,
@@ -18,9 +18,10 @@ import {
   saveDispenserDetail,
 } from '../../../src/api/client';
 import { useAuth } from '../../../src/auth/AuthContext';
-import { Button, SectionCard, colors, styles } from '../../../src/components/ui';
+import { Button, SectionCard, colors } from '../../../src/components/ui';
+import { FormScrollView } from '../../../src/components/FormScrollView';
 import { config } from '../../../src/config';
-import { METHOD_REFERENCE, REFERENCE_MEASURES } from '../../../src/data/registers';
+import { DELIVERY_NOMINAL_ML, METHOD_REFERENCE, REFERENCE_MEASURES } from '../../../src/data/registers';
 import * as repo from '../../../src/db/certificateRepo';
 
 const COMPONENT_KEYS: (keyof HoseDetail['components'])[] = ['meter', 'pcBoard', 'pulsar', 'solenoid'];
@@ -105,15 +106,15 @@ export default function RegisterScreen() {
       ),
     );
 
-  // The delivery ROWS are the standard NRCS test structure, but every measured
-  // value starts BLANK — the VO enters the actual flow, VFD and VREF readings.
+  // VFD is the fixed nominal the dispenser delivers (20 L / 5 L), so we
+  // pre-fill it. Flow and VREF are the VO's on-site readings — left blank.
   const buildDeliveries = () =>
     (['del1_max', 'del2_max', 'del3_max', 'min_flow', 'preset'] as const).map(
       (point) =>
         ({
           point,
           flowRateLpm: undefined,
-          vfdMl: undefined,
+          vfdMl: DELIVERY_NOMINAL_ML[point],
           vrefMl: undefined,
           efdPercent: undefined,
           pass: false,
@@ -199,7 +200,7 @@ export default function RegisterScreen() {
   };
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={{ paddingBottom: 40 }} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive" automaticallyAdjustKeyboardInsets>
+    <FormScrollView>
       <SectionCard title="Data plate">
         <Text style={{ color: colors.muted, fontSize: 12, marginBottom: 6 }}>
           Saved against this dispenser and prefilled next verification.
@@ -252,6 +253,6 @@ export default function RegisterScreen() {
         <Button title="Add hose" kind="secondary" onPress={() => setHoses((prev) => [...prev, emptyHose(prev.length + 1)])} />
         <Button title="Save & start verification" onPress={saveAndStart} busy={busy} />
       </View>
-    </ScrollView>
+    </FormScrollView>
   );
 }

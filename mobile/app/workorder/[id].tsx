@@ -1,6 +1,6 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useState } from 'react';
-import { Alert, ScrollView, Text, TextInput, View } from 'react-native';
+import { Alert, Text, TextInput, View } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import {
   addDispenser,
@@ -11,7 +11,8 @@ import {
 } from '../../src/api/client';
 import { useAuth } from '../../src/auth/AuthContext';
 import { fetchThrough, writeCache } from '../../src/db/cache';
-import { Badge, Button, SectionCard, colors, styles } from '../../src/components/ui';
+import { Badge, Button, SectionCard, colors } from '../../src/components/ui';
+import { FormScrollView } from '../../src/components/FormScrollView';
 
 export default function WorkOrderScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -94,7 +95,7 @@ export default function WorkOrderScreen() {
   const siteIncomplete = !site || !site.address || !site.customerName || !site.siteName;
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={{ paddingBottom: 40 }} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive" automaticallyAdjustKeyboardInsets>
+    <FormScrollView>
       <SectionCard title={`Work order ${bundle.workOrder.reference}`}>
         <Text style={{ color: colors.ink, fontWeight: '600' }}>
           {site?.customerName ?? '—'} · {site?.siteName ?? '—'}
@@ -173,7 +174,7 @@ export default function WorkOrderScreen() {
           ))}
         </SectionCard>
       ) : null}
-    </ScrollView>
+    </FormScrollView>
   );
 }
 

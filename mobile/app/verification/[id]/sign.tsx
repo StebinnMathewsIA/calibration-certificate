@@ -1,11 +1,12 @@
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useMemo, useState } from 'react';
-import { Alert, ScrollView, Switch, Text, TextInput, View } from 'react-native';
+import { Alert, Switch, Text, TextInput, View } from 'react-native';
 import type { AnalysisResponse, Verification } from '@prowalco/schema';
 import { analysisResponseSchema, validateReadyToSign } from '@prowalco/schema';
 import { ApiError, analyzeVerification } from '../../../src/api/client';
 import { useAuth } from '../../../src/auth/AuthContext';
-import { Badge, Button, SectionCard, colors, styles } from '../../../src/components/ui';
+import { Badge, Button, SectionCard, colors } from '../../../src/components/ui';
+import { FormScrollView } from '../../../src/components/FormScrollView';
 import { readCache } from '../../../src/db/cache';
 import * as repo from '../../../src/db/certificateRepo';
 import { enqueueForSigning } from '../../../src/queue/signQueue';
@@ -133,7 +134,7 @@ export default function SignScreen() {
   };
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={{ paddingBottom: 40 }} keyboardShouldPersistTaps="handled" keyboardDismissMode="interactive" automaticallyAdjustKeyboardInsets>
+    <FormScrollView>
       <SectionCard title="Sign-off details">
         <Text style={{ fontSize: 12, color: colors.muted }}>VO Pliers No.</Text>
         <TextInput style={inputStyle} value={pliers} onChangeText={setPliers} />
@@ -229,6 +230,6 @@ export default function SignScreen() {
         )}
         <Button title="Sign certificate" onPress={sign} busy={signing} disabled={!readiness.ready} />
       </SectionCard>
-    </ScrollView>
+    </FormScrollView>
   );
 }

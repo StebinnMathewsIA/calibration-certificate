@@ -32,7 +32,7 @@ export async function enqueueForSigning(
   certificateId: string,
   verification: Verification,
   gpsConsentGiven: boolean,
-  customerSignatureSvg?: string,
+  signatures: { customerSignatureSvg?: string; voSignatureSvg?: string } = {},
 ): Promise<void> {
   const readiness = validateReadyToSign(verification);
   if (!readiness.ready) {
@@ -69,7 +69,7 @@ export async function enqueueForSigning(
     gps,
   };
 
-  const pdf = await renderCertificatePdf(verification, customerSignatureSvg);
+  const pdf = await renderCertificatePdf(verification, signatures);
 
   // READY_TO_SIGN is a checkpoint between validation and biometric; we pass
   // through it and land in the durable queue in one save.

@@ -40,6 +40,9 @@ export interface RenderOptions {
   /** Drawn client signature as a standalone SVG string (embedded before the
    * technician's cryptographic signature so it is sealed inside it). */
   customerSignatureSvg?: string;
+  /** The VO's own saved handwritten signature (from their profile), shown in
+   * the VO signature slot in addition to the cryptographic PAdES widget. */
+  voSignatureSvg?: string;
 }
 
 const measure = (ms: ReferenceMeasure[], size: ReferenceMeasure['size']) =>
@@ -214,7 +217,8 @@ export function certificateHtml(v: Verification, opts: RenderOptions = {}): stri
   table.sign td { text-align: center; font-size: 8pt; padding: 0 4px; }
   table.sign td.val { border-bottom: 1px solid #000; height: 30px; vertical-align: bottom; padding-bottom: 2px; }
   table.sign td.lab { font-size: 6.5pt; color: #333; padding-top: 2px; }
-  .sig-img { height: 28px; }
+  .sig-img { height: 30px; overflow: hidden; }
+  .sig-img svg { height: 30px; width: auto; display: block; margin: 0 auto; }
   .digital-note { font-size: 6.5pt; color: #666; }
   .foot { text-align: center; font-size: 6.3pt; color: #666; margin-top: 6px; }
 
@@ -314,7 +318,7 @@ ${certificateGrid(hoses)}
 <table class="sign">
   <tr>
     <td class="val"><div class="digital-note">${esc(signOff.vo.identity.name)}</div></td>
-    <td class="val"><div class="digital-note">Digitally signed (see panel)</div></td>
+    <td class="val">${opts.voSignatureSvg ? `<div class="sig-img">${opts.voSignatureSvg}</div>` : '<div class="digital-note">Digitally signed (see panel)</div>'}</td>
     <td class="val">${cell(signOff.vo.pliersNumber)}</td>
     <td class="val">${cell(v.verificationDate)}</td>
     <td class="val">${cell(signOff.expiryDate)}</td>
@@ -378,7 +382,7 @@ ${metrologistGrid(v)}
 
 <div class="msign">
   <div class="s">${esc(signOff.vo.identity.name)}<br/>Initial &amp; Surname</div>
-  <div class="s">Digitally signed<br/>Signature</div>
+  <div class="s">${opts.voSignatureSvg ? `<div class="sig-img">${opts.voSignatureSvg}</div>` : 'Digitally signed'}<br/>Signature</div>
   <div class="s">${cell(signOff.vo.pliersNumber)}<br/>Pliers No.</div>
   <div class="s">${cell(v.verificationDate)}<br/>Date</div>
 </div>

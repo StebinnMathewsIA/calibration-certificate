@@ -9,6 +9,7 @@ import { Badge, Button, SectionCard, colors } from '../../../src/components/ui';
 import { FormScrollView } from '../../../src/components/FormScrollView';
 import { readCache } from '../../../src/db/cache';
 import * as repo from '../../../src/db/certificateRepo';
+import { getProfile } from '../../../src/profile/profileStore';
 import { enqueueForSigning } from '../../../src/queue/signQueue';
 
 const VERDICT_TONE = { pass: 'ok', marginal: 'warn', fail: 'bad', data_anomaly: 'bad' } as const;
@@ -33,11 +34,15 @@ function plusOneYear(): string {
 export default function SignScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { accessToken } = useAuth();
+  const { accessToken, identity } = useAuth();
   const record = useMemo(() => repo.getById(id), [id]);
   const initial = record?.form as Verification | undefined;
+  // The VO's saved profile (name, pliers no, signature) prefills the sign-off.
+  const profile = useMemo(() => getProfile(identity?.subject ?? ''), [identity?.subject]);
 
-  const [pliers, setPliers] = useState(initial?.signOff?.vo?.pliersNumber ?? '');
+  const [pliers, setPliers] = useState(
+    initial?.signOff?.vo?.pliersNumber || profile.pliersNumber || '',
+  );
   const [expiry, setExpiry] = useState(initial?.signOff?.expiryDate ?? plusOneYear());
   const [clientName, setClientName] = useState(initial?.signOff?.client?.name ?? '');
   const [rejectionCert, setRejectionCert] = useState(initial?.signOff?.rejectionCertNumber ?? '');
@@ -67,7 +72,14 @@ export default function SignScreen() {
   const buildVerification = (): Verification => ({
     ...initial,
     signOff: {
-      vo: { identity: initial.signOff.vo.identity, pliersNumber: pliers },
+      vo: {
+        // Use the VO's profile display name on the certificate when set.
+        identity: {
+          ...initial.signOff.vo.identity,
+          name: profile.displayName || initial.signOff.vo.identity.name,
+        },
+        pliersNumber: pliers,
+      },
       client: { name: clientName },
       declarationAccepted: declaration,
       expiryDate: expiry || undefined,
@@ -120,7 +132,10 @@ export default function SignScreen() {
     repo.saveDraftForm(id, verification);
     setSigning(true);
     try {
-      await enqueueForSigning(id, verification, gpsConsent, signatureSvg);
+      await enqueueForSigning(id, verification, gpsConsent, {
+        customerSignatureSvg: signatureSvg,
+        voSignatureSvg: profile.signatureSvg,
+      });
       Alert.alert(
         'Queued for signing',
         'The certificate is saved on this device and will be signed as soon as there is connectivity. It is safe to close the app.',
@@ -178,7 +193,14 @@ export default function SignScreen() {
           title={signatureSvg ? 'Re-capture client signature' : 'Capture client signature'}
           kind="secondary"
           onPress={() =>
-            router.push({ pathname: '/verification/[id]/signature', params: { id } })
+            router.push({
+              pathname: '/signature',
+              params: {
+                cacheKey: `signature:${id}`,
+                title: 'Client signature',
+                hint: 'Hand the device to the client and ask them to sign in the box below.',
+              },
+            })
           }
         />
       </SectionCard>

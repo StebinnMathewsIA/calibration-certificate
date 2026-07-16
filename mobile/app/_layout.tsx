@@ -31,11 +31,12 @@ export default function RootLayout() {
         <Stack.Screen name="dispenser/[id]/register" options={{ title: 'Components' }} />
         <Stack.Screen name="verification/[id]/results" options={{ title: 'Verification results' }} />
         <Stack.Screen name="verification/[id]/sign" options={{ title: 'Review & sign' }} />
+        <Stack.Screen name="profile" options={{ title: 'My profile' }} />
         <Stack.Screen
-          name="verification/[id]/signature"
+          name="signature"
           // Locked: no swipe-to-dismiss and no back button, so a downward
           // drawing stroke can never close the window — only Save / Cancel do.
-          options={{ title: 'Client signature', headerBackVisible: false, gestureEnabled: false }}
+          options={{ title: 'Signature', headerBackVisible: false, gestureEnabled: false }}
         />
         <Stack.Screen name="verification/[id]/issued" options={{ title: 'Certificate' }} />
       </Stack>

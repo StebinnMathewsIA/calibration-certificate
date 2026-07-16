@@ -49,7 +49,14 @@ export default function HomeScreen() {
     <View style={styles.screen}>
       <View style={{ padding: 12 }}>
         <Text style={{ color: colors.muted }}>Signed in as {identity?.name}</Text>
-        <Button title={refreshing ? 'Refreshing…' : 'Refresh work orders'} kind="secondary" onPress={load} busy={refreshing} />
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <View style={{ flex: 1 }}>
+            <Button title={refreshing ? 'Refreshing…' : 'Refresh'} kind="secondary" onPress={load} busy={refreshing} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Button title="My profile" kind="secondary" onPress={() => router.push('/profile')} />
+          </View>
+        </View>
       </View>
       <FlatList
         data={workOrders}

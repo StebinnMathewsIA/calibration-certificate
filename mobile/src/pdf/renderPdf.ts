@@ -11,15 +11,15 @@ export interface RenderedPdf {
 }
 
 /** Renders the certificate PDF on-device and computes its binary SHA-256
- * (queue integrity + upload verification). `customerSignatureSvg` is the
- * drawn client signature, embedded before the technician signs so it is
- * sealed inside the cryptographic signature. */
+ * (queue integrity + upload verification). The client and VO signatures are
+ * drawn images embedded before the technician cryptographically signs, so
+ * they are sealed inside the PAdES signature. */
 export async function renderCertificatePdf(
   verification: Verification,
-  customerSignatureSvg?: string,
+  signatures: { customerSignatureSvg?: string; voSignatureSvg?: string } = {},
 ): Promise<RenderedPdf> {
   const { uri } = await Print.printToFileAsync({
-    html: certificateHtml(verification, { customerSignatureSvg }),
+    html: certificateHtml(verification, signatures),
   });
   const base64 = await FileSystem.readAsStringAsync(uri, {
     encoding: FileSystem.EncodingType.Base64,

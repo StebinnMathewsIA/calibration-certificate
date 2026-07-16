@@ -35,6 +35,15 @@ const COMPONENT_LABELS: Record<string, string> = {
   solenoid: 'Solenoid',
 };
 
+// Field labels match the NRCS certificate column headers.
+const FIELD_KEYS = ['make', 'model', 'serial', 'saApproval'] as const;
+const FIELD_LABELS: Record<(typeof FIELD_KEYS)[number], string> = {
+  make: 'Make',
+  model: 'Model',
+  serial: 'Serial No.',
+  saApproval: 'SA Approval no.',
+};
+
 const emptyComponent = (): Component => ({ make: '', model: '', serial: '', saApproval: '' });
 const emptyHose = (n: number): HoseDetail => ({
   hoseNumber: String(n),
@@ -208,16 +217,20 @@ export default function RegisterScreen() {
           <Text style={{ fontSize: 12, color: colors.muted }}>Security seal</Text>
           <TextInput style={inputStyle} value={h.securitySeal ?? ''} onChangeText={(t) => updateHose(i, { securitySeal: t })} />
           {COMPONENT_KEYS.map((key) => (
-            <View key={key} style={{ marginTop: 6 }}>
-              <Text style={{ fontWeight: '600', color: colors.ink, fontSize: 13 }}>{COMPONENT_LABELS[key]}</Text>
-              {(['make', 'model', 'serial', 'saApproval'] as const).map((field) => (
-                <TextInput
-                  key={field}
-                  style={inputStyle}
-                  placeholder={field}
-                  value={h.components[key][field] ?? ''}
-                  onChangeText={(t) => updateComponent(i, key, { [field]: t })}
-                />
+            <View key={key} style={{ marginTop: 8 }}>
+              <Text style={{ fontWeight: '700', color: colors.ink, fontSize: 13, marginBottom: 2 }}>
+                {COMPONENT_LABELS[key]}
+              </Text>
+              {FIELD_KEYS.map((field) => (
+                <View key={field} style={{ marginBottom: 4 }}>
+                  <Text style={{ fontSize: 11, color: colors.muted }}>{FIELD_LABELS[field]}</Text>
+                  <TextInput
+                    style={inputStyle}
+                    placeholder={FIELD_LABELS[field]}
+                    value={h.components[key][field] ?? ''}
+                    onChangeText={(t) => updateComponent(i, key, { [field]: t })}
+                  />
+                </View>
               ))}
             </View>
           ))}

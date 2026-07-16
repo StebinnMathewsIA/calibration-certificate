@@ -1,22 +1,24 @@
 /**
  * NRCS Verification Certificate for Liquid Fuel Dispensers (LM01HV), rendered
- * to PDF by expo-print to match Prowalco's real document:
- *   Page 1 — the Verification Certificate (the LM01HV grid: traceability box,
- *            per-hose Meter / PC Board / Pulsar / Solenoid grid, sign-off).
- *   Page 2 — the Metrologist Note (per-hose pass/fail checklist + EFD
- *            deliveries) — the reporting-of-results working record.
+ * to PDF by expo-print to match Prowalco's real document (both A4 LANDSCAPE):
+ *   Page 1 — the Verification Certificate: traceability box, the LM01HV grid
+ *            (rotated Meter / PC Board / Pulsar / Solenoid group labels, a
+ *            column per hose), and the two-row VO / Client sign-off.
+ *   Page 2 — the Metrologist Note ("Reporting of Verification/Repair Results —
+ *            Standard"): a grid of test items as rows and hoses as columns,
+ *            including the pass/fail checklist and the EFD deliveries
+ *            (Flow/Rate, VFD, VREF, EFD per hose).
  *
  * The visible PAdES signature widget is applied by the backend at the
- * bottom-left of the FIRST page (box 42,40 → 300,90), landing in the VO
- * signature area of the certificate.
+ * bottom-left of the FIRST page (box 42,40 → 300,90), in the VO signature area.
  *
- * NUMBER FORMATTING CONTRACT: VFD/VREF are rendered as whole millilitres and
- * EFD to 2 dp. The backend cross-checks the certificate number, VO name,
- * customer, dispenser serial and the VFD/VREF strings against the verification
- * JSON before signing (backend/app/signing/crosscheck.py) — change together.
+ * NUMBER FORMATTING CONTRACT: VFD/VREF are whole millilitres, EFD 2 dp. The
+ * backend cross-checks the certificate number, VO name, customer, dispenser
+ * serial and the VFD/VREF strings against the verification JSON before signing
+ * (backend/app/signing/crosscheck.py) — change together.
  */
-import type { Component, HoseResult, ReferenceMeasure, Verification } from '@prowalco/schema';
-import { CHECKLIST_ITEMS, DELIVERY_POINT_LABELS } from '@prowalco/schema';
+import type { Component, Delivery, HoseResult, ReferenceMeasure, Verification } from '@prowalco/schema';
+import { CHECKLIST_ITEMS } from '@prowalco/schema';
 import { PROWALCO_LOGO_BASE64 } from '../../assets/logo-base64';
 
 const esc = (s: unknown) =>
@@ -28,6 +30,8 @@ const cell = (v: unknown) => {
   return s.trim() === '' ? '&nbsp;' : s;
 };
 
+const num = (v: number | undefined, dp = 0) => (v == null ? '' : v.toFixed(dp));
+
 export interface RenderOptions {
   /** Accreditation mark slot — feature-flagged OFF until Prowalco holds
    * accreditation (CLAUDE.md "Branding"). */
@@ -37,26 +41,19 @@ export interface RenderOptions {
   customerSignatureSvg?: string;
 }
 
-const num = (v: number | undefined, dp = 0) => (v == null ? '' : v.toFixed(dp));
-
-function measureCells(measures: ReferenceMeasure[], size: ReferenceMeasure['size']) {
-  return measures.find((m) => m.size === size);
-}
+const measure = (ms: ReferenceMeasure[], size: ReferenceMeasure['size']) =>
+  ms.find((m) => m.size === size);
 
 // ---------------------------------------------------------------------------
-// Page 1 — the certificate grid (Meter / PC Board / Pulsar / Solenoid)
+// Page 1 — certificate grid (component fields as rows, hoses as columns)
 // ---------------------------------------------------------------------------
 
-const COMPONENT_ROWS: {
-  group: string;
-  key: keyof HoseResult['components'];
-}[] = [
+const COMPONENT_GROUPS: { group: string; key: keyof HoseResult['components'] }[] = [
   { group: 'Meter', key: 'meter' },
   { group: 'PC Board', key: 'pcBoard' },
   { group: 'Pulsar', key: 'pulsar' },
   { group: 'Solenoid Valve', key: 'solenoid' },
 ];
-
 const COMPONENT_FIELDS: { label: string; field: keyof Component }[] = [
   { label: 'Make', field: 'make' },
   { label: 'Model', field: 'model' },
@@ -65,183 +62,178 @@ const COMPONENT_FIELDS: { label: string; field: keyof Component }[] = [
 ];
 
 function certificateGrid(hoses: HoseResult[]): string {
-  const hoseCols = (render: (h: HoseResult) => string) =>
+  const cols = (render: (h: HoseResult) => string) =>
     hoses.map((h) => `<td class="v">${render(h)}</td>`).join('');
 
-  const componentGroup = (group: string, key: keyof HoseResult['components']) => {
-    const rows = COMPONENT_FIELDS.map((f, idx) => {
-      const rot =
-        idx === 0
-          ? `<td class="rot" rowspan="4"><span>${esc(group)}</span></td>`
-          : '';
-      return `<tr>${rot}<td class="lbl">${esc(f.label)}</td>${hoseCols(
-        (h) => cell(h.components[key][f.field]),
+  const group = (g: string, key: keyof HoseResult['components']) =>
+    COMPONENT_FIELDS.map((f, i) => {
+      const rot = i === 0 ? `<td class="rot" rowspan="4"><span>${esc(g)}</span></td>` : '';
+      return `<tr>${rot}<td class="lbl">${esc(f.label)}</td>${cols((h) =>
+        cell(h.components[key][f.field]),
       )}</tr>`;
-    });
-    return rows.join('');
-  };
+    }).join('');
 
   return `
   <table class="grid">
-    <tr>
-      <td class="lbl" colspan="2">Hose/ Pump No.</td>
-      ${hoseCols((h) => cell(h.hoseNumber))}
-    </tr>
-    <tr>
-      <td class="lbl" colspan="2">Product:</td>
-      ${hoseCols((h) => cell(h.product))}
-    </tr>
-    ${COMPONENT_ROWS.map((c) => componentGroup(c.group, c.key)).join('')}
+    <tr><td class="lbl" colspan="2">Hose/ Pump No.</td>${cols((h) => cell(h.hoseNumber))}</tr>
+    <tr><td class="lbl" colspan="2">Product:</td>${cols((h) => cell(h.product))}</tr>
+    ${COMPONENT_GROUPS.map((c) => group(c.group, c.key)).join('')}
   </table>`;
 }
 
 // ---------------------------------------------------------------------------
-// Page 2 — Metrologist Note (checklist + EFD deliveries), per hose
+// Page 2 — Metrologist Note grid (test items as rows, hoses as columns)
 // ---------------------------------------------------------------------------
 
-function checklistTable(hose: HoseResult): string {
-  const rows = CHECKLIST_ITEMS.map((item) => {
-    const v = hose.checklist[item.key];
-    const cls = v === 'fail' ? 'fail' : v === 'pass' ? 'pass' : 'na';
-    return `<tr><td>${esc(item.label)}</td><td class="${cls}">${String(v ?? '').toUpperCase()}</td></tr>`;
-  }).join('');
-  return `<table class="mtable"><tbody>${rows}</tbody></table>`;
-}
+const DELIVERY_ROWS: { point: Delivery['point']; label: string }[] = [
+  { point: 'del1_max', label: 'Del 1 at max. achievable flow rate' },
+  { point: 'del2_max', label: 'Del 2 at max. achievable flow rate' },
+  { point: 'del3_max', label: 'Del 3 at max. achievable flow rate' },
+  { point: 'min_flow', label: 'Delivery at minimum flow rate' },
+  { point: 'preset', label: 'Preset delivery' },
+];
 
-function deliveriesTable(hose: HoseResult): string {
-  const body = hose.deliveries
-    .map(
-      (d) => `
-      <tr>
-        <td class="dl">${esc(DELIVERY_POINT_LABELS[d.point])}</td>
-        <td>${num(d.flowRateLpm, 1)}</td>
-        <td>${num(d.vfdMl)}</td>
-        <td>${num(d.vrefMl)}</td>
-        <td class="${d.pass ? '' : 'oot'}">${num(d.efdPercent, 2)}</td>
-        <td class="${d.pass ? 'pass' : 'fail'}">${d.pass ? 'PASS' : 'FAIL'}</td>
-      </tr>`,
-    )
+function metrologistGrid(v: Verification): string {
+  const hoses = v.hoses;
+  const d = v.dispenser;
+
+  // Each hose occupies 4 sub-columns (Flow/Rate · VFD · VREF · EFD); single-value
+  // rows span all 4.
+  const span = (render: (h: HoseResult) => string, cls = '') =>
+    hoses.map((h) => `<td colspan="4" class="c ${cls}">${render(h)}</td>`).join('');
+
+  const checkClass = (val: string | undefined) =>
+    val === 'fail' ? 'fail' : val === 'pass' ? 'pass' : 'na';
+
+  const identityRow = (label: string, render: (h: HoseResult) => string, cls = '') =>
+    `<tr><td class="rl">${esc(label)}</td>${span(render, cls)}</tr>`;
+
+  const checklistRows = CHECKLIST_ITEMS.map((item) =>
+    `<tr><td class="rl">${esc(item.label)}</td>${hoses
+      .map((h) => {
+        const val = h.checklist[item.key];
+        return `<td colspan="4" class="c ${checkClass(val)}">${String(val ?? '').toUpperCase()}</td>`;
+      })
+      .join('')}</tr>`,
+  ).join('');
+
+  const deliveryRows = DELIVERY_ROWS.map((row) =>
+    `<tr><td class="rl">${esc(row.label)}</td>${hoses
+      .map((h) => {
+        const dv = h.deliveries.find((x) => x.point === row.point);
+        const efdCls = dv ? (dv.pass ? '' : 'oot') : '';
+        return (
+          `<td class="c">${num(dv?.flowRateLpm, 1)}</td>` +
+          `<td class="c">${num(dv?.vfdMl)}</td>` +
+          `<td class="c">${num(dv?.vrefMl)}</td>` +
+          `<td class="c ${efdCls}">${num(dv?.efdPercent, 2)}</td>`
+        );
+      })
+      .join('')}</tr>`,
+  ).join('');
+
+  const hoseHeader = hoses
+    .map((h) => `<td colspan="4" class="hh">Hose ${esc(h.hoseNumber)}</td>`)
     .join('');
-  return `
-    <table class="mtable results">
-      <thead><tr>
-        <th>Delivery</th><th>Flow<br/>(L/min)</th><th>VFD<br/>(mL)</th>
-        <th>VREF<br/>(mL)</th><th>EFD<br/>(%)</th><th>Result</th>
-      </tr></thead>
-      <tbody>${body}</tbody>
-    </table>`;
-}
+  const accuracyHeader = hoses
+    .map(() => `<td class="sub">Flow/Rate</td><td class="sub">VFD</td><td class="sub">VREF</td><td class="sub">EFD</td>`)
+    .join('');
 
-function metrologistHose(hose: HoseResult): string {
-  const tot = [
-    hose.totalizerBefore != null ? `Before: ${esc(hose.totalizerBefore)}` : '',
-    hose.totalizerAfter != null ? `After: ${esc(hose.totalizerAfter)}` : '',
-  ]
-    .filter(Boolean)
-    .join(' &nbsp; ');
   return `
-  <div class="mhose">
-    <div class="mhose-h">Hose/Pump ${esc(hose.hoseNumber)} — ${esc(hose.product)}
-      &nbsp;·&nbsp; ${esc(hose.status)} &nbsp;·&nbsp; ${esc(hose.testCondition)}</div>
-    <div class="mmeta">${tot || '&nbsp;'} &nbsp; Quantity delivered: ${esc(hose.quantityDelivered ?? '')}
-      &nbsp; Qmin/Qmax: ${esc(hose.qMinLpm ?? '')} / ${esc(hose.qMaxLpm ?? '')} L/min</div>
-    <div class="two-col">
-      <div>${checklistTable(hose)}</div>
-      <div>
-        ${deliveriesTable(hose)}
-        <p class="outcome ${hose.outcome === 'certified' ? 'pass' : 'fail'}">
-          Instrument ${hose.outcome === 'certified' ? 'CERTIFIED (C)' : 'REJECTED (R)'}</p>
-        ${hose.comments ? `<p class="cmt">${esc(hose.comments)}</p>` : ''}
-      </div>
-    </div>
-  </div>`;
+  <table class="mgrid">
+    <tr><td class="rl hh">&nbsp;</td>${hoseHeader}</tr>
+    ${identityRow('LFD Make & Model', () => cell(d.makeModel))}
+    ${identityRow('LFD Serial number', () => cell(d.serialNumber))}
+    ${identityRow('LFD Hose number', (h) => cell(h.hoseNumber))}
+    ${identityRow('Verification Status (New / Repaired / ATU / Rej)', (h) => cell(h.status))}
+    ${identityRow('Product', (h) => cell(h.product))}
+    ${identityRow('Totalizer reading before', (h) => cell(h.totalizerBefore))}
+    ${identityRow('Totalizer reading after', (h) => cell(h.totalizerAfter))}
+    ${identityRow('Quantity delivered', (h) => cell(h.quantityDelivered))}
+    ${identityRow('Environmental or test condition', (h) => esc(String(h.testCondition ?? '').toUpperCase()))}
+    ${checklistRows}
+    ${identityRow('Instrument certified ( C ) or rejected ( R )', (h) => (h.outcome === 'certified' ? 'C' : 'R'), 'bold')}
+    ${identityRow('Qmin / Qmax range on data plate', (h) => `${cell(h.qMinLpm)} / ${cell(h.qMaxLpm)} L/min`)}
+    <tr><td class="rl acc">Accuracy: EFD = (VFD − VREF) / VREF × 100</td>${accuracyHeader}</tr>
+    ${deliveryRows}
+  </table>`;
 }
 
 // ---------------------------------------------------------------------------
 
 export function certificateHtml(v: Verification, opts: RenderOptions = {}): string {
   const { site, dispenser, referenceMeasures, hoses, signOff } = v;
-  const m200 = measureCells(referenceMeasures, '200L');
-  const m20 = measureCells(referenceMeasures, '20L');
-  const m5 = measureCells(referenceMeasures, '5L');
-  const traceRow = (m?: ReferenceMeasure) =>
-    `${cell(m?.serialNumber)}`;
-  const traceCert = (m?: ReferenceMeasure) =>
-    `${cell(m?.certificateNumber)}`;
+  const m200 = measure(referenceMeasures, '200L');
+  const m20 = measure(referenceMeasures, '20L');
+  const m5 = measure(referenceMeasures, '5L');
 
   return `<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8" />
 <style>
-  @page { size: A4; margin: 9mm 8mm; }
-  body { font-family: Helvetica, Arial, sans-serif; font-size: 8pt; color: #000; }
+  @page { size: A4 landscape; margin: 6mm 7mm; }
+  body { font-family: Helvetica, Arial, sans-serif; font-size: 7pt; color: #000; }
   .page-break { page-break-before: always; }
 
   header { display: flex; justify-content: space-between; align-items: flex-start; }
-  header img.logo { height: 44px; }
-  header .reg { font-size: 6.5pt; color: #333; margin-top: 2px; }
-  header .mid { text-align: center; flex: 1; padding: 0 6px; }
+  header img.logo { height: 40px; }
+  header .reg { font-size: 6pt; color: #333; margin-top: 1px; }
+  header .mid { text-align: center; flex: 1; padding: 0 8px; }
   header .mid h1 { font-size: 15pt; font-weight: bold; letter-spacing: 1px; margin: 0; }
   header .mid .sub { font-size: 8.5pt; font-weight: bold; }
-  header .nrcs { text-align: right; font-size: 6.5pt; color: #333; min-width: 150px; }
-  header .nrcs .n { font-size: 12pt; font-weight: bold; color: #e35205; letter-spacing: 1px; }
-  header .nrcs .lm { color: #e35205; font-weight: bold; }
-  .addr { text-align: center; font-size: 7pt; margin: 2px 0 6px; }
+  header .mid .addr { font-size: 6.5pt; margin-top: 1px; }
+  header .rt { text-align: right; font-size: 6.5pt; color: #333; min-width: 190px; }
+  header .rt .n { font-size: 12pt; font-weight: bold; color: #e35205; letter-spacing: 1px; }
+  header .rt .lm { color: #e35205; font-weight: bold; }
+  header .rt .no { color: #cc0000; font-size: 13pt; font-weight: bold; }
 
-  .userline { display: flex; gap: 10px; margin: 6px 0; font-size: 8.5pt; }
+  .userline { display: flex; gap: 10px; margin: 5px 0; font-size: 8pt; }
   .userline .f { flex: 1; border-bottom: 1px solid #000; padding-bottom: 1px; }
   .userline .k { color: #333; }
 
-  .trace { background: #e9e9e9; border: 1px solid #bbb; padding: 5px 6px; margin-top: 4px; }
-  .trace .t { text-align: center; text-decoration: underline; font-weight: bold; font-size: 7.5pt; margin-bottom: 4px; }
-  table.tr3 { width: 100%; border-collapse: collapse; font-size: 7.5pt; }
+  .trace { background: #e9e9e9; border: 1px solid #bbb; padding: 4px 6px; margin-top: 3px; }
+  .trace .t { text-align: center; text-decoration: underline; font-weight: bold; font-size: 7pt; margin-bottom: 3px; }
+  table.tr3 { width: 100%; border-collapse: collapse; font-size: 7pt; }
   table.tr3 td { padding: 1px 4px; vertical-align: bottom; }
-  table.tr3 .lab { width: 32%; }
+  table.tr3 .lab { width: 30%; }
   table.tr3 .u { border-bottom: 1px solid #000; }
 
-  .method { font-size: 7.5pt; font-weight: bold; margin: 6px 0 2px; }
+  .method { font-size: 7pt; font-weight: bold; margin: 5px 0 2px; }
 
   table.grid, table.idgrid { width: 100%; border-collapse: collapse; }
-  table.grid td, table.idgrid td { border: 1px solid #000; padding: 2px 4px; font-size: 7.5pt; }
+  table.grid td, table.idgrid td { border: 1px solid #000; padding: 1px 4px; font-size: 7pt; }
   table.idgrid td.lbl, table.grid td.lbl { font-weight: bold; white-space: nowrap; background: #f4f4f4; }
-  table.grid td.v { text-align: left; }
-  td.rot { width: 16px; text-align: center; background: #f4f4f4; }
-  td.rot span { writing-mode: vertical-rl; transform: rotate(180deg); font-weight: bold; font-size: 7.5pt; }
+  td.rot { width: 14px; text-align: center; background: #f4f4f4; }
+  td.rot span { writing-mode: vertical-rl; transform: rotate(180deg); font-weight: bold; font-size: 7pt; }
 
-  .comply { font-size: 7pt; margin-top: 8px; }
+  .comply { font-size: 6.8pt; margin-top: 6px; }
 
-  table.sign { width: 100%; border-collapse: collapse; margin-top: 14px; }
+  table.sign { width: 100%; border-collapse: collapse; margin-top: 10px; }
   table.sign td { text-align: center; font-size: 8pt; padding: 0 4px; }
-  table.sign td.val { border-bottom: 1px solid #000; height: 34px; vertical-align: bottom; padding-bottom: 2px; }
-  table.sign td.lab { font-size: 6.8pt; color: #333; padding-top: 2px; }
-  .sig-img { height: 30px; }
-  .digital-note { font-size: 6.8pt; color: #666; }
-  .end { text-align: center; font-weight: bold; letter-spacing: 2px; margin: 10px 0; font-size: 8pt; }
-
-  footer { text-align: center; font-size: 6.8pt; color: #444; border-top: 1px solid #ccc;
-           padding-top: 3px; margin-top: 8px; }
-  .rev { position: fixed; right: 2mm; bottom: 40mm; writing-mode: vertical-rl; font-size: 6pt; color: #777; }
+  table.sign td.val { border-bottom: 1px solid #000; height: 30px; vertical-align: bottom; padding-bottom: 2px; }
+  table.sign td.lab { font-size: 6.5pt; color: #333; padding-top: 2px; }
+  .sig-img { height: 28px; }
+  .digital-note { font-size: 6.5pt; color: #666; }
+  .foot { text-align: center; font-size: 6.3pt; color: #666; margin-top: 6px; }
 
   /* Page 2 — Metrologist Note */
-  .mtitle { text-align: center; font-weight: bold; font-size: 11pt; margin-bottom: 2px; }
-  .msub { text-align: center; font-size: 8pt; margin-bottom: 6px; }
-  .mhose { border: 1px solid #999; border-radius: 3px; padding: 5px 7px; margin-top: 8px; }
-  .mhose-h { font-weight: bold; font-size: 8.5pt; }
-  .mmeta { font-size: 7pt; color: #333; margin: 2px 0 4px; }
-  .two-col { display: flex; gap: 10px; }
-  .two-col > div { flex: 1; }
-  table.mtable { width: 100%; border-collapse: collapse; }
-  table.mtable td, table.mtable th { border: 1px solid #999; padding: 2px 4px; font-size: 7pt; }
-  table.mtable td:first-child { text-align: left; }
-  table.mtable td { text-align: right; }
-  table.results th { background: #eef4ee; text-align: center; }
-  table.mtable td.dl { text-align: left; }
-  td.pass { color: #1a7a3a; font-weight: bold; text-align: center; }
-  td.fail, td.oot { color: #b00020; font-weight: bold; text-align: center; }
-  td.na { color: #777; text-align: center; }
-  .outcome { font-weight: bold; margin: 5px 0 0; }
-  .cmt { font-size: 7pt; color: #444; }
+  .mtitle { text-align: center; font-weight: bold; font-size: 11pt; }
+  .msub2 { text-align: center; font-size: 7.5pt; margin-bottom: 4px; }
+  table.mgrid { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  table.mgrid td { border: 1px solid #000; padding: 1px 3px; font-size: 6.8pt; text-align: center; }
+  table.mgrid td.rl { text-align: left; font-weight: 600; width: 190px; background: #f6f6f6; white-space: nowrap; }
+  table.mgrid td.rl.acc { font-weight: bold; }
+  table.mgrid td.hh { background: #eef4ee; font-weight: bold; }
+  table.mgrid td.sub { font-size: 6pt; background: #f4f4f4; }
+  table.mgrid td.bold { font-weight: bold; }
+  td.pass { color: #1a7a3a; font-weight: bold; }
+  td.fail, td.oot { color: #b00020; font-weight: bold; }
+  td.na { color: #777; }
+  .mcomments { border: 1px solid #000; border-top: none; padding: 3px 4px; font-size: 7pt; }
+  .msign { display: flex; gap: 24px; margin-top: 8px; font-size: 7.5pt; }
+  .msign .s { flex: 1; border-top: 1px solid #000; padding-top: 2px; text-align: center; }
+  footer { text-align: center; font-size: 6.5pt; color: #444; margin-top: 6px; }
 </style>
 </head>
 <body>
@@ -258,11 +250,12 @@ export function certificateHtml(v: Verification, opts: RenderOptions = {}): stri
     <div class="addr">2 Cedar Street, Lords View Industrial Park, Midrand 1619 SOUTH AFRICA ·
       Tel: (011) 617 6000 · Fax: (011) 617 6099</div>
   </div>
-  <div class="nrcs">
+  <div class="rt">
     ${opts.showAccreditationMark ? '<em>[Accreditation mark]</em><br/>' : ''}
-    <span class="n">NRCS</span><br/>national regulator for<br/>compulsory specifications<br/>
+    <span class="n">NRCS</span> national regulator for compulsory specifications<br/>
     <span class="lm">DESIGNATED VERIFICATION | LM01HV</span><br/>
-    Cert No.: ${esc(v.certificateNumber)}${v.nrcsBookNumber ? ` · ${esc(v.nrcsBookNumber)}` : ''}
+    ${v.nrcsBookNumber ? `<span class="no">${esc(v.nrcsBookNumber)}</span><br/>` : ''}
+    Cert No.: ${esc(v.certificateNumber)}
   </div>
 </header>
 
@@ -278,15 +271,15 @@ export function certificateHtml(v: Verification, opts: RenderOptions = {}): stri
   <table class="tr3">
     <tr>
       <td class="lab">S/N's of standard measures used (only own equipment is used):</td>
-      <td class="u">200L ${traceRow(m200)}</td>
-      <td class="u">20L ${traceRow(m20)}</td>
-      <td class="u">5L ${traceRow(m5)}</td>
+      <td class="u">200L ${cell(m200?.serialNumber)}</td>
+      <td class="u">20L ${cell(m20?.serialNumber)}</td>
+      <td class="u">5L ${cell(m5?.serialNumber)}</td>
     </tr>
     <tr>
       <td class="lab">Certificate No. of measures used (Only own equipment is used):</td>
-      <td class="u">200L ${traceCert(m200)} &nbsp; Cal. date ${cell(m200?.calibrationDate)}</td>
-      <td class="u">20L ${traceCert(m20)} &nbsp; Cal. date ${cell(m20?.calibrationDate)}</td>
-      <td class="u">5L ${traceCert(m5)} &nbsp; Cal. date ${cell(m5?.calibrationDate)}</td>
+      <td class="u">200L ${cell(m200?.certificateNumber)} &nbsp; Cal. date ${cell(m200?.calibrationDate)}</td>
+      <td class="u">20L ${cell(m20?.certificateNumber)} &nbsp; Cal. date ${cell(m20?.calibrationDate)}</td>
+      <td class="u">5L ${cell(m5?.certificateNumber)} &nbsp; Cal. date ${cell(m5?.calibrationDate)}</td>
     </tr>
     <tr>
       <td class="lab">&nbsp;</td>
@@ -320,9 +313,7 @@ ${certificateGrid(hoses)}
 
 <table class="sign">
   <tr>
-    <td class="val">
-      <div class="digital-note">${esc(signOff.vo.identity.name)}</div>
-    </td>
+    <td class="val"><div class="digital-note">${esc(signOff.vo.identity.name)}</div></td>
     <td class="val"><div class="digital-note">Digitally signed (see panel)</div></td>
     <td class="val">${cell(signOff.vo.pliersNumber)}</td>
     <td class="val">${cell(v.verificationDate)}</td>
@@ -351,17 +342,47 @@ ${certificateGrid(hoses)}
   </tr>
 </table>
 
-<div class="rev">Revision 13</div>
+<div class="foot">Prowalco (Pty) Ltd · 2 Cedar Street, Lords View Industrial Park, Midrand 1619 ·
+  Tel: (011) 617 6000 &nbsp;·&nbsp; Revision 13 · Hi-Tech Printers 011 493 4338</div>
 
 <!-- ================= PAGE 2 — METROLOGIST NOTE ================= -->
 <div class="page-break"></div>
-<div class="mtitle">REPORTING OF VERIFICATION / REPAIR RESULTS — STANDARD</div>
-<div class="msub">Liquid Fuel Dispensers &nbsp;·&nbsp; ${esc(site.customerName)} — ${esc(site.siteName)}
-  &nbsp;·&nbsp; Cert No.: ${esc(v.certificateNumber)}</div>
-${hoses.map(metrologistHose).join('')}
+<header>
+  <div>
+    <img class="logo" src="data:image/png;base64,${PROWALCO_LOGO_BASE64}" alt="Prowalco TATSUNO" />
+    <div class="reg">Reg. No. 2001/000701/07</div>
+  </div>
+  <div class="mid">
+    <div class="mtitle">REPORTING OF VERIFICATION / REPAIR RESULTS</div>
+    <div class="sub">(METROLOGIST NOTE) · LIQUID FUEL DISPENSERS — STANDARD</div>
+    <div class="addr">2 Cedar Street, Lords View Industrial Park, Midrand 1619 SOUTH AFRICA ·
+      Tel: (011) 617 6000 · Fax: (011) 617 6099</div>
+  </div>
+  <div class="rt">
+    <b>SANAS</b> Verification laboratory<br/>
+    Verification Cert. No.: ${esc(v.certificateNumber)}
+  </div>
+</header>
 
-<footer>Prowalco (Pty) Ltd · 2 Cedar Street, Lords View Industrial Park, Midrand 1619 ·
-  Tel: (011) 617 6000 &nbsp;—&nbsp; END OF CERTIFICATE</footer>
+<div class="userline">
+  <div class="f"><span class="k">Name (User):</span> ${cell(site.siteName)}</div>
+  <div class="f"><span class="k">Oil Company:</span> ${cell(site.customerName)}</div>
+  <div class="f"><span class="k">Address:</span> ${cell(site.address)}</div>
+  <div class="f"><span class="k">Job Ref. No.:</span> ${cell(v.jobReference)}</div>
+</div>
+
+${metrologistGrid(v)}
+
+<div class="mcomments"><b>Comments:</b> ${cell(hoses.map((h) => h.comments).filter(Boolean).join(' · '))}</div>
+
+<div class="msign">
+  <div class="s">${esc(signOff.vo.identity.name)}<br/>Initial &amp; Surname</div>
+  <div class="s">Digitally signed<br/>Signature</div>
+  <div class="s">${cell(signOff.vo.pliersNumber)}<br/>Pliers No.</div>
+  <div class="s">${cell(v.verificationDate)}<br/>Date</div>
+</div>
+
+<footer>Prowalco (Pty) Ltd · Revision 14 &nbsp;—&nbsp; END OF VERIFICATION CERTIFICATE</footer>
 </body>
 </html>`;
 }

@@ -2,12 +2,27 @@ import { useRouter } from 'expo-router';
 import React from 'react';
 import { Pressable, Text } from 'react-native';
 import { useAuth } from '../auth/AuthContext';
+import { getProfile } from '../profile/profileStore';
 
-/** Circular avatar (the user's initial) in the header — opens the profile. */
+/** Two-letter initials from a name. Handles "First Last" -> "FL", a single
+ * word -> its first two letters, and an email -> the local part's initials. */
+export function initialsOf(name: string): string {
+  const cleaned = (name ?? '').trim();
+  if (!cleaned) return '?';
+  const base = cleaned.includes('@') && !cleaned.includes(' ') ? cleaned.split('@')[0] : cleaned;
+  const words = base.split(/[\s._-]+/).filter(Boolean);
+  if (words.length >= 2) return (words[0][0] + words[words.length - 1][0]).toUpperCase();
+  return base.slice(0, 2).toUpperCase();
+}
+
+/** Circular avatar (the technician's initials) in the header — opens profile. */
 export function HeaderProfileButton() {
   const router = useRouter();
   const { identity } = useAuth();
-  const initial = (identity?.name || identity?.subject || '?').trim().charAt(0).toUpperCase();
+  // Prefer the profile display name (set from the sign-in details at setup),
+  // falling back to the raw sign-in name.
+  const profile = getProfile(identity?.subject ?? '');
+  const name = profile.displayName || identity?.name || identity?.subject || '';
 
   return (
     <Pressable
@@ -16,16 +31,16 @@ export function HeaderProfileButton() {
       accessibilityLabel="Open profile"
       hitSlop={8}
       style={{
-        width: 32,
-        height: 32,
-        borderRadius: 16,
+        width: 34,
+        height: 34,
+        borderRadius: 17,
         marginRight: 12,
         backgroundColor: '#ffffff',
         alignItems: 'center',
         justifyContent: 'center',
       }}
     >
-      <Text style={{ color: '#1a7a3a', fontWeight: '800', fontSize: 15 }}>{initial}</Text>
+      <Text style={{ color: '#1a7a3a', fontWeight: '800', fontSize: 13 }}>{initialsOf(name)}</Text>
     </Pressable>
   );
 }

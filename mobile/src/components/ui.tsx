@@ -123,7 +123,17 @@ export function NumberField<T extends FieldValues>({
   label,
   placeholder,
   optional,
-}: TextFieldProps<T>) {
+  big,
+  inputRef,
+  returnKeyType,
+  onSubmitEditing,
+}: TextFieldProps<T> & {
+  /** Glove-friendly sizing for high-frequency entry (results test points). */
+  big?: boolean;
+  inputRef?: React.Ref<TextInput>;
+  returnKeyType?: 'next' | 'done';
+  onSubmitEditing?: () => void;
+}) {
   return (
     <Controller
       control={control}
@@ -136,7 +146,8 @@ export function NumberField<T extends FieldValues>({
         return (
           <FieldRow label={label} optional={optional} error={error}>
             <TextInput
-              style={[styles.input, error != null && styles.inputError]}
+              ref={inputRef}
+              style={[styles.input, big && styles.inputBig, error != null && styles.inputError]}
               value={field.value == null || Number.isNaN(field.value) ? '' : String(field.value)}
               keyboardType="decimal-pad"
               onChangeText={(text) => {
@@ -145,6 +156,9 @@ export function NumberField<T extends FieldValues>({
               }}
               onBlur={field.onBlur}
               placeholder={placeholder}
+              returnKeyType={returnKeyType}
+              onSubmitEditing={onSubmitEditing}
+              blurOnSubmit={returnKeyType !== 'done' ? false : undefined}
             />
           </FieldRow>
         );
@@ -289,11 +303,19 @@ export function Button({
   );
 }
 
-export function Badge({ text, tone }: { text: string; tone: 'ok' | 'warn' | 'bad' | 'muted' }) {
+export function Badge({
+  text,
+  tone,
+  filled,
+}: {
+  text: string;
+  tone: 'ok' | 'warn' | 'bad' | 'muted';
+  filled?: boolean;
+}) {
   const map = { ok: colors.green, warn: colors.amber, bad: colors.red, muted: colors.muted };
   return (
-    <View style={[styles.badge, { borderColor: map[tone] }]}>
-      <Text style={{ color: map[tone], fontSize: 12, fontWeight: '700' }}>{text}</Text>
+    <View style={[styles.badge, { borderColor: map[tone] }, filled && { backgroundColor: map[tone] }]}>
+      <Text style={{ color: filled ? '#fff' : map[tone], fontSize: 12, fontWeight: '700' }}>{text}</Text>
     </View>
   );
 }
@@ -326,6 +348,7 @@ export const styles = StyleSheet.create({
     backgroundColor: '#fff',
   },
   inputDisabled: { backgroundColor: '#eef1ee', color: colors.muted },
+  inputBig: { fontSize: 18, paddingVertical: 12, minHeight: 46 },
   multiline: { minHeight: 70, textAlignVertical: 'top' },
   chipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   chip: {

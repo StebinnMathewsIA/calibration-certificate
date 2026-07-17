@@ -1,16 +1,19 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Pressable, ScrollView, Text, View } from 'react-native';
+import { Alert, Image, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Control, useFieldArray, useForm, useWatch } from 'react-hook-form';
 import type { CalibrationForm } from '@prowalco/schema';
 import {
   DEFAULT_TOLERANCE_CLASS_ID,
+  TOLERANCE_CLASSES,
   UNCERTAINTY_STATEMENT,
   calibrationFormSchema,
   computeRow,
 } from '@prowalco/schema';
+import { CameraCaptureModal } from '../../../src/components/CameraCapture';
 import {
+  Badge,
   Button,
   ChoiceField,
   DateField,
@@ -21,6 +24,7 @@ import {
   colors,
   styles,
 } from '../../../src/components/ui';
+import { deletePhoto, persistPhoto, photoUriForId, type PhotoRef } from '../../../src/lib/photos';
 import { EQUIPMENT_REGISTER, PROCEDURES, SIGNATORIES } from '../../../src/data/registers';
 import * as repo from '../../../src/db/certificateRepo';
 
@@ -109,6 +113,26 @@ const EMPTY_ROW = {
   toleranceClassId: DEFAULT_TOLERANCE_CLASS_ID,
 };
 
+/** How much of the MPE band a reading uses, as a colour-graded bar. */
+function ToleranceBar({ errorPercent, toleranceClassId }: { errorPercent: number; toleranceClassId: string }) {
+  const mpe = TOLERANCE_CLASSES[toleranceClassId]?.mpePercent;
+  if (!mpe) return null;
+  const usage = Math.abs(errorPercent) / mpe;
+  const color = usage >= 1 ? colors.red : usage >= 0.75 ? colors.amber : colors.green;
+  return (
+    <View style={{ marginBottom: 8 }}>
+      <View style={{ height: 6, borderRadius: 3, backgroundColor: colors.line, overflow: 'hidden' }}>
+        <View style={{ width: `${Math.min(usage, 1) * 100}%`, height: 6, backgroundColor: color }} />
+      </View>
+      <Text style={{ color: colors.muted, fontSize: 11, marginTop: 2 }}>
+        {Math.round(usage * 100)}% of ±{mpe.toFixed(2)} % tolerance used
+      </Text>
+    </View>
+  );
+}
+
+const ROW_FIELD_ORDER = ['nominalDeliveryL', 'flowRateLpm', 'indicatedVolumeL', 'measuredVolumeL'] as const;
+
 function ResultRows({
   control,
   name,
@@ -118,37 +142,107 @@ function ResultRows({
   name: 'results.asFound' | 'results.asLeft';
   title: string;
 }) {
-  const { fields, append, remove } = useFieldArray({ control, name });
+  const { fields, append, remove, replace } = useFieldArray({ control, name });
   const rows = useWatch({ control, name }) as (typeof EMPTY_ROW)[] | undefined;
+  const inputs = useRef<Record<string, TextInput | null>>({});
+
+  const focusNext = (i: number, field: (typeof ROW_FIELD_ORDER)[number]) => {
+    const at = ROW_FIELD_ORDER.indexOf(field);
+    const nextKey =
+      at < ROW_FIELD_ORDER.length - 1 ? `${i}.${ROW_FIELD_ORDER[at + 1]}` : `${i + 1}.${ROW_FIELD_ORDER[0]}`;
+    inputs.current[nextKey]?.focus();
+  };
+
+  // Copy set-up values (nominal + flow) into a fresh point — never readings:
+  // duplicated measurement data on a certificate is fabricated data.
+  const duplicateLast = () => {
+    const last = rows?.[rows.length - 1];
+    append({
+      ...EMPTY_ROW,
+      nominalDeliveryL: last?.nominalDeliveryL ?? EMPTY_ROW.nominalDeliveryL,
+      flowRateLpm: (last?.flowRateLpm ?? undefined) as never,
+    });
+  };
+
+  const first = rows?.[0];
+  const untouchedSingleRow =
+    fields.length === 1 &&
+    !(first && first.flowRateLpm > 0) &&
+    !(first && first.indicatedVolumeL > 0) &&
+    !(first && first.measuredVolumeL > 0);
+
   return (
     <SectionCard title={title}>
+      {untouchedSingleRow ? (
+        <Button
+          title="Set up standard 3-point run"
+          kind="secondary"
+          onPress={() => replace([{ ...EMPTY_ROW }, { ...EMPTY_ROW }, { ...EMPTY_ROW }])}
+        />
+      ) : null}
       {fields.map((f, i) => {
         const row = rows?.[i];
         const computed =
           row && row.indicatedVolumeL > 0 && row.measuredVolumeL > 0
             ? computeRow(row.indicatedVolumeL, row.measuredVolumeL, row.toleranceClassId)
             : null;
+        const isLast = i === fields.length - 1;
         return (
           <View key={f.id} style={{ borderTopWidth: i ? 1 : 0, borderColor: colors.line, paddingTop: i ? 10 : 0 }}>
-            <Text style={{ fontWeight: '600', color: colors.ink, marginBottom: 4 }}>
-              Test point {i + 1}
-            </Text>
-            <NumberField control={control} name={`${name}.${i}.nominalDeliveryL` as never} label="Nominal delivery (L)" />
-            <NumberField control={control} name={`${name}.${i}.flowRateLpm` as never} label="Flow rate (L/min)" />
-            <NumberField control={control} name={`${name}.${i}.indicatedVolumeL` as never} label="Indicated volume (L)" />
-            <NumberField control={control} name={`${name}.${i}.measuredVolumeL` as never} label="Measured volume (L)" />
-            <Text style={{ color: computed && !computed.pass ? colors.red : colors.muted, marginBottom: 6 }}>
-              {computed
-                ? `Error: ${computed.errorMl.toFixed(1)} mL (${computed.errorPercent.toFixed(3)} %) — ${computed.pass ? 'PASS' : 'OUT OF TOLERANCE'}`
-                : 'Enter indicated + measured volumes to compute the error'}
-            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4, gap: 8 }}>
+              <Text style={{ fontWeight: '600', color: colors.ink, flex: 1 }}>Test point {i + 1}</Text>
+              {computed ? (
+                <Badge filled text={computed.pass ? 'PASS' : 'FAIL'} tone={computed.pass ? 'ok' : 'bad'} />
+              ) : null}
+            </View>
+            {ROW_FIELD_ORDER.map((fieldName, fi) => (
+              <NumberField
+                key={fieldName}
+                control={control}
+                name={`${name}.${i}.${fieldName}` as never}
+                label={
+                  fieldName === 'nominalDeliveryL'
+                    ? 'Nominal delivery (L)'
+                    : fieldName === 'flowRateLpm'
+                      ? 'Flow rate (L/min)'
+                      : fieldName === 'indicatedVolumeL'
+                        ? 'Indicated volume (L)'
+                        : 'Measured volume (L)'
+                }
+                big
+                inputRef={(r: TextInput | null) => {
+                  inputs.current[`${i}.${fieldName}`] = r;
+                }}
+                returnKeyType={isLast && fi === ROW_FIELD_ORDER.length - 1 ? 'done' : 'next'}
+                onSubmitEditing={() => focusNext(i, fieldName)}
+              />
+            ))}
+            {computed ? (
+              <>
+                <Text style={{ color: colors.ink, marginBottom: 4 }}>
+                  Error: {computed.errorMl.toFixed(1)} mL ({computed.errorPercent.toFixed(3)} %)
+                </Text>
+                <ToleranceBar errorPercent={computed.errorPercent} toleranceClassId={row!.toleranceClassId} />
+              </>
+            ) : (
+              <Text style={{ color: colors.muted, marginBottom: 6 }}>
+                Enter indicated + measured volumes to compute the error
+              </Text>
+            )}
             {fields.length > 1 && (
               <Button title="Remove point" kind="danger" onPress={() => remove(i)} />
             )}
           </View>
         );
       })}
-      <Button title="Add test point" kind="secondary" onPress={() => append({ ...EMPTY_ROW })} />
+      <View style={{ flexDirection: 'row', gap: 8 }}>
+        <View style={{ flex: 1 }}>
+          <Button title="Add test point" kind="secondary" onPress={() => append({ ...EMPTY_ROW })} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Button title="Duplicate last set-up" kind="secondary" onPress={duplicateLast} />
+        </View>
+      </View>
     </SectionCard>
   );
 }
@@ -216,6 +310,33 @@ export default function EditScreen() {
 
   const standards = useWatch({ control, name: 'referenceStandards' }) ?? [];
   const adjustment = useWatch({ control, name: 'results.adjustmentPerformed' });
+  const photos = (useWatch({ control, name: 'results.photos' }) ?? []) as PhotoRef[];
+  const [scanOpen, setScanOpen] = useState(false);
+  const [photoKind, setPhotoKind] = useState<PhotoRef['kind'] | null>(null);
+
+  const onPhotoCaptured = async (tempUri: string) => {
+    const kind = photoKind ?? 'other';
+    setPhotoKind(null);
+    try {
+      const ref = await persistPhoto(tempUri, kind);
+      setValue('results.photos', [...(getValues('results.photos') ?? []), ref], {
+        shouldDirty: true,
+      });
+    } catch (err) {
+      Alert.alert('Photo could not be saved', err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const removePhoto = (index: number) => {
+    const list = getValues('results.photos') ?? [];
+    const removed = list[index];
+    setValue(
+      'results.photos',
+      list.filter((_, i) => i !== index),
+      { shouldDirty: true },
+    );
+    if (removed) void deletePhoto(removed.id);
+  };
 
   if (!record) return <Text>Not found</Text>;
 
@@ -282,7 +403,25 @@ export default function EditScreen() {
         />
         <TextField control={control} name="uut.manufacturer" label="Manufacturer" />
         <TextField control={control} name="uut.modelNumber" label="Model number" />
-        <TextField control={control} name="uut.serialNumber" label="Serial number (or scan barcode)" />
+        <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
+          <View style={{ flex: 1 }}>
+            <TextField control={control} name="uut.serialNumber" label="Serial number" />
+          </View>
+          <Pressable
+            onPress={() => setScanOpen(true)}
+            style={{
+              marginTop: 18,
+              minHeight: 38,
+              justifyContent: 'center',
+              borderWidth: 1,
+              borderColor: colors.green,
+              borderRadius: 6,
+              paddingHorizontal: 12,
+            }}
+          >
+            <Text style={{ color: colors.green, fontWeight: '600' }}>Scan</Text>
+          </Pressable>
+        </View>
         <TextField control={control} name="uut.nozzleId" label="Pump / hose / nozzle ID" optional />
         <ChoiceField
           control={control}
@@ -350,6 +489,36 @@ export default function EditScreen() {
       {adjustment ? (
         <ResultRows control={control} name="results.asLeft" title="5b — Results (as left)" />
       ) : null}
+      <SectionCard title="Photos">
+        <Text style={{ color: colors.muted, marginBottom: 6, fontSize: 13 }}>
+          Photograph the seal, totaliser and display. Each photo is fingerprinted (SHA-256) into
+          the audit trail.
+        </Text>
+        <View style={styles.chipsRow}>
+          {(['seal', 'totaliser', 'display', 'other'] as const).map((k) => (
+            <Pressable key={k} onPress={() => setPhotoKind(k)} style={styles.chip}>
+              <Text style={styles.chipText}>📷 {k[0].toUpperCase() + k.slice(1)}</Text>
+            </Pressable>
+          ))}
+        </View>
+        {photos.length ? (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 10 }}>
+            {photos.map((p, i) => (
+              <View key={p.id} style={{ marginRight: 10, alignItems: 'center' }}>
+                <Image
+                  source={{ uri: photoUriForId(p.id) }}
+                  style={{ width: 84, height: 84, borderRadius: 6, backgroundColor: colors.line }}
+                />
+                <Text style={{ color: colors.muted, fontSize: 11, marginTop: 2 }}>{p.kind}</Text>
+                <Pressable onPress={() => removePhoto(i)} hitSlop={8}>
+                  <Text style={{ color: colors.red, fontSize: 12 }}>Remove</Text>
+                </Pressable>
+              </View>
+            ))}
+          </ScrollView>
+        ) : null}
+      </SectionCard>
+
       <SectionCard title="Remarks & seals">
         <TextField control={control} name="results.remarks" label="Remarks / notes" multiline optional />
         <TextField
@@ -395,6 +564,24 @@ export default function EditScreen() {
         />
       </View>
       </ScrollView>
+
+      <CameraCaptureModal
+        mode="barcode"
+        visible={scanOpen}
+        title="Scan the serial number barcode / QR"
+        onClose={() => setScanOpen(false)}
+        onBarcode={(data) => {
+          setScanOpen(false);
+          setValue('uut.serialNumber', data, { shouldDirty: true, shouldTouch: true });
+        }}
+      />
+      <CameraCaptureModal
+        mode="photo"
+        visible={photoKind != null}
+        title={`Photograph: ${photoKind ?? ''}`}
+        onClose={() => setPhotoKind(null)}
+        onPhoto={onPhotoCaptured}
+      />
     </View>
   );
 }

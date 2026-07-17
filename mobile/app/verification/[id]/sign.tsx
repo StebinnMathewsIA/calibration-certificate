@@ -1,6 +1,6 @@
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useCallback, useMemo, useState } from 'react';
-import { Alert, Switch, Text, TextInput, View } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Alert, Switch, Text, TextInput, View } from 'react-native';
 import { WebView } from 'react-native-webview';
 import type { AnalysisResponse, Verification } from '@prowalco/schema';
 import { MPE_PERCENT, analysisResponseSchema, validateReadyToSign } from '@prowalco/schema';
@@ -122,8 +122,11 @@ export default function SignScreen() {
       )
     : null;
 
-  const runAnalysis = async () => {
+  const [autoNote, setAutoNote] = useState<string | null>(null);
+
+  const runAnalysis = async (auto = false) => {
     setAnalyzing(true);
+    setAutoNote(null);
     try {
       // The advisory review only judges the measurement data. Fill the sign-off
       // with valid placeholders so an unfinished signature/declaration never
@@ -144,19 +147,39 @@ export default function SignScreen() {
       repo.saveAnalysis(id, JSON.stringify(response));
     } catch (err) {
       const incomplete = err instanceof ApiError && err.status === 422;
-      Alert.alert(
-        incomplete ? 'Results incomplete' : 'Analysis unavailable',
-        incomplete
-          ? 'Go back and complete every delivery reading and checklist item, then run the review.'
-          : 'The Claude review could not run (offline or server issue). You can still sign — the review is advisory.\n\n' +
-              (err instanceof Error ? err.message : String(err)),
-      );
+      if (auto) {
+        // The auto-run must never interrupt the signing flow with a dialog —
+        // the review is advisory. Degrade to an inline note.
+        setAutoNote(
+          incomplete
+            ? 'The automatic review needs complete results — go back and fill every delivery and checklist item.'
+            : 'The automatic review could not run (offline or server issue) — you can still sign, or try again.',
+        );
+      } else {
+        Alert.alert(
+          incomplete ? 'Results incomplete' : 'Analysis unavailable',
+          incomplete
+            ? 'Go back and complete every delivery reading and checklist item, then run the review.'
+            : 'The Claude review could not run (offline or server issue). You can still sign — the review is advisory.\n\n' +
+                (err instanceof Error ? err.message : String(err)),
+        );
+      }
     } finally {
       setAnalyzing(false);
     }
   };
 
-  const sign = async () => {
+  // Run the review unprompted the first time this screen opens — an optional
+  // button gets skipped; feedback that just appears gets read.
+  const autoRan = useRef(false);
+  useEffect(() => {
+    if (autoRan.current || analysis || analyzing) return;
+    autoRan.current = true;
+    void runAnalysis(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const doSign = async () => {
     const verification = buildVerification();
     if (!signatureSvg) {
       Alert.alert('Client signature required', 'Ask the client to sign on the pad before you sign.');
@@ -175,6 +198,25 @@ export default function SignScreen() {
     } finally {
       setSigning(false);
     }
+  };
+
+  const sign = () => {
+    // Gentle friction, never a block: the verdict is advisory and the VO
+    // remains responsible (quality procedure).
+    const verdict = analysis?.result.verdict;
+    if (verdict === 'fail' || verdict === 'data_anomaly') {
+      const top = analysis?.result.concerns[0] ?? analysis?.result.summary ?? '';
+      Alert.alert(
+        `Claude review verdict: ${verdict.replace('_', ' ')}`,
+        `${top}\n\nThe review is advisory — you remain responsible as the Verifying Officer. Sign anyway?`,
+        [
+          { text: 'Not yet', style: 'cancel' },
+          { text: 'Sign anyway', style: 'destructive', onPress: () => void doSign() },
+        ],
+      );
+      return;
+    }
+    void doSign();
   };
 
   return (
@@ -222,17 +264,43 @@ export default function SignScreen() {
       </SectionCard>
 
       <SectionCard title="Claude review (advisory)">
-        {analysis ? (
+        {analyzing && !analysis ? (
+          <View style={{ paddingVertical: 12, alignItems: 'center' }}>
+            <ActivityIndicator color={colors.green} />
+            <Text style={{ color: colors.muted, fontSize: 13, marginTop: 8 }}>
+              Reviewing the results…
+            </Text>
+          </View>
+        ) : analysis ? (
           <View>
-            <Badge text={analysis.result.verdict.toUpperCase().replace('_', ' ')} tone={VERDICT_TONE[analysis.result.verdict]} />
+            <Badge
+              filled
+              text={analysis.result.verdict.toUpperCase().replace('_', ' ')}
+              tone={VERDICT_TONE[analysis.result.verdict]}
+            />
             <Text style={{ marginTop: 8, color: colors.ink }}>{analysis.result.summary}</Text>
             {analysis.result.concerns.map((c, i) => (
               <Text key={i} style={{ color: colors.amber, marginTop: 4, fontSize: 13 }}>⚠ {c}</Text>
             ))}
-            <Button title="Re-run review" onPress={runAnalysis} busy={analyzing} kind="secondary" />
+            {analysis.result.concerns.length > 0 ? (
+              <Text
+                style={{ color: colors.blue, fontSize: 13, fontWeight: '600', marginTop: 6 }}
+                onPress={() =>
+                  router.push({ pathname: '/verification/[id]/results', params: { id } })
+                }
+              >
+                Back to results →
+              </Text>
+            ) : null}
+            <Button title="Re-run review" onPress={() => runAnalysis()} busy={analyzing} kind="secondary" />
           </View>
         ) : (
-          <Button title="Run review" onPress={runAnalysis} busy={analyzing} kind="secondary" />
+          <View>
+            {autoNote ? (
+              <Text style={{ color: colors.muted, fontSize: 13, marginBottom: 6 }}>{autoNote}</Text>
+            ) : null}
+            <Button title="Run review" onPress={() => runAnalysis()} busy={analyzing} kind="secondary" />
+          </View>
         )}
       </SectionCard>
 

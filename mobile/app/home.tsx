@@ -76,12 +76,24 @@ export default function HomeScreen() {
     if (!identity) return;
     setCreating(true);
     try {
-      // Certificate numbers are allocated server-side per branch. Offline
-      // pre-allocation of number blocks is a post-PoC item.
-      const certificateNumber = await reserveCertificateNumber(accessToken, config.branchCode);
+      // Certificate numbers are allocated server-side per branch; offline the
+      // draft starts numberless and the number backfills on reconnect
+      // (backfillCertificateNumbers rides the queue-drain triggers).
+      let certificateNumber: string | null = null;
+      try {
+        certificateNumber = await reserveCertificateNumber(accessToken, config.branchCode);
+      } catch {
+        Alert.alert(
+          'Working offline',
+          'A certificate number will be assigned automatically when the device is back online. You can complete the whole form now.',
+        );
+      }
       const id = repo.createDraft(certificateNumber, {
         schemaVersion: 1,
-        job: { certificateNumber, calibrationDate: new Date().toISOString().slice(0, 10) } as never,
+        job: {
+          ...(certificateNumber ? { certificateNumber } : {}),
+          calibrationDate: new Date().toISOString().slice(0, 10),
+        } as never,
         signOff: {
           calibratedBy: identity,
           technicalSignatory: { id: '', name: '' },
@@ -89,12 +101,6 @@ export default function HomeScreen() {
         } as never,
       });
       router.push({ pathname: '/certificate/[id]/edit', params: { id } });
-    } catch (err) {
-      Alert.alert(
-        'Cannot start a calibration',
-        'A certificate number could not be reserved. Check connectivity and try again.\n\n' +
-          (err instanceof Error ? err.message : String(err)),
-      );
     } finally {
       setCreating(false);
     }
@@ -185,7 +191,7 @@ export default function HomeScreen() {
                     {form.job?.customerName ?? 'New calibration'}
                   </Text>
                   <Text style={{ color: colors.muted, fontSize: 12 }}>
-                    {item.certificateNumber ?? '(no number)'}
+                    {item.certificateNumber ?? 'Number pending — assigns when online'}
                     {form.uut?.serialNumber ? ` · S/N ${form.uut.serialNumber}` : ''}
                   </Text>
                   <Text style={{ color: colors.muted, fontSize: 12 }}>

@@ -113,6 +113,27 @@ export function recordRetryFailure(id: string, error: string): void {
   );
 }
 
+/** Drafts started offline before a certificate number could be reserved. */
+export function listMissingNumber(): CertificateRecord[] {
+  return db
+    .getAllSync<Row>(
+      `SELECT * FROM certificates WHERE certificate_number IS NULL AND state = 'DRAFT' ORDER BY created_at`,
+    )
+    .map(fromRow);
+}
+
+/** Backfill a reserved number into the record AND the form payload. No-op if
+ * the record already has a number (numbers are immutable once assigned). */
+export function assignCertificateNumber(id: string, certificateNumber: string): void {
+  const rec = getById(id);
+  if (!rec || rec.certificateNumber) return;
+  const form = { ...rec.form, job: { ...(rec.form.job ?? {}), certificateNumber } };
+  db.runSync(
+    `UPDATE certificates SET certificate_number = ?, form_json = ?, updated_at = ? WHERE id = ?`,
+    [certificateNumber, JSON.stringify(form), now(), id],
+  );
+}
+
 /** Manual "Sync now" / "Retry": drop the backoff gate so the next queue
  * drain attempts this item immediately (idempotency key keeps it safe). */
 export function clearRetryBackoff(id: string): void {

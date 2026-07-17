@@ -387,7 +387,13 @@ export default function EditScreen() {
       <ScrollView ref={scrollRef} contentContainerStyle={{ paddingBottom: 40 }}>
       <View {...anchorProps('job')}>
       <SectionCard title="1 — Job & customer">
-        <TextField control={control} name="job.certificateNumber" label="Certificate number" editable={false} />
+        <TextField
+          control={control}
+          name="job.certificateNumber"
+          label="Certificate number"
+          editable={false}
+          placeholder="Pending — assigns when online"
+        />
         <TextField control={control} name="job.workOrderNumber" label="Work order / job number" optional />
         <TextField control={control} name="job.customerName" label="Customer / site name" />
         <TextField control={control} name="job.siteAddress" label="Site address" multiline />

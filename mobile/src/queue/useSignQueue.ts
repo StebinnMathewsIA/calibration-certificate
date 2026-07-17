@@ -2,7 +2,7 @@ import NetInfo from '@react-native-community/netinfo';
 import { useEffect, useRef } from 'react';
 import { AppState } from 'react-native';
 import { useAuth } from '../auth/AuthContext';
-import { processQueue } from './signQueue';
+import { backfillCertificateNumbers, processQueue } from './signQueue';
 
 /**
  * Drains the sign queue on launch, on app foreground, on reconnect, and on a
@@ -17,6 +17,7 @@ export function useSignQueue(): void {
       if (running.current) return;
       running.current = true;
       try {
+        await backfillCertificateNumbers(accessToken);
         await processQueue(accessToken);
       } finally {
         running.current = false;

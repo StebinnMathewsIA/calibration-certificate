@@ -6,7 +6,7 @@ import type { AnalysisResponse, Verification } from '@prowalco/schema';
 import { MPE_PERCENT, analysisResponseSchema, validateReadyToSign } from '@prowalco/schema';
 import { ApiError, analyzeVerification } from '../../../src/api/client';
 import { useAuth } from '../../../src/auth/AuthContext';
-import { Badge, Button, SectionCard, colors } from '../../../src/components/ui';
+import { Badge, Button, DateInput, SectionCard, colors } from '../../../src/components/ui';
 import { FormScrollView } from '../../../src/components/FormScrollView';
 import { readCache } from '../../../src/db/cache';
 import * as repo from '../../../src/db/certificateRepo';
@@ -253,14 +253,59 @@ export default function SignScreen() {
       <SectionCard title="Sign-off details">
         <Text style={{ fontSize: 12, color: colors.muted }}>VO Pliers No.</Text>
         <TextInput style={inputStyle} value={pliers} onChangeText={setPliers} />
-        <Text style={{ fontSize: 12, color: colors.muted }}>Expiry date of certificate (YYYY-MM-DD)</Text>
-        <TextInput style={inputStyle} value={expiry} onChangeText={setExpiry} />
+        <Text style={{ fontSize: 12, color: colors.muted, marginBottom: 3 }}>
+          Expiry date of certificate
+        </Text>
+        <View style={{ marginBottom: 8 }}>
+          <DateInput value={expiry} onChange={setExpiry} />
+        </View>
         {anyRejected ? (
           <>
             <Text style={{ fontSize: 12, color: colors.muted }}>Rejection Cert. No. (a hose was rejected)</Text>
             <TextInput style={inputStyle} value={rejectionCert} onChangeText={setRejectionCert} />
           </>
         ) : null}
+      </SectionCard>
+
+      <SectionCard title="Reference proving measures">
+        <Text style={{ color: colors.muted, fontSize: 12, marginBottom: 4 }}>
+          Attached to this verification; an expired measure blocks signing.
+        </Text>
+        {(initial.referenceMeasures ?? []).map((m) => {
+          const today = new Date().toISOString().slice(0, 10);
+          const soon = new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+          const expired = m.expiryDate < today;
+          const dueSoon = !expired && m.expiryDate <= soon;
+          return (
+            <View
+              key={`${m.size}-${m.serialNumber}`}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 8,
+                borderTopWidth: 1,
+                borderColor: colors.line,
+                paddingVertical: 6,
+              }}
+            >
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: colors.ink, fontWeight: '600', fontSize: 13 }}>
+                  {m.size} proving measure · {m.serialNumber}
+                </Text>
+                <Text style={{ color: colors.muted, fontSize: 12 }}>
+                  cert {m.certificateNumber} · expires {m.expiryDate}
+                </Text>
+              </View>
+              {expired ? (
+                <Badge filled text="EXPIRED" tone="bad" />
+              ) : dueSoon ? (
+                <Badge text="DUE SOON" tone="warn" />
+              ) : (
+                <Badge text="IN DATE" tone="ok" />
+              )}
+            </View>
+          );
+        })}
       </SectionCard>
 
       <SectionCard title="Claude review (advisory)">

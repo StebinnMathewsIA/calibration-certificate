@@ -10,6 +10,7 @@ import {
   upsertSite,
 } from '../../../src/api/client';
 import { useAuth } from '../../../src/auth/AuthContext';
+import { BarcodeScannerModal } from '../../../src/components/BarcodeScanner';
 import { Button, SectionCard, colors } from '../../../src/components/ui';
 import { FormScrollView } from '../../../src/components/FormScrollView';
 
@@ -57,6 +58,7 @@ export default function DispenserIdentityScreen() {
   const [disp, setDisp] = useState<Partial<DispenserResolved>>({});
   const [busy, setBusy] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const [scanning, setScanning] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -130,13 +132,28 @@ export default function DispenserIdentityScreen() {
       <SectionCard title="Dispenser (LFD) identity">
         <Field label="Make" value={disp.make ?? ''} onChangeText={(t) => setDisp((p) => ({ ...p, make: t }))} />
         <Field label="Model" value={disp.model ?? ''} onChangeText={(t) => setDisp((p) => ({ ...p, model: t }))} />
-        <Field label="Serial number" value={disp.serialNumber ?? ''} onChangeText={(t) => setDisp((p) => ({ ...p, serialNumber: t }))} />
+        <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8 }}>
+          <View style={{ flex: 1 }}>
+            <Field label="Serial number" value={disp.serialNumber ?? ''} onChangeText={(t) => setDisp((p) => ({ ...p, serialNumber: t }))} />
+          </View>
+          <Button title="Scan" kind="secondary" onPress={() => setScanning(true)} />
+        </View>
         <Field label="SA approval number" value={disp.saApprovalNumber ?? ''} onChangeText={(t) => setDisp((p) => ({ ...p, saApprovalNumber: t }))} />
       </SectionCard>
 
       <View style={{ marginHorizontal: 12 }}>
         <Button title="Save & continue to components" onPress={saveAndContinue} busy={busy} />
       </View>
+
+      <BarcodeScannerModal
+        visible={scanning}
+        title="Scan the dispenser serial number"
+        onClose={() => setScanning(false)}
+        onScanned={(data) => {
+          setScanning(false);
+          setDisp((p) => ({ ...p, serialNumber: data }));
+        }}
+      />
     </FormScrollView>
   );
 }

@@ -1,3 +1,4 @@
+import DateTimePicker from '@react-native-community/datetimepicker';
 import React from 'react';
 import {
   ActivityIndicator,
@@ -16,7 +17,9 @@ export const colors = {
   red: '#b00020',
   amber: '#a06000',
   ink: '#16211c',
-  muted: '#5b6b62',
+  // Dark enough for WCAG AA (~7:1) on the app background — VOs read this
+  // outdoors in direct sunlight.
+  muted: '#46534b',
   line: '#d6ded9',
   bg: '#f5f7f5',
   card: '#ffffff',
@@ -153,6 +156,45 @@ export function SwitchField<T extends FieldValues>({ control, name, label }: Tex
   );
 }
 
+/** Native date picker presented as an input row. Value is a YYYY-MM-DD
+ * string; days never shift across timezones (local-midnight parsing). */
+export function DateInput({
+  value,
+  onChange,
+  placeholder = 'Select date',
+}: {
+  value: string;
+  onChange: (isoDate: string) => void;
+  placeholder?: string;
+}) {
+  const [show, setShow] = React.useState(false);
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(value) ? new Date(`${value}T00:00:00`) : new Date();
+  return (
+    <View>
+      <Pressable onPress={() => setShow(true)} style={styles.input}>
+        <Text style={{ fontSize: 14, color: value ? colors.ink : colors.muted }}>
+          {value || placeholder}
+        </Text>
+      </Pressable>
+      {show ? (
+        <DateTimePicker
+          value={date}
+          mode="date"
+          onChange={(event, selected) => {
+            setShow(false);
+            if (event.type === 'set' && selected) {
+              const y = selected.getFullYear();
+              const m = String(selected.getMonth() + 1).padStart(2, '0');
+              const d = String(selected.getDate()).padStart(2, '0');
+              onChange(`${y}-${m}-${d}`);
+            }
+          }}
+        />
+      ) : null}
+    </View>
+  );
+}
+
 export function Button({
   title,
   onPress,
@@ -242,6 +284,8 @@ export const styles = StyleSheet.create({
   button: {
     borderRadius: 8,
     paddingVertical: 12,
+    minHeight: 44,
+    justifyContent: 'center',
     alignItems: 'center',
     marginTop: 8,
     borderWidth: 1,

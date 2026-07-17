@@ -10,6 +10,7 @@ import {
   WorkOrderBundle,
 } from '../../src/api/client';
 import { useAuth } from '../../src/auth/AuthContext';
+import { BarcodeScannerModal } from '../../src/components/BarcodeScanner';
 import { fetchThrough, writeCache } from '../../src/db/cache';
 import { Badge, Button, SectionCard, colors } from '../../src/components/ui';
 import { FormScrollView } from '../../src/components/FormScrollView';
@@ -22,6 +23,7 @@ export default function WorkOrderScreen() {
   const [adding, setAdding] = useState(false);
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState({ make: 'Tatsuno', model: '', serialNumber: '', saApprovalNumber: '' });
+  const [scanning, setScanning] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -149,12 +151,32 @@ export default function WorkOrderScreen() {
                 <Text style={{ fontSize: 12, color: colors.muted, marginBottom: 3 }}>
                   {ADD_FIELD_LABELS[f]}
                 </Text>
-                <TextInput
-                  style={inputStyle}
-                  placeholder={ADD_FIELD_LABELS[f]}
-                  value={form[f]}
-                  onChangeText={(t) => setForm((prev) => ({ ...prev, [f]: t }))}
-                />
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <TextInput
+                    style={[inputStyle, { flex: 1 }]}
+                    placeholder={ADD_FIELD_LABELS[f]}
+                    value={form[f]}
+                    onChangeText={(t) => setForm((prev) => ({ ...prev, [f]: t }))}
+                  />
+                  {f === 'serialNumber' ? (
+                    <Text
+                      onPress={() => setScanning(true)}
+                      style={{
+                        color: colors.green,
+                        fontWeight: '600',
+                        borderWidth: 1,
+                        borderColor: colors.green,
+                        borderRadius: 6,
+                        paddingHorizontal: 12,
+                        paddingVertical: 9,
+                        marginBottom: 6,
+                        overflow: 'hidden',
+                      }}
+                    >
+                      Scan
+                    </Text>
+                  ) : null}
+                </View>
               </View>
             ))}
             <Button title="Save dispenser" onPress={submitAdd} busy={busy} />
@@ -164,6 +186,16 @@ export default function WorkOrderScreen() {
           <Button title="Add a dispenser" kind="secondary" onPress={() => setAdding(true)} />
         )}
       </SectionCard>
+
+      <BarcodeScannerModal
+        visible={scanning}
+        title="Scan the dispenser serial number"
+        onClose={() => setScanning(false)}
+        onScanned={(data) => {
+          setScanning(false);
+          setForm((prev) => ({ ...prev, serialNumber: data }));
+        }}
+      />
 
       {retired.length > 0 ? (
         <SectionCard title="Retired dispensers">

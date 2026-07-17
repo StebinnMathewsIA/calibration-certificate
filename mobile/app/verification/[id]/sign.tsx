@@ -1,14 +1,16 @@
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useMemo, useState } from 'react';
 import { Alert, Switch, Text, TextInput, View } from 'react-native';
+import { WebView } from 'react-native-webview';
 import type { AnalysisResponse, Verification } from '@prowalco/schema';
-import { analysisResponseSchema, validateReadyToSign } from '@prowalco/schema';
+import { MPE_PERCENT, analysisResponseSchema, validateReadyToSign } from '@prowalco/schema';
 import { ApiError, analyzeVerification } from '../../../src/api/client';
 import { useAuth } from '../../../src/auth/AuthContext';
 import { Badge, Button, SectionCard, colors } from '../../../src/components/ui';
 import { FormScrollView } from '../../../src/components/FormScrollView';
 import { readCache } from '../../../src/db/cache';
 import * as repo from '../../../src/db/certificateRepo';
+import { certificateHtml } from '../../../src/pdf/certificateHtml';
 import { getProfile } from '../../../src/profile/profileStore';
 import { enqueueForSigning } from '../../../src/queue/signQueue';
 
@@ -69,6 +71,25 @@ export default function SignScreen() {
 
   const anyRejected = initial.hoses.some((h) => h.outcome === 'rejected');
 
+  // Digest of what is being certified: per-hose outcome + the delivery that
+  // uses the most of the ±MPE band.
+  const digest = (() => {
+    const deliveries = initial.hoses.flatMap((h) =>
+      h.deliveries
+        .filter((d) => d.efdPercent != null && !Number.isNaN(d.efdPercent))
+        .map((d) => ({ hose: h.hoseNumber, d })),
+    );
+    let worst: (typeof deliveries)[number] | null = null;
+    for (const entry of deliveries) {
+      if (!worst || Math.abs(entry.d.efdPercent) > Math.abs(worst.d.efdPercent)) worst = entry;
+    }
+    return {
+      rejected: initial.hoses.filter((h) => h.outcome === 'rejected').length,
+      hoses: initial.hoses.length,
+      worst,
+    };
+  })();
+
   const buildVerification = (): Verification => ({
     ...initial,
     signOff: {
@@ -88,6 +109,18 @@ export default function SignScreen() {
   });
 
   const readiness = validateReadyToSign(buildVerification());
+
+  // Preview of the document that will carry the signatures. A4 landscape
+  // (~1123 CSS px wide) scaled to phone width; pinch to zoom into detail.
+  const previewHtml = readiness.ready
+    ? certificateHtml(buildVerification(), {
+        customerSignatureSvg: signatureSvg || undefined,
+        voSignatureSvg: profile.signatureSvg,
+      }).replace(
+        '<head>',
+        '<head><meta name="viewport" content="width=1123, initial-scale=0.34, minimum-scale=0.2, maximum-scale=3" />',
+      )
+    : null;
 
   const runAnalysis = async () => {
     setAnalyzing(true);
@@ -136,11 +169,7 @@ export default function SignScreen() {
         customerSignatureSvg: signatureSvg,
         voSignatureSvg: profile.signatureSvg,
       });
-      Alert.alert(
-        'Queued for signing',
-        'The certificate is saved on this device and will be signed as soon as there is connectivity. It is safe to close the app.',
-      );
-      router.replace('/home');
+      router.replace({ pathname: '/verification/[id]/queued', params: { id } });
     } catch (err) {
       Alert.alert('Could not queue', err instanceof Error ? err.message : String(err));
     } finally {
@@ -150,6 +179,35 @@ export default function SignScreen() {
 
   return (
     <FormScrollView>
+      <SectionCard title="What you are certifying">
+        <Text style={{ color: colors.ink, fontWeight: '600' }}>
+          {initial.site?.customerName} · {initial.site?.siteName}
+        </Text>
+        <Text style={{ color: colors.muted, fontSize: 13 }}>
+          {initial.dispenser?.makeModel} · S/N {initial.dispenser?.serialNumber}
+        </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 }}>
+          <Badge
+            filled
+            text={digest.rejected > 0 ? `${digest.rejected} OF ${digest.hoses} HOSE(S) REJECTED` : `ALL ${digest.hoses} HOSE(S) CERTIFIED`}
+            tone={digest.rejected > 0 ? 'bad' : 'ok'}
+          />
+        </View>
+        {digest.worst ? (
+          <Text
+            style={{
+              color: digest.worst.d.pass ? colors.muted : colors.red,
+              fontSize: 13,
+              marginTop: 6,
+            }}
+          >
+            Worst EFD: {digest.worst.d.efdPercent.toFixed(2)} % on hose {digest.worst.hose} —{' '}
+            {Math.round((Math.abs(digest.worst.d.efdPercent) / MPE_PERCENT) * 100)}% of the ±
+            {MPE_PERCENT} % MPE
+          </Text>
+        ) : null}
+      </SectionCard>
+
       <SectionCard title="Sign-off details">
         <Text style={{ fontSize: 12, color: colors.muted }}>VO Pliers No.</Text>
         <TextInput style={inputStyle} value={pliers} onChangeText={setPliers} />
@@ -204,6 +262,29 @@ export default function SignScreen() {
           }
         />
       </SectionCard>
+
+      {previewHtml ? (
+        <SectionCard title="Certificate preview">
+          <Text style={{ color: colors.muted, fontSize: 13, marginBottom: 6 }}>
+            This is the document that will carry the signatures. Pinch to zoom.
+          </Text>
+          <View
+            style={{
+              height: 420,
+              borderWidth: 1,
+              borderColor: colors.line,
+              borderRadius: 6,
+              overflow: 'hidden',
+            }}
+          >
+            <WebView
+              source={{ html: previewHtml }}
+              originWhitelist={['*']}
+              setSupportMultipleWindows={false}
+            />
+          </View>
+        </SectionCard>
+      ) : null}
 
       <SectionCard title="Verifying Officer signature">
         <View
@@ -262,7 +343,12 @@ export default function SignScreen() {
             ))}
           </>
         )}
-        <Button title="Sign certificate" onPress={sign} busy={signing} disabled={!readiness.ready} />
+        <Button
+          title="Sign with Face ID / passcode"
+          onPress={sign}
+          busy={signing}
+          disabled={!readiness.ready}
+        />
       </SectionCard>
     </FormScrollView>
   );

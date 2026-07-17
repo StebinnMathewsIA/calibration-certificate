@@ -32,6 +32,7 @@ export default function RootLayout() {
         <Stack.Screen name="dispenser/[id]/register" options={{ title: 'Components' }} />
         <Stack.Screen name="verification/[id]/results" options={{ title: 'Verification results' }} />
         <Stack.Screen name="verification/[id]/sign" options={{ title: 'Review & sign' }} />
+        <Stack.Screen name="verification/[id]/queued" options={{ title: 'Signing status' }} />
         <Stack.Screen name="profile" options={{ title: 'My profile' }} />
         <Stack.Screen
           name="signature"

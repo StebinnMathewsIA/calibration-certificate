@@ -184,11 +184,19 @@ export function Button({
   );
 }
 
-export function Badge({ text, tone }: { text: string; tone: 'ok' | 'warn' | 'bad' | 'muted' }) {
+export function Badge({
+  text,
+  tone,
+  filled,
+}: {
+  text: string;
+  tone: 'ok' | 'warn' | 'bad' | 'muted';
+  filled?: boolean;
+}) {
   const map = { ok: colors.green, warn: colors.amber, bad: colors.red, muted: colors.muted };
   return (
-    <View style={[styles.badge, { borderColor: map[tone] }]}>
-      <Text style={{ color: map[tone], fontSize: 12, fontWeight: '700' }}>{text}</Text>
+    <View style={[styles.badge, { borderColor: map[tone] }, filled && { backgroundColor: map[tone] }]}>
+      <Text style={{ color: filled ? '#fff' : map[tone], fontSize: 12, fontWeight: '700' }}>{text}</Text>
     </View>
   );
 }

@@ -15,8 +15,15 @@ const HEIGHT = 160;
  * `onChange` yields a standalone SVG string (or '' when cleared).
  */
 export function SignaturePad({ onChange }: { onChange: (svg: string) => void }) {
-  // Committed strokes + the one currently being drawn.
-  const [strokes, setStrokes] = useState<string[]>([]);
+  // Committed strokes + the one currently being drawn. The ref mirrors the
+  // state so event handlers (memoised PanResponder) always see the latest
+  // strokes WITHOUT reading them inside a setState updater — calling the
+  // parent's onChange from an updater fires a state update while React is
+  // rendering this component ("Cannot update a component (SignatureScreen)
+  // while rendering a different component (SignaturePad)") and the update
+  // can be dropped, losing strokes (issue #21).
+  const [, setStrokes] = useState<string[]>([]);
+  const strokesRef = useRef<string[]>([]);
   const [live, setLive] = useState<string>('');
   const liveRef = useRef<string>('');
 
@@ -55,11 +62,9 @@ export function SignaturePad({ onChange }: { onChange: (svg: string) => void }) 
           liveRef.current = '';
           setLive('');
           if (!finished) return;
-          setStrokes((prev) => {
-            const next = [...prev, finished];
-            emit(next);
-            return next;
-          });
+          strokesRef.current = [...strokesRef.current, finished];
+          setStrokes(strokesRef.current);
+          emit(strokesRef.current);
         },
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -69,11 +74,12 @@ export function SignaturePad({ onChange }: { onChange: (svg: string) => void }) 
   const clear = () => {
     liveRef.current = '';
     setLive('');
+    strokesRef.current = [];
     setStrokes([]);
     emit([]);
   };
 
-  const rendered = live ? [...strokes, live] : strokes;
+  const rendered = live ? [...strokesRef.current, live] : strokesRef.current;
 
   return (
     <View>

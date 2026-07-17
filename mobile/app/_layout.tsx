@@ -28,6 +28,7 @@ export default function RootLayout() {
         <Stack.Screen name="home" options={{ title: 'Calibrations' }} />
         <Stack.Screen name="certificate/[id]/edit" options={{ title: 'Calibration form' }} />
         <Stack.Screen name="certificate/[id]/review" options={{ title: 'Review & sign' }} />
+        <Stack.Screen name="certificate/[id]/queued" options={{ title: 'Signing status' }} />
         <Stack.Screen name="certificate/[id]/issued" options={{ title: 'Certificate' }} />
       </Stack>
     </AuthProvider>

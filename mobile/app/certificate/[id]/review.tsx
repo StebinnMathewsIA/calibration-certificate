@@ -1,12 +1,18 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useMemo, useState } from 'react';
 import { Alert, ScrollView, Switch, Text, View } from 'react-native';
+import { WebView } from 'react-native-webview';
 import type { AnalysisResponse, CalibrationForm } from '@prowalco/schema';
-import { analysisResponseSchema, validateReadyToSign } from '@prowalco/schema';
+import {
+  TOLERANCE_CLASSES,
+  analysisResponseSchema,
+  validateReadyToSign,
+} from '@prowalco/schema';
 import { analyzeCalibration } from '../../../src/api/client';
 import { useAuth } from '../../../src/auth/AuthContext';
 import { Badge, Button, SectionCard, colors, styles } from '../../../src/components/ui';
 import * as repo from '../../../src/db/certificateRepo';
+import { certificateHtml } from '../../../src/pdf/certificateHtml';
 import { enqueueForSigning } from '../../../src/queue/signQueue';
 
 const VERDICT_TONE = {
@@ -15,6 +21,17 @@ const VERDICT_TONE = {
   fail: 'bad',
   data_anomaly: 'bad',
 } as const;
+
+function DigestRow({ k, v, bad }: { k: string; v: string; bad?: boolean }) {
+  return (
+    <View style={{ flexDirection: 'row', marginBottom: 4 }}>
+      <Text style={{ width: 130, color: colors.muted, fontSize: 13 }}>{k}</Text>
+      <Text style={{ flex: 1, color: bad ? colors.red : colors.ink, fontSize: 13, fontWeight: bad ? '700' : '400' }}>
+        {v}
+      </Text>
+    </View>
+  );
+}
 
 export default function ReviewScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -29,9 +46,40 @@ export default function ReviewScreen() {
   const [signing, setSigning] = useState(false);
   const [gpsConsent, setGpsConsent] = useState(true);
 
-  if (!record) return <Text>Not found</Text>;
-  const form = record.form as CalibrationForm;
-  const readiness = validateReadyToSign(form);
+  const form = record ? (record.form as CalibrationForm) : null;
+  const readiness = useMemo(
+    () => (form ? validateReadyToSign(form) : { ready: false, reasons: [] }),
+    [form],
+  );
+
+  // Digest + preview render only for a complete form: the certificate
+  // template formats numbers (toFixed) and assumes every field is present.
+  const digest = useMemo(() => {
+    if (!form || !readiness.ready) return null;
+    const rows = [
+      ...form.results.asFound.map((r, i) => ({ r, label: `as-found point ${i + 1}` })),
+      ...(form.results.asLeft ?? []).map((r, i) => ({ r, label: `as-left point ${i + 1}` })),
+    ];
+    let worst: { label: string; r: (typeof rows)[number]['r']; usage: number } | null = null;
+    for (const { r, label } of rows) {
+      const mpe = TOLERANCE_CLASSES[r.toleranceClassId]?.mpePercent;
+      const usage = mpe ? Math.abs(r.errorPercent) / mpe : 0;
+      if (!worst || usage > worst.usage) worst = { label, r, usage };
+    }
+    return { points: rows.length, fails: rows.filter((x) => !x.r.pass).length, worst };
+  }, [form, readiness.ready]);
+
+  const previewHtml = useMemo(() => {
+    if (!form || !readiness.ready) return null;
+    // The template targets A4 print (~794 CSS px wide); scale it down to
+    // phone width and let the technician pinch-zoom into the detail.
+    return certificateHtml(form).replace(
+      '<head>',
+      '<head><meta name="viewport" content="width=794, initial-scale=0.48, minimum-scale=0.3, maximum-scale=3" />',
+    );
+  }, [form, readiness.ready]);
+
+  if (!record || !form) return <Text>Not found</Text>;
 
   const runAnalysis = async () => {
     setAnalyzing(true);
@@ -55,11 +103,7 @@ export default function ReviewScreen() {
     setSigning(true);
     try {
       await enqueueForSigning(id, form, gpsConsent);
-      Alert.alert(
-        'Queued for signing',
-        'The certificate package is saved on this device and will be signed as soon as there is connectivity. It is safe to close the app.',
-      );
-      router.replace('/home');
+      router.replace({ pathname: '/certificate/[id]/queued', params: { id } });
     } catch (err) {
       Alert.alert('Could not queue', err instanceof Error ? err.message : String(err));
     } finally {
@@ -84,6 +128,39 @@ export default function ReviewScreen() {
           </>
         )}
       </SectionCard>
+
+      {digest ? (
+        <SectionCard title="Summary — what you are signing">
+          <DigestRow k="Customer" v={form.job.customerName} />
+          <DigestRow k="Site" v={form.job.siteAddress} />
+          <DigestRow k="Unit under test" v={`${form.uut.manufacturer} ${form.uut.modelNumber} · S/N ${form.uut.serialNumber}`} />
+          <DigestRow k="Test points" v={String(digest.points)} />
+          <DigestRow
+            k="Out of tolerance"
+            v={digest.fails === 0 ? 'None' : `${digest.fails} point(s) FAIL`}
+            bad={digest.fails > 0}
+          />
+          {digest.worst ? (
+            <DigestRow
+              k="Worst error"
+              v={`${digest.worst.r.errorMl.toFixed(1)} mL (${digest.worst.r.errorPercent.toFixed(3)} %) — ${Math.round(digest.worst.usage * 100)}% of tolerance, ${digest.worst.label}`}
+              bad={!digest.worst.r.pass}
+            />
+          ) : null}
+          <DigestRow k="Adjustment" v={form.results.adjustmentPerformed ? 'Performed (as-left results included)' : 'Not performed'} />
+        </SectionCard>
+      ) : null}
+
+      {previewHtml ? (
+        <SectionCard title="Certificate preview">
+          <Text style={{ color: colors.muted, fontSize: 13, marginBottom: 6 }}>
+            This is the document that will carry your digital signature. Pinch to zoom.
+          </Text>
+          <View style={{ height: 460, borderWidth: 1, borderColor: colors.line, borderRadius: 6, overflow: 'hidden' }}>
+            <WebView source={{ html: previewHtml }} originWhitelist={['*']} setSupportMultipleWindows={false} />
+          </View>
+        </SectionCard>
+      ) : null}
 
       <SectionCard title="Claude review (advisory)">
         <Text style={{ color: colors.muted, marginBottom: 8, fontSize: 13 }}>
@@ -131,7 +208,12 @@ export default function ReviewScreen() {
           device, and queues it for digital signing. If you are offline, the package uploads
           automatically when connectivity returns — it is issued exactly once.
         </Text>
-        <Button title="Sign certificate" onPress={sign} busy={signing} disabled={!readiness.ready} />
+        <Button
+          title="Sign with biometrics / PIN"
+          onPress={sign}
+          busy={signing}
+          disabled={!readiness.ready}
+        />
       </SectionCard>
     </ScrollView>
   );

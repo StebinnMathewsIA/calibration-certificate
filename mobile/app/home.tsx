@@ -76,7 +76,9 @@ export default function HomeScreen() {
                 pathname:
                   item.state === 'SIGNED' || item.state === 'SYNCED'
                     ? '/certificate/[id]/issued'
-                    : '/certificate/[id]/edit',
+                    : item.state === 'QUEUED_FOR_SIGNING' || item.state === 'UPLOADING'
+                      ? '/certificate/[id]/queued'
+                      : '/certificate/[id]/edit',
                 params: { id: item.id },
               })
             }

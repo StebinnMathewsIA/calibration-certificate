@@ -65,6 +65,54 @@ upload — the sign step will error in Expo Go by design.
       outcome to Rejected and requires a Rejection Cert. No. before signing
 - [ ] Expired reference measure blocks signing with a visible reason
 
+## UX improvements round (issues #13–#19, 2026-07)
+
+Requires a NEW EAS development build — two native modules were added
+(`react-native-webview`, `@react-native-community/datetimepicker`).
+
+### Home & queue visibility (#13)
+- [ ] Leave a draft mid-results, kill the app → the draft appears under
+      "In progress on this device" on the Work orders tab and resumes at
+      the results screen
+- [ ] Queued/uploading items open the signing-status screen, not a form
+- [ ] Airplane mode with a queued certificate shows the offline banner with
+      a count; reconnect or "Sync now" clears it
+- [ ] A failed upload shows its reason and "Retry now" retries immediately
+
+### Sign screen (#14, #16, #19)
+- [ ] "What you are certifying" digest matches the entered results (worst
+      EFD, rejected hose count)
+- [ ] Certificate preview renders the NRCS A4-landscape layout and
+      pinch-zooms; captured client/VO signatures appear in it
+- [ ] Claude review auto-runs on entry (loading card); offline it degrades
+      to an inline note and signing stays possible
+- [ ] A fail / data_anomaly verdict asks "Sign anyway?" once; pass/marginal
+      do not
+- [ ] Expiry date opens the native date picker (Android dialog / iOS inline)
+      and never shifts a day
+- [ ] Reference proving measures show IN DATE / DUE SOON / EXPIRED badges
+- [ ] After signing, the status screen steps advance live
+      (queued → uploading → signed → synced)
+
+### Results entry (#15)
+- [ ] Tolerance-used bar appears once VFD + VREF are entered and colours
+      green/amber/red as the EFD approaches ±0.5 %
+- [ ] "Still to enter" line and amber checklist markers update live
+- [ ] Keyboard "next" chains flow → VFD → VREF → next delivery
+
+### Offline verification start (#18)
+- [ ] Open a work order online first, then airplane mode → Verify →
+      Save & start succeeds; header shows "number pending"
+- [ ] Reconnecting assigns the certificate number automatically (check it
+      appears on Home and in the results header)
+- [ ] A numberless draft cannot be signed (readiness reason shown)
+
+### Issued screen + scan (#17, #19)
+- [ ] Issued screen leads with Share; crypto details behind the disclosure
+- [ ] Scanning a QR and a Code 128 label fills the serial number on the
+      dispenser identity screen and the add-dispenser form
+- [ ] Muted text legible outdoors at full brightness
+
 ## Signing & offline queue (the milestone-5 acceptance test)
 
 - [ ] Client draws a signature on the pad; "Sign" is blocked until they do

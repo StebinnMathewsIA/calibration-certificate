@@ -1,16 +1,19 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useEffect, useMemo } from 'react';
-import { Alert, ScrollView, Text, View } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, Pressable, ScrollView, Text, View } from 'react-native';
+import { zodResolver } from '@hookform/resolvers/zod';
 import { Control, useFieldArray, useForm, useWatch } from 'react-hook-form';
 import type { CalibrationForm } from '@prowalco/schema';
 import {
   DEFAULT_TOLERANCE_CLASS_ID,
   UNCERTAINTY_STATEMENT,
+  calibrationFormSchema,
   computeRow,
 } from '@prowalco/schema';
 import {
   Button,
   ChoiceField,
+  DateField,
   NumberField,
   SectionCard,
   SwitchField,
@@ -24,6 +27,76 @@ import * as repo from '../../../src/db/certificateRepo';
 /** Draft shape: same structure as CalibrationForm but tolerant of gaps while
  * the technician is still typing. Strict validation happens at review. */
 type Draft = CalibrationForm;
+
+/** Top-level form keys mapped to the on-screen sections, in layout order. */
+const SECTION_DEFS = [
+  { key: 'job', label: '1 Job' },
+  { key: 'uut', label: '2 UUT' },
+  { key: 'referenceStandards', label: '3 Standards' },
+  { key: 'environment', label: '4 Environment' },
+  { key: 'results', label: '5 Results' },
+  { key: 'signOff', label: '6 Sign-off' },
+] as const;
+
+type SectionKey = (typeof SECTION_DEFS)[number]['key'];
+
+/** Open items per section: zod issues grouped by top-level path, plus the
+ * declaration tick (valid-but-false in zod, required for signing). */
+function countSectionIssues(values: Draft): Record<SectionKey, number> {
+  const counts = Object.fromEntries(SECTION_DEFS.map((s) => [s.key, 0])) as Record<
+    SectionKey,
+    number
+  >;
+  const parsed = calibrationFormSchema.safeParse(values);
+  if (!parsed.success) {
+    for (const issue of parsed.error.issues) {
+      const head = String(issue.path[0] ?? '');
+      if (head in counts) counts[head as SectionKey] += 1;
+    }
+  }
+  if (!values.signOff?.declarationAccepted) counts.signOff += 1;
+  return counts;
+}
+
+function SectionNav({
+  issues,
+  onJump,
+}: {
+  issues: Record<SectionKey, number>;
+  onJump: (key: SectionKey) => void;
+}) {
+  return (
+    <View style={{ borderBottomWidth: 1, borderColor: colors.line, backgroundColor: colors.card }}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={{ paddingHorizontal: 12, paddingVertical: 8, gap: 6 }}
+      >
+        {SECTION_DEFS.map((s) => {
+          const n = issues[s.key];
+          const done = n === 0;
+          return (
+            <Pressable
+              key={s.key}
+              onPress={() => onJump(s.key)}
+              style={[
+                styles.chip,
+                { borderColor: done ? colors.green : colors.amber },
+                done && { backgroundColor: '#e8f3ec' },
+              ]}
+            >
+              <Text
+                style={{ fontSize: 13, fontWeight: '600', color: done ? colors.green : colors.amber }}
+              >
+                {done ? `✓ ${s.label}` : `${s.label} · ${n}`}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+    </View>
+  );
+}
 
 const EMPTY_ROW = {
   nominalDeliveryL: 20,
@@ -86,6 +159,10 @@ export default function EditScreen() {
   const record = useMemo(() => repo.getById(id), [id]);
 
   const { control, getValues, setValue, watch } = useForm<Draft>({
+    // Display-only validation: errors render inline as fields are touched,
+    // but nothing here blocks draft autosave or navigation to review.
+    resolver: zodResolver(calibrationFormSchema),
+    mode: 'onChange',
     defaultValues: {
       schemaVersion: 1,
       referenceStandards: [],
@@ -102,18 +179,40 @@ export default function EditScreen() {
     },
   });
 
-  // Autosave every field change back to SQLite (debounced).
+  const [sectionIssues, setSectionIssues] = useState<Record<SectionKey, number>>(() =>
+    countSectionIssues(getValues()),
+  );
+  const scrollRef = useRef<ScrollView>(null);
+  const sectionY = useRef<Partial<Record<SectionKey, number>>>({});
+
+  // Autosave every field change back to SQLite, and refresh the section
+  // progress chips (both debounced).
   useEffect(() => {
-    let timer: ReturnType<typeof setTimeout>;
+    let saveTimer: ReturnType<typeof setTimeout>;
+    let issuesTimer: ReturnType<typeof setTimeout>;
     const sub = watch(() => {
-      clearTimeout(timer);
-      timer = setTimeout(() => repo.saveDraftForm(id, getValues()), 800);
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(() => repo.saveDraftForm(id, getValues()), 800);
+      clearTimeout(issuesTimer);
+      issuesTimer = setTimeout(() => setSectionIssues(countSectionIssues(getValues())), 400);
     });
     return () => {
-      clearTimeout(timer);
+      clearTimeout(saveTimer);
+      clearTimeout(issuesTimer);
       sub.unsubscribe();
     };
   }, [watch, getValues, id]);
+
+  const jumpToSection = (key: SectionKey) => {
+    const y = sectionY.current[key];
+    if (y != null) scrollRef.current?.scrollTo({ y: Math.max(y - 6, 0), animated: true });
+  };
+
+  const anchorProps = (key: SectionKey) => ({
+    onLayout: (e: { nativeEvent: { layout: { y: number } } }) => {
+      sectionY.current[key] = e.nativeEvent.layout.y;
+    },
+  });
 
   const standards = useWatch({ control, name: 'referenceStandards' }) ?? [];
   const adjustment = useWatch({ control, name: 'results.adjustmentPerformed' });
@@ -153,16 +252,21 @@ export default function EditScreen() {
   const signatoryOptions = SIGNATORIES.map((s) => ({ value: s.id, label: s.name }));
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={{ paddingBottom: 40 }}>
+    <View style={styles.screen}>
+      <SectionNav issues={sectionIssues} onJump={jumpToSection} />
+      <ScrollView ref={scrollRef} contentContainerStyle={{ paddingBottom: 40 }}>
+      <View {...anchorProps('job')}>
       <SectionCard title="1 — Job & customer">
         <TextField control={control} name="job.certificateNumber" label="Certificate number" editable={false} />
-        <TextField control={control} name="job.workOrderNumber" label="Work order / job number" />
+        <TextField control={control} name="job.workOrderNumber" label="Work order / job number" optional />
         <TextField control={control} name="job.customerName" label="Customer / site name" />
         <TextField control={control} name="job.siteAddress" label="Site address" multiline />
-        <TextField control={control} name="job.siteAssetNumber" label="Site / asset number" />
-        <TextField control={control} name="job.calibrationDate" label="Calibration date (YYYY-MM-DD)" />
+        <TextField control={control} name="job.siteAssetNumber" label="Site / asset number" optional />
+        <DateField control={control} name="job.calibrationDate" label="Calibration date" />
       </SectionCard>
+      </View>
 
+      <View {...anchorProps('uut')}>
       <SectionCard title="2 — Unit under test">
         <ChoiceField
           control={control}
@@ -179,7 +283,7 @@ export default function EditScreen() {
         <TextField control={control} name="uut.manufacturer" label="Manufacturer" />
         <TextField control={control} name="uut.modelNumber" label="Model number" />
         <TextField control={control} name="uut.serialNumber" label="Serial number (or scan barcode)" />
-        <TextField control={control} name="uut.nozzleId" label="Pump / hose / nozzle ID" />
+        <TextField control={control} name="uut.nozzleId" label="Pump / hose / nozzle ID" optional />
         <ChoiceField
           control={control}
           name="uut.productGrade"
@@ -193,9 +297,11 @@ export default function EditScreen() {
             { value: 'other', label: 'Other' },
           ]}
         />
-        <NumberField control={control} name="uut.meterKFactorBefore" label="Meter K-factor before (optional)" />
+        <NumberField control={control} name="uut.meterKFactorBefore" label="Meter K-factor before" optional />
       </SectionCard>
+      </View>
 
+      <View {...anchorProps('referenceStandards')}>
       <SectionCard title="3 — Reference standards">
         <Text style={{ color: colors.muted, marginBottom: 6 }}>
           Select from the equipment register. Serial, certificate and due date auto-fill and cannot
@@ -213,7 +319,9 @@ export default function EditScreen() {
           );
         })}
       </SectionCard>
+      </View>
 
+      <View {...anchorProps('environment')}>
       <SectionCard title="4 — Environment & method">
         <NumberField control={control} name="environment.ambientTempC" label="Ambient temperature (°C)" />
         <NumberField control={control} name="environment.productTempC" label="Product temperature (°C)" />
@@ -229,26 +337,31 @@ export default function EditScreen() {
             { value: 'other', label: 'Other' },
           ]}
         />
-        <TextField control={control} name="environment.conditionNotes" label="Condition notes" multiline />
+        <TextField control={control} name="environment.conditionNotes" label="Condition notes" multiline optional />
       </SectionCard>
+      </View>
 
+      <View {...anchorProps('results')}>
       <ResultRows control={control} name="results.asFound" title="5 — Results (as found)" />
       <SectionCard title="Adjustment">
         <SwitchField control={control} name="results.adjustmentPerformed" label="Adjustment performed?" />
-        <NumberField control={control} name="results.meterKFactorAfter" label="Meter K-factor after (optional)" />
+        <NumberField control={control} name="results.meterKFactorAfter" label="Meter K-factor after" optional />
       </SectionCard>
       {adjustment ? (
         <ResultRows control={control} name="results.asLeft" title="5b — Results (as left)" />
       ) : null}
       <SectionCard title="Remarks & seals">
-        <TextField control={control} name="results.remarks" label="Remarks / notes" multiline />
+        <TextField control={control} name="results.remarks" label="Remarks / notes" multiline optional />
         <TextField
           control={control}
           name="results.verificationSealNumbers.0"
           label="Verification seal number"
+          optional
         />
       </SectionCard>
+      </View>
 
+      <View {...anchorProps('signOff')}>
       <SectionCard title="6 — Sign-off">
         <TextField control={control} name="signOff.calibratedBy.name" label="Calibrated by" editable={false} />
         <ChoiceField
@@ -263,6 +376,7 @@ export default function EditScreen() {
           label="I certify these results are true and the procedure was followed"
         />
       </SectionCard>
+      </View>
 
       <View style={{ marginHorizontal: 12 }}>
         <Button
@@ -280,6 +394,7 @@ export default function EditScreen() {
           }}
         />
       </View>
-    </ScrollView>
+      </ScrollView>
+    </View>
   );
 }

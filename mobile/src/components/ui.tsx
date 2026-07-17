@@ -8,6 +8,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { Control, Controller, FieldValues, Path } from 'react-hook-form';
 
 export const colors = {
@@ -31,13 +32,36 @@ export function SectionCard({ title, children }: { title: string; children: Reac
   );
 }
 
-export function FieldRow({ label, children }: { label: string; children: React.ReactNode }) {
+export function FieldRow({
+  label,
+  optional,
+  error,
+  children,
+}: {
+  label: string;
+  optional?: boolean;
+  error?: string;
+  children: React.ReactNode;
+}) {
   return (
     <View style={styles.fieldRow}>
-      <Text style={styles.label}>{label}</Text>
+      <Text style={styles.label}>
+        {label}
+        {optional ? <Text style={styles.labelOptional}> (optional)</Text> : null}
+      </Text>
       {children}
+      {error ? <Text style={styles.errorText}>{error}</Text> : null}
     </View>
   );
+}
+
+/** Zod's default messages are developer-speak; translate the common ones. */
+function humanizeError(message?: string): string | undefined {
+  if (!message) return message;
+  if (/received undefined|received null/i.test(message)) return 'Required';
+  if (/at least 1 character/i.test(message)) return 'Required';
+  if (/expected number/i.test(message)) return 'Enter a number';
+  return message;
 }
 
 interface TextFieldProps<T extends FieldValues> {
@@ -47,6 +71,7 @@ interface TextFieldProps<T extends FieldValues> {
   placeholder?: string;
   multiline?: boolean;
   editable?: boolean;
+  optional?: boolean;
 }
 
 export function TextField<T extends FieldValues>({
@@ -56,24 +81,38 @@ export function TextField<T extends FieldValues>({
   placeholder,
   multiline,
   editable = true,
+  optional,
 }: TextFieldProps<T>) {
   return (
     <Controller
       control={control}
       name={name}
-      render={({ field }) => (
-        <FieldRow label={label}>
-          <TextInput
-            style={[styles.input, !editable && styles.inputDisabled, multiline && styles.multiline]}
-            value={field.value == null ? '' : String(field.value)}
-            onChangeText={field.onChange}
-            onBlur={field.onBlur}
-            placeholder={placeholder}
-            multiline={multiline}
-            editable={editable}
-          />
-        </FieldRow>
-      )}
+      render={({ field, fieldState }) => {
+        // Only surface errors once the technician has interacted with the
+        // field — an empty draft must not open covered in red.
+        const error =
+          fieldState.error && (fieldState.isTouched || fieldState.isDirty)
+            ? humanizeError(fieldState.error.message)
+            : undefined;
+        return (
+          <FieldRow label={label} optional={optional} error={error}>
+            <TextInput
+              style={[
+                styles.input,
+                !editable && styles.inputDisabled,
+                multiline && styles.multiline,
+                error != null && styles.inputError,
+              ]}
+              value={field.value == null ? '' : String(field.value)}
+              onChangeText={field.onChange}
+              onBlur={field.onBlur}
+              placeholder={placeholder}
+              multiline={multiline}
+              editable={editable}
+            />
+          </FieldRow>
+        );
+      }}
     />
   );
 }
@@ -83,26 +122,85 @@ export function NumberField<T extends FieldValues>({
   name,
   label,
   placeholder,
+  optional,
 }: TextFieldProps<T>) {
   return (
     <Controller
       control={control}
       name={name}
-      render={({ field }) => (
-        <FieldRow label={label}>
-          <TextInput
-            style={styles.input}
-            value={field.value == null || Number.isNaN(field.value) ? '' : String(field.value)}
-            keyboardType="decimal-pad"
-            onChangeText={(text) => {
-              const n = Number(text.replace(',', '.'));
-              field.onChange(text === '' ? undefined : Number.isNaN(n) ? text : n);
-            }}
-            onBlur={field.onBlur}
-            placeholder={placeholder}
-          />
-        </FieldRow>
-      )}
+      render={({ field, fieldState }) => {
+        const error =
+          fieldState.error && (fieldState.isTouched || fieldState.isDirty)
+            ? humanizeError(fieldState.error.message)
+            : undefined;
+        return (
+          <FieldRow label={label} optional={optional} error={error}>
+            <TextInput
+              style={[styles.input, error != null && styles.inputError]}
+              value={field.value == null || Number.isNaN(field.value) ? '' : String(field.value)}
+              keyboardType="decimal-pad"
+              onChangeText={(text) => {
+                const n = Number(text.replace(',', '.'));
+                field.onChange(text === '' ? undefined : Number.isNaN(n) ? text : n);
+              }}
+              onBlur={field.onBlur}
+              placeholder={placeholder}
+            />
+          </FieldRow>
+        );
+      }}
+    />
+  );
+}
+
+export function DateField<T extends FieldValues>({
+  control,
+  name,
+  label,
+  optional,
+}: TextFieldProps<T>) {
+  const [show, setShow] = React.useState(false);
+  return (
+    <Controller
+      control={control}
+      name={name}
+      render={({ field, fieldState }) => {
+        const error =
+          fieldState.error && (fieldState.isTouched || fieldState.isDirty)
+            ? humanizeError(fieldState.error.message)
+            : undefined;
+        const value = typeof field.value === 'string' ? field.value : '';
+        // Parse as local midnight so the shown day never shifts with timezone.
+        const date = /^\d{4}-\d{2}-\d{2}$/.test(value) ? new Date(`${value}T00:00:00`) : new Date();
+        return (
+          <FieldRow label={label} optional={optional} error={error}>
+            <Pressable
+              onPress={() => setShow(true)}
+              style={[styles.input, error != null && styles.inputError]}
+            >
+              <Text style={{ fontSize: 14, color: value ? colors.ink : colors.muted }}>
+                {value || 'Select date'}
+              </Text>
+            </Pressable>
+            {show ? (
+              <DateTimePicker
+                value={date}
+                mode="date"
+                onChange={(event, selected) => {
+                  setShow(false);
+                  if (event.type === 'set' && selected) {
+                    const y = selected.getFullYear();
+                    const m = String(selected.getMonth() + 1).padStart(2, '0');
+                    const d = String(selected.getDate()).padStart(2, '0');
+                    field.onChange(`${y}-${m}-${d}`);
+                    field.onBlur();
+                  }
+                }}
+              />
+            ) : null}
+          </FieldRow>
+        );
+      }}
     />
   );
 }
@@ -112,28 +210,35 @@ export function ChoiceField<T extends FieldValues>({
   name,
   label,
   options,
+  optional,
 }: TextFieldProps<T> & { options: { value: string; label: string }[] }) {
   return (
     <Controller
       control={control}
       name={name}
-      render={({ field }) => (
-        <FieldRow label={label}>
-          <View style={styles.chipsRow}>
-            {options.map((o) => (
-              <Pressable
-                key={o.value}
-                onPress={() => field.onChange(o.value)}
-                style={[styles.chip, field.value === o.value && styles.chipActive]}
-              >
-                <Text style={field.value === o.value ? styles.chipTextActive : styles.chipText}>
-                  {o.label}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-        </FieldRow>
-      )}
+      render={({ field, fieldState }) => {
+        const error =
+          fieldState.error && (fieldState.isTouched || fieldState.isDirty)
+            ? humanizeError(fieldState.error.message)
+            : undefined;
+        return (
+          <FieldRow label={label} optional={optional} error={error}>
+            <View style={styles.chipsRow}>
+              {options.map((o) => (
+                <Pressable
+                  key={o.value}
+                  onPress={() => field.onChange(o.value)}
+                  style={[styles.chip, field.value === o.value && styles.chipActive]}
+                >
+                  <Text style={field.value === o.value ? styles.chipTextActive : styles.chipText}>
+                    {o.label}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          </FieldRow>
+        );
+      }}
     />
   );
 }
@@ -207,6 +312,9 @@ export const styles = StyleSheet.create({
   cardTitle: { fontSize: 15, fontWeight: '700', color: colors.ink, marginBottom: 8 },
   fieldRow: { marginBottom: 10 },
   label: { fontSize: 12, color: colors.muted, marginBottom: 3 },
+  labelOptional: { fontStyle: 'italic', fontWeight: '400' },
+  errorText: { fontSize: 12, color: colors.red, marginTop: 3 },
+  inputError: { borderColor: colors.red },
   input: {
     borderWidth: 1,
     borderColor: colors.line,

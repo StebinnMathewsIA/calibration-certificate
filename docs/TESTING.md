@@ -113,6 +113,17 @@ Requires a NEW EAS development build — two native modules were added
       dispenser identity screen and the add-dispenser form
 - [ ] Muted text legible outdoors at full brightness
 
+### Signatures & profile name (#21, #22)
+- [ ] Drawing a signature (client or profile) logs no console error and no
+      strokes are lost, including fast multi-stroke signatures
+- [ ] My profile: first name(s) + surname save, and the "On certificate"
+      preview shows the Initial & Surname form (e.g. "S. Mathews")
+- [ ] Re-draw the VO signature once after updating (an empty one may be
+      cached from before the #21 fix)
+- [ ] A newly issued PDF shows BOTH the client signature and the VO
+      signature in the sign-off blocks, and the VO as "F. Surname"
+- [ ] Header avatar shows the first letters of first name + surname
+
 ## Signing & offline queue (the milestone-5 acceptance test)
 
 - [ ] Client draws a signature on the pad; "Sign" is blocked until they do

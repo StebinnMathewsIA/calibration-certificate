@@ -11,7 +11,7 @@ import { FormScrollView } from '../../../src/components/FormScrollView';
 import { readCache } from '../../../src/db/cache';
 import * as repo from '../../../src/db/certificateRepo';
 import { certificateHtml } from '../../../src/pdf/certificateHtml';
-import { getProfile } from '../../../src/profile/profileStore';
+import { certificateName, getProfile } from '../../../src/profile/profileStore';
 import { enqueueForSigning } from '../../../src/queue/signQueue';
 
 const VERDICT_TONE = { pass: 'ok', marginal: 'warn', fail: 'bad', data_anomaly: 'bad' } as const;
@@ -94,10 +94,10 @@ export default function SignScreen() {
     ...initial,
     signOff: {
       vo: {
-        // Use the VO's profile display name on the certificate when set.
+        // The certificate's VO field is "Initial & Surname" (e.g. "S. Mathews").
         identity: {
           ...initial.signOff.vo.identity,
-          name: profile.displayName || initial.signOff.vo.identity.name,
+          name: certificateName(profile, initial.signOff.vo.identity.name),
         },
         pliersNumber: pliers,
       },

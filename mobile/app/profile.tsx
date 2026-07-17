@@ -5,7 +5,12 @@ import { useAuth } from '../src/auth/AuthContext';
 import { Badge, Button, SectionCard, colors } from '../src/components/ui';
 import { FormScrollView } from '../src/components/FormScrollView';
 import { readCache } from '../src/db/cache';
-import { getProfile, saveProfile, voSignatureCacheKey } from '../src/profile/profileStore';
+import {
+  certificateName,
+  getProfile,
+  saveProfile,
+  voSignatureCacheKey,
+} from '../src/profile/profileStore';
 
 const inputStyle = {
   borderWidth: 1,
@@ -23,7 +28,8 @@ export default function ProfileScreen() {
   const router = useRouter();
   const subject = identity?.subject ?? '';
 
-  const [displayName, setDisplayName] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [pliers, setPliers] = useState('');
   const [signatureSvg, setSignatureSvg] = useState('');
   const [loaded, setLoaded] = useState(false);
@@ -33,7 +39,17 @@ export default function ProfileScreen() {
     useCallback(() => {
       const p = getProfile(subject);
       if (!loaded) {
-        setDisplayName(p.displayName ?? identity?.name ?? '');
+        if (p.firstName || p.lastName) {
+          setFirstName(p.firstName ?? '');
+          setLastName(p.lastName ?? '');
+        } else {
+          // Best-effort split of the legacy single name / sign-in name.
+          const words = (p.displayName ?? identity?.name ?? '')
+            .split(/\s+/)
+            .filter((w) => Boolean(w) && !w.includes('@'));
+          setFirstName(words.slice(0, -1).join(' '));
+          setLastName(words.length > 0 ? words[words.length - 1] : '');
+        }
         setPliers(p.pliersNumber ?? '');
         setLoaded(true);
       }
@@ -42,9 +58,24 @@ export default function ProfileScreen() {
     }, [subject, identity?.name, loaded]),
   );
 
+  const onCertificate = certificateName(
+    { firstName, lastName },
+    identity?.name ?? '',
+  );
+
   const save = () => {
+    if (!firstName.trim() || !lastName.trim()) {
+      Alert.alert(
+        'Name incomplete',
+        'Enter your first name(s) and surname — the certificate prints the VO as "Initial & Surname".',
+      );
+      return;
+    }
     saveProfile(subject, {
-      displayName: displayName.trim() || identity?.name,
+      firstName: firstName.trim(),
+      lastName: lastName.trim(),
+      // Kept for anything still reading the legacy single field.
+      displayName: `${firstName.trim()} ${lastName.trim()}`,
       pliersNumber: pliers.trim(),
       signatureSvg: signatureSvg || undefined,
     });
@@ -59,9 +90,16 @@ export default function ProfileScreen() {
           Signed in as {identity?.name}. These details are used on the certificates you sign as the
           Verifying Officer.
         </Text>
-        <Text style={{ fontSize: 12, color: colors.muted }}>Name (as it should appear on the certificate)</Text>
-        <TextInput style={inputStyle} value={displayName} onChangeText={setDisplayName} />
-        <Text style={{ fontSize: 12, color: colors.muted }}>VO Pliers No.</Text>
+        <Text style={{ fontSize: 12, color: colors.muted }}>First name(s)</Text>
+        <TextInput style={inputStyle} value={firstName} onChangeText={setFirstName} autoCapitalize="words" />
+        <Text style={{ fontSize: 12, color: colors.muted }}>Surname</Text>
+        <TextInput style={inputStyle} value={lastName} onChangeText={setLastName} autoCapitalize="words" />
+        {firstName.trim() || lastName.trim() ? (
+          <Text style={{ fontSize: 13, color: colors.ink }}>
+            On certificate (Initial &amp; Surname): <Text style={{ fontWeight: '700' }}>{onCertificate}</Text>
+          </Text>
+        ) : null}
+        <Text style={{ fontSize: 12, color: colors.muted, marginTop: 8 }}>VO Pliers No.</Text>
         <TextInput style={inputStyle} value={pliers} onChangeText={setPliers} />
       </SectionCard>
 

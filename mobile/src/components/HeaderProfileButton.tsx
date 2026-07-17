@@ -2,7 +2,7 @@ import { useRouter } from 'expo-router';
 import React from 'react';
 import { Pressable, Text } from 'react-native';
 import { useAuth } from '../auth/AuthContext';
-import { getProfile } from '../profile/profileStore';
+import { getProfile, profileInitials } from '../profile/profileStore';
 
 /** Two-letter initials from a name. Handles "First Last" -> "FL", a single
  * word -> its first two letters, and an email -> the local part's initials. */
@@ -23,6 +23,8 @@ export function HeaderProfileButton() {
   // falling back to the raw sign-in name.
   const profile = getProfile(identity?.subject ?? '');
   const name = profile.displayName || identity?.name || identity?.subject || '';
+  // Real first/surname initials when the profile has them; guessed otherwise.
+  const initials = profileInitials(profile) ?? initialsOf(name);
 
   return (
     <Pressable
@@ -40,7 +42,7 @@ export function HeaderProfileButton() {
         justifyContent: 'center',
       }}
     >
-      <Text style={{ color: '#1a7a3a', fontWeight: '800', fontSize: 13 }}>{initialsOf(name)}</Text>
+      <Text style={{ color: '#1a7a3a', fontWeight: '800', fontSize: 13 }}>{initials}</Text>
     </Pressable>
   );
 }

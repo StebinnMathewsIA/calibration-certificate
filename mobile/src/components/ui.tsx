@@ -17,7 +17,9 @@ export const colors = {
   red: '#b00020',
   amber: '#a06000',
   ink: '#16211c',
-  muted: '#5b6b62',
+  // Dark enough for WCAG AA on the app background — technicians read this
+  // outdoors in direct sunlight.
+  muted: '#46534b',
   line: '#d6ded9',
   bg: '#f5f7f5',
   card: '#ffffff',
@@ -354,9 +356,11 @@ export const styles = StyleSheet.create({
   chip: {
     borderWidth: 1,
     borderColor: colors.line,
-    borderRadius: 14,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    minHeight: 36,
+    justifyContent: 'center',
   },
   chipActive: { backgroundColor: colors.green, borderColor: colors.green },
   chipText: { color: colors.ink, fontSize: 13 },
@@ -365,6 +369,8 @@ export const styles = StyleSheet.create({
   button: {
     borderRadius: 8,
     paddingVertical: 12,
+    minHeight: 44,
+    justifyContent: 'center',
     alignItems: 'center',
     marginTop: 8,
     borderWidth: 1,

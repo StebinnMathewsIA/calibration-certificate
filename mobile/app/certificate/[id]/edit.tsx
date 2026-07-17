@@ -319,6 +319,42 @@ export default function EditScreen() {
 
   const standards = useWatch({ control, name: 'referenceStandards' }) ?? [];
   const adjustment = useWatch({ control, name: 'results.adjustmentPerformed' });
+  const customerName = useWatch({ control, name: 'job.customerName' });
+
+  // Most recent other certificate with customer data — the cheap, manual
+  // rehearsal of the future On Key prefill (same provenance flags).
+  const lastJob = useMemo(() => {
+    const prev = repo
+      .listAll()
+      .find((r) => r.id !== id && (r.form as Partial<CalibrationForm>).job?.customerName);
+    return prev ? (prev.form as Partial<CalibrationForm>) : null;
+  }, [id]);
+
+  const prefillFromLastJob = () => {
+    if (!lastJob) return;
+    const fields: [Parameters<typeof setValue>[0], unknown][] = [
+      ['job.customerName', lastJob.job?.customerName],
+      ['job.siteAddress', lastJob.job?.siteAddress],
+      ['job.siteAssetNumber', lastJob.job?.siteAssetNumber],
+      ['uut.equipmentType', lastJob.uut?.equipmentType],
+      ['uut.manufacturer', lastJob.uut?.manufacturer],
+      ['uut.modelNumber', lastJob.uut?.modelNumber],
+      ['uut.serialNumber', lastJob.uut?.serialNumber],
+      ['uut.nozzleId', lastJob.uut?.nozzleId],
+      ['uut.productGrade', lastJob.uut?.productGrade],
+    ];
+    const applied: string[] = [];
+    for (const [path, value] of fields) {
+      if (value == null || value === '') continue;
+      setValue(path, value as never, { shouldDirty: true });
+      applied.push(path);
+    }
+    // Record provenance per the schema's prefill design hook.
+    setValue('provenance', {
+      ...(getValues('provenance') ?? {}),
+      ...Object.fromEntries(applied.map((p) => [p, { prefilled: true, source: 'manual' as const }])),
+    });
+  };
   const photos = (useWatch({ control, name: 'results.photos' }) ?? []) as PhotoRef[];
   const [scanOpen, setScanOpen] = useState(false);
   const [photoKind, setPhotoKind] = useState<PhotoRef['kind'] | null>(null);
@@ -387,6 +423,25 @@ export default function EditScreen() {
       <ScrollView ref={scrollRef} contentContainerStyle={{ paddingBottom: 40 }}>
       <View {...anchorProps('job')}>
       <SectionCard title="1 — Job & customer">
+        {lastJob && !customerName ? (
+          <View
+            style={{
+              backgroundColor: '#eef4ee',
+              borderRadius: 8,
+              padding: 10,
+              marginBottom: 10,
+            }}
+          >
+            <Text style={{ color: colors.ink, fontWeight: '600', fontSize: 13 }}>
+              Same site as your last job?
+            </Text>
+            <Text style={{ color: colors.muted, fontSize: 13 }}>
+              {lastJob.job?.customerName}
+              {lastJob.job?.siteAddress ? ` — ${lastJob.job.siteAddress}` : ''}
+            </Text>
+            <Button title="Prefill customer & unit details" kind="secondary" onPress={prefillFromLastJob} />
+          </View>
+        ) : null}
         <TextField
           control={control}
           name="job.certificateNumber"
@@ -463,13 +518,42 @@ export default function EditScreen() {
         </Text>
         {EQUIPMENT_REGISTER.map((std) => {
           const selected = standards.some((s) => s.registerId === std.registerId);
+          const today = new Date().toISOString().slice(0, 10);
+          const soon = new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+          const expired = std.calibrationDueDate < today;
+          const dueSoon = !expired && std.calibrationDueDate <= soon;
           return (
-            <Button
+            <Pressable
               key={std.registerId}
-              kind={selected ? 'primary' : 'secondary'}
-              title={`${selected ? '✓ ' : ''}${std.description} · ${std.serialNumber} · due ${std.calibrationDueDate}`}
               onPress={() => toggleStandard(std.registerId)}
-            />
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 8,
+                borderWidth: 1,
+                borderColor: selected ? colors.green : colors.line,
+                backgroundColor: selected ? '#eef4ee' : '#fff',
+                borderRadius: 8,
+                padding: 10,
+                marginTop: 8,
+                minHeight: 44,
+              }}
+            >
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: colors.ink, fontWeight: '600', fontSize: 13 }}>
+                  {selected ? '✓ ' : ''}
+                  {std.description}
+                </Text>
+                <Text style={{ color: colors.muted, fontSize: 12 }}>
+                  {std.serialNumber} · cert {std.certificateNumber} · due {std.calibrationDueDate}
+                </Text>
+              </View>
+              {expired ? (
+                <Badge filled text="EXPIRED" tone="bad" />
+              ) : dueSoon ? (
+                <Badge text="DUE SOON" tone="warn" />
+              ) : null}
+            </Pressable>
           );
         })}
       </SectionCard>

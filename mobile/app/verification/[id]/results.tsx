@@ -2,21 +2,56 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Text, TextInput, View } from 'react-native';
 import type { Checklist, Delivery, HoseResult, Verification } from '@prowalco/schema';
-import { CHECKLIST_ITEMS, DELIVERY_POINT_LABELS, computeEfd } from '@prowalco/schema';
+import { CHECKLIST_ITEMS, DELIVERY_POINT_LABELS, MPE_PERCENT, computeEfd } from '@prowalco/schema';
 import { Badge, Button, SectionCard, colors } from '../../../src/components/ui';
 import { FormScrollView } from '../../../src/components/FormScrollView';
 import * as repo from '../../../src/db/certificateRepo';
 
+// Glove-friendly: the delivery grid is the highest-frequency entry surface.
 const numInput = {
   borderWidth: 1,
   borderColor: colors.line,
   borderRadius: 6,
   paddingHorizontal: 8,
-  paddingVertical: 6,
+  paddingVertical: 10,
+  minHeight: 44,
   color: colors.ink,
   backgroundColor: '#fff',
-  fontSize: 13,
+  fontSize: 16,
 } as const;
+
+/** How much of the ±MPE band a delivery uses, as a colour-graded bar. */
+function ToleranceBar({ efdPercent }: { efdPercent: number }) {
+  const usage = Math.abs(efdPercent) / MPE_PERCENT;
+  const color = usage >= 1 ? colors.red : usage >= 0.75 ? colors.amber : colors.green;
+  return (
+    <View style={{ marginTop: 6 }}>
+      <View style={{ height: 6, borderRadius: 3, backgroundColor: colors.line, overflow: 'hidden' }}>
+        <View style={{ width: `${Math.min(usage, 1) * 100}%`, height: 6, backgroundColor: color }} />
+      </View>
+      <Text style={{ color: colors.muted, fontSize: 11, marginTop: 2 }}>
+        {Math.round(usage * 100)}% of the ±{MPE_PERCENT} % MPE used
+      </Text>
+    </View>
+  );
+}
+
+/** What the VO still has to enter on a hose, for the inline completeness
+ * line (previously only the first gap surfaced, via Alert, on Continue). */
+function hoseMissing(h: HoseResult): string[] {
+  const missing: string[] = [];
+  if (!h.status) missing.push('verification status');
+  if (!h.testCondition) missing.push('test condition');
+  const unanswered = CHECKLIST_ITEMS.filter((it) => !h.checklist[it.key]).length;
+  if (unanswered) missing.push(`${unanswered} checklist item${unanswered === 1 ? '' : 's'}`);
+  const dels = h.deliveries.filter(
+    (d) => !((d.flowRateLpm ?? 0) > 0 && (d.vfdMl ?? 0) > 0 && (d.vrefMl ?? 0) > 0),
+  ).length;
+  if (dels) missing.push(`${dels} deliver${dels === 1 ? 'y' : 'ies'}`);
+  return missing;
+}
+
+const DELIVERY_FIELDS = ['flowRateLpm', 'vfdMl', 'vrefMl'] as const;
 
 /** Show an empty field (not "0"/"undefined") until the VO enters a value. */
 const numStr = (v?: number) => (v == null || Number.isNaN(v) ? '' : String(v));
@@ -50,6 +85,18 @@ export default function ResultsScreen() {
   const record = useMemo(() => repo.getById(id), [id]);
   const [v, setV] = useState<Partial<Verification> | null>(record?.form ?? null);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  // Keyboard "next" chain across the delivery grid: flow → VFD → VREF → next
+  // delivery's flow, keyed `${hose}.${delivery}.${field}`.
+  const inputs = useRef<Record<string, TextInput | null>>({});
+
+  const focusNext = (hi: number, di: number, field: (typeof DELIVERY_FIELDS)[number]) => {
+    const at = DELIVERY_FIELDS.indexOf(field);
+    const key =
+      at < DELIVERY_FIELDS.length - 1
+        ? `${hi}.${di}.${DELIVERY_FIELDS[at + 1]}`
+        : `${hi}.${di + 1}.${DELIVERY_FIELDS[0]}`;
+    inputs.current[key]?.focus();
+  };
 
   // Debounced autosave.
   useEffect(() => {
@@ -142,8 +189,19 @@ export default function ResultsScreen() {
         </Text>
       </SectionCard>
 
-      {(v.hoses as HoseResult[]).map((hose, hi) => (
+      {(v.hoses as HoseResult[]).map((hose, hi) => {
+        const missing = hoseMissing(hose);
+        return (
         <SectionCard key={hi} title={`Hose / Pump ${hose.hoseNumber} — ${hose.product}`}>
+          {missing.length === 0 ? (
+            <View style={{ marginBottom: 6 }}>
+              <Badge filled text="ALL RESULTS ENTERED" tone="ok" />
+            </View>
+          ) : (
+            <Text style={{ color: colors.amber, fontSize: 12, marginBottom: 6 }}>
+              Still to enter: {missing.join(', ')}
+            </Text>
+          )}
           <Text style={{ fontSize: 12, color: colors.muted }}>Verification status</Text>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginVertical: 6 }}>
             {(['new', 'repaired', 'atu', 'rejected'] as const).map((s) => (
@@ -174,7 +232,16 @@ export default function ResultsScreen() {
           <Text style={{ fontWeight: '700', color: colors.ink, marginTop: 10 }}>Checklist</Text>
           {CHECKLIST_ITEMS.map((item) => (
             <View key={item.key} style={{ flexDirection: 'row', alignItems: 'center', marginVertical: 2 }}>
-              <Text style={{ flex: 1, fontSize: 12, color: colors.ink }}>{item.label}</Text>
+              <Text
+                style={{
+                  flex: 1,
+                  fontSize: 12,
+                  color: hose.checklist[item.key] ? colors.ink : colors.amber,
+                }}
+              >
+                {hose.checklist[item.key] ? '' : '• '}
+                {item.label}
+              </Text>
               {(['pass', 'fail', 'na'] as const).map((val) => (
                 <Pill
                   key={val}
@@ -190,34 +257,53 @@ export default function ResultsScreen() {
           <Text style={{ fontWeight: '700', color: colors.ink, marginTop: 10 }}>
             EFD deliveries (VFD vs VREF, mL)
           </Text>
-          {hose.deliveries.map((d, di) => (
+          {hose.deliveries.map((d, di) => {
+            const isLastDelivery = di === hose.deliveries.length - 1;
+            const FIELD_META: Record<(typeof DELIVERY_FIELDS)[number], { label: string; value?: number }> = {
+              flowRateLpm: { label: 'Flow L/min', value: d.flowRateLpm },
+              vfdMl: { label: 'VFD', value: d.vfdMl },
+              vrefMl: { label: 'VREF', value: d.vrefMl },
+            };
+            return (
             <View key={di} style={{ borderTopWidth: 1, borderColor: colors.line, paddingVertical: 6 }}>
               <Text style={{ fontSize: 12, color: colors.ink }}>{DELIVERY_POINT_LABELS[d.point]}</Text>
               <View style={{ flexDirection: 'row', gap: 6, marginTop: 4 }}>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 11, color: colors.muted }}>Flow L/min</Text>
-                  <TextInput style={numInput} keyboardType="decimal-pad" placeholder="—" value={numStr(d.flowRateLpm)} onChangeText={(t) => setDelivery(hi, di, { flowRateLpm: parseNum(t) })} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 11, color: colors.muted }}>VFD</Text>
-                  <TextInput style={numInput} keyboardType="decimal-pad" placeholder="—" value={numStr(d.vfdMl)} onChangeText={(t) => setDelivery(hi, di, { vfdMl: parseNum(t) })} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 11, color: colors.muted }}>VREF</Text>
-                  <TextInput style={numInput} keyboardType="decimal-pad" placeholder="—" value={numStr(d.vrefMl)} onChangeText={(t) => setDelivery(hi, di, { vrefMl: parseNum(t) })} />
-                </View>
+                {DELIVERY_FIELDS.map((field, fi) => (
+                  <View key={field} style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 11, color: colors.muted }}>{FIELD_META[field].label}</Text>
+                    <TextInput
+                      ref={(r) => {
+                        inputs.current[`${hi}.${di}.${field}`] = r;
+                      }}
+                      style={numInput}
+                      keyboardType="decimal-pad"
+                      placeholder="—"
+                      value={numStr(FIELD_META[field].value)}
+                      onChangeText={(t) => setDelivery(hi, di, { [field]: parseNum(t) } as Partial<Delivery>)}
+                      returnKeyType={isLastDelivery && fi === DELIVERY_FIELDS.length - 1 ? 'done' : 'next'}
+                      blurOnSubmit={isLastDelivery && fi === DELIVERY_FIELDS.length - 1}
+                      onSubmitEditing={() => focusNext(hi, di, field)}
+                    />
+                  </View>
+                ))}
                 <View style={{ width: 84, alignItems: 'center', justifyContent: 'flex-end' }}>
                   <Text style={{ fontSize: 11, color: colors.muted }}>EFD</Text>
                   <Badge
                     text={d.efdPercent == null ? '—' : `${d.efdPercent.toFixed(2)}% ${d.pass ? '✓' : '✗'}`}
                     tone={d.efdPercent == null ? 'muted' : d.pass ? 'ok' : 'bad'}
+                    filled={d.efdPercent != null}
                   />
                 </View>
               </View>
+              {d.efdPercent != null && !Number.isNaN(d.efdPercent) ? (
+                <ToleranceBar efdPercent={d.efdPercent} />
+              ) : null}
             </View>
-          ))}
+            );
+          })}
         </SectionCard>
-      ))}
+        );
+      })}
 
       <View style={{ marginHorizontal: 12 }}>
         <Button title="Continue to sign" onPress={continueToSign} />

@@ -15,7 +15,7 @@ import {
 const inputStyle = {
   borderWidth: 1,
   borderColor: colors.line,
-  borderRadius: 6,
+  borderRadius: 10,
   paddingHorizontal: 10,
   paddingVertical: 8,
   marginBottom: 10,

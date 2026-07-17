@@ -70,7 +70,7 @@ export function BarcodeScannerModal({
                 paddingHorizontal: 24,
               }}
             >
-              <Text style={{ color: '#fff', fontWeight: '600' }}>Allow camera</Text>
+              <Text style={{ color: colors.navy, fontWeight: '600' }}>Allow camera</Text>
             </Pressable>
           </View>
         )}

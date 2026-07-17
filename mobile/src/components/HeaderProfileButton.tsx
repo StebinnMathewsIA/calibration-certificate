@@ -2,6 +2,7 @@ import { useRouter } from 'expo-router';
 import React from 'react';
 import { Pressable, Text } from 'react-native';
 import { useAuth } from '../auth/AuthContext';
+import { colors } from './ui';
 import { getProfile, profileInitials } from '../profile/profileStore';
 
 /** Two-letter initials from a name. Handles "First Last" -> "FL", a single
@@ -42,7 +43,7 @@ export function HeaderProfileButton() {
         justifyContent: 'center',
       }}
     >
-      <Text style={{ color: '#1a7a3a', fontWeight: '800', fontSize: 13 }}>{initials}</Text>
+      <Text style={{ color: colors.navy, fontWeight: '800', fontSize: 13 }}>{initials}</Text>
     </Pressable>
   );
 }

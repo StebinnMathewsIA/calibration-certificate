@@ -58,7 +58,7 @@ const emptyHose = (n: number): HoseDetail => ({
 const inputStyle = {
   borderWidth: 1,
   borderColor: colors.line,
-  borderRadius: 6,
+  borderRadius: 10,
   paddingHorizontal: 8,
   paddingVertical: 6,
   marginBottom: 5,

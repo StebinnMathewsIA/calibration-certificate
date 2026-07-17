@@ -71,7 +71,12 @@ export default function SiteDetailScreen() {
             onPress={() =>
               router.push({ pathname: '/verification/[id]/issued', params: { id: c.recordId! } })
             }
-            style={{ color: colors.blue, fontSize: 12, marginTop: 4 }}
+            style={{
+              color: colors.blueText,
+              textDecorationLine: 'underline',
+              fontSize: 12,
+              marginTop: 4,
+            }}
           >
             View / share certificate →
           </Text>

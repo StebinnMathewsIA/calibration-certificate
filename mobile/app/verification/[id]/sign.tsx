@@ -6,7 +6,7 @@ import type { AnalysisResponse, Verification } from '@prowalco/schema';
 import { MPE_PERCENT, analysisResponseSchema, validateReadyToSign } from '@prowalco/schema';
 import { ApiError, analyzeVerification } from '../../../src/api/client';
 import { useAuth } from '../../../src/auth/AuthContext';
-import { Badge, Button, DateInput, SectionCard, colors } from '../../../src/components/ui';
+import { Badge, Button, DateInput, SectionCard, colors, fonts, styles as ui } from '../../../src/components/ui';
 import { FormScrollView } from '../../../src/components/FormScrollView';
 import { readCache } from '../../../src/db/cache';
 import * as repo from '../../../src/db/certificateRepo';
@@ -19,13 +19,17 @@ const VERDICT_TONE = { pass: 'ok', marginal: 'warn', fail: 'bad', data_anomaly: 
 const inputStyle = {
   borderWidth: 1,
   borderColor: colors.line,
-  borderRadius: 6,
-  paddingHorizontal: 10,
-  paddingVertical: 8,
+  borderRadius: 10,
+  paddingHorizontal: 12,
+  paddingVertical: 10,
   marginBottom: 8,
   color: colors.ink,
+  fontFamily: fonts.body,
   backgroundColor: '#fff',
 } as const;
+
+/** "data_anomaly" -> "Data anomaly" (sentence case per brand rules). */
+const verdictLabel = (v: string) => v.replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
 
 function plusOneYear(): string {
   const d = new Date();
@@ -230,18 +234,24 @@ export default function SignScreen() {
         </Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 }}>
           <Badge
-            filled
-            text={digest.rejected > 0 ? `${digest.rejected} OF ${digest.hoses} HOSE(S) REJECTED` : `ALL ${digest.hoses} HOSE(S) CERTIFIED`}
+            text={
+              digest.rejected > 0
+                ? `✗ ${digest.rejected} of ${digest.hoses} hose(s) rejected`
+                : `✓ All ${digest.hoses} hose(s) certified`
+            }
             tone={digest.rejected > 0 ? 'bad' : 'ok'}
           />
         </View>
         {digest.worst ? (
           <Text
-            style={{
-              color: digest.worst.d.pass ? colors.muted : colors.red,
-              fontSize: 13,
-              marginTop: 6,
-            }}
+            style={[
+              ui.mono,
+              {
+                color: digest.worst.d.pass ? colors.muted : colors.red,
+                fontSize: 13,
+                marginTop: 6,
+              },
+            ]}
           >
             Worst EFD: {digest.worst.d.efdPercent.toFixed(2)} % on hose {digest.worst.hose} —{' '}
             {Math.round((Math.abs(digest.worst.d.efdPercent) / MPE_PERCENT) * 100)}% of the ±
@@ -289,19 +299,19 @@ export default function SignScreen() {
               }}
             >
               <View style={{ flex: 1 }}>
-                <Text style={{ color: colors.ink, fontWeight: '600', fontSize: 13 }}>
-                  {m.size} proving measure · {m.serialNumber}
+                <Text style={{ color: colors.ink, fontFamily: fonts.bodyMedium, fontSize: 13 }}>
+                  {m.size} proving measure · <Text style={ui.mono}>{m.serialNumber}</Text>
                 </Text>
-                <Text style={{ color: colors.muted, fontSize: 12 }}>
+                <Text style={[ui.mono, { color: colors.muted, fontSize: 12 }]}>
                   cert {m.certificateNumber} · expires {m.expiryDate}
                 </Text>
               </View>
               {expired ? (
-                <Badge filled text="EXPIRED" tone="bad" />
+                <Badge text="✗ Expired" tone="bad" />
               ) : dueSoon ? (
-                <Badge text="DUE SOON" tone="warn" />
+                <Badge text="⚠ Due soon" tone="warn" />
               ) : (
-                <Badge text="IN DATE" tone="ok" />
+                <Badge text="✓ In date" tone="ok" />
               )}
             </View>
           );
@@ -311,7 +321,7 @@ export default function SignScreen() {
       <SectionCard title="Claude review (advisory)">
         {analyzing && !analysis ? (
           <View style={{ paddingVertical: 12, alignItems: 'center' }}>
-            <ActivityIndicator color={colors.green} />
+            <ActivityIndicator color={colors.greenText} />
             <Text style={{ color: colors.muted, fontSize: 13, marginTop: 8 }}>
               Reviewing the results…
             </Text>
@@ -319,8 +329,7 @@ export default function SignScreen() {
         ) : analysis ? (
           <View>
             <Badge
-              filled
-              text={analysis.result.verdict.toUpperCase().replace('_', ' ')}
+              text={verdictLabel(analysis.result.verdict)}
               tone={VERDICT_TONE[analysis.result.verdict]}
             />
             <Text style={{ marginTop: 8, color: colors.ink }}>{analysis.result.summary}</Text>
@@ -329,7 +338,13 @@ export default function SignScreen() {
             ))}
             {analysis.result.concerns.length > 0 ? (
               <Text
-                style={{ color: colors.blue, fontSize: 13, fontWeight: '600', marginTop: 6 }}
+                style={{
+                  color: colors.blueText,
+                  fontSize: 13,
+                  fontFamily: fonts.bodyMedium,
+                  textDecorationLine: 'underline',
+                  marginTop: 6,
+                }}
                 onPress={() =>
                   router.push({ pathname: '/verification/[id]/results', params: { id } })
                 }
@@ -386,7 +401,7 @@ export default function SignScreen() {
               height: 420,
               borderWidth: 1,
               borderColor: colors.line,
-              borderRadius: 6,
+              borderRadius: 12,
               overflow: 'hidden',
             }}
           >
@@ -403,11 +418,11 @@ export default function SignScreen() {
         <View
           style={{
             borderWidth: 1.5,
-            borderColor: declaration ? colors.green : colors.amber,
-            borderRadius: 8,
-            padding: 10,
+            borderColor: declaration ? colors.greenText : colors.amberFill,
+            borderRadius: 10,
+            padding: 12,
             marginBottom: 10,
-            backgroundColor: declaration ? '#f2f8f3' : '#fff8ec',
+            backgroundColor: declaration ? colors.greenTint : colors.amberTint,
           }}
         >
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -418,8 +433,8 @@ export default function SignScreen() {
             <Switch
               value={declaration}
               onValueChange={setDeclaration}
-              trackColor={{ false: colors.amber, true: colors.green }}
-              ios_backgroundColor={colors.amber}
+              trackColor={{ false: colors.amberFill, true: colors.green }}
+              ios_backgroundColor={colors.amberFill}
               thumbColor="#ffffff"
             />
           </View>
@@ -447,10 +462,10 @@ export default function SignScreen() {
         </Text>
 
         {readiness.ready ? (
-          <Badge text="READY TO SIGN" tone="ok" />
+          <Badge text="✓ Ready to sign" tone="ok" />
         ) : (
           <>
-            <Badge text="NOT READY" tone="bad" />
+            <Badge text="✗ Not ready" tone="bad" />
             {readiness.reasons.map((r, i) => (
               <Text key={i} style={{ color: colors.red, marginTop: 6, fontSize: 12 }}>• {r}</Text>
             ))}

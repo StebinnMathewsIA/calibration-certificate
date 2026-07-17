@@ -11,18 +11,54 @@ import {
 } from 'react-native';
 import { Control, Controller, FieldValues, Path } from 'react-hook-form';
 
+/**
+ * Prowalco brand tokens (see brand guidelines). Green and blue are sampled
+ * from the logo; navy is the app's structural colour.
+ *
+ * HARD RULES enforced by these components:
+ *  - green fills take NAVY text (white on #A5CD39 fails WCAG);
+ *  - coloured small text on white only ever uses greenText / blueText;
+ *  - status chips pair colour with a word, tinted bg + dark status text;
+ *  - brand green never means "success" — pass states use the #5F7A17 family;
+ *  - numerics wear Roboto Mono with tabular figures (styles.mono);
+ *  - sentence case everywhere, no ALL CAPS.
+ */
 export const colors = {
-  green: '#1a7a3a',
-  blue: '#0b4f8a',
-  red: '#b00020',
-  amber: '#a06000',
-  ink: '#16211c',
-  // Dark enough for WCAG AA (~7:1) on the app background — VOs read this
-  // outdoors in direct sunlight.
-  muted: '#46534b',
-  line: '#d6ded9',
-  bg: '#f5f7f5',
-  card: '#ffffff',
+  // Brand core
+  green: '#A5CD39', // pw-green — fills/CTAs only, always with navy text
+  greenHover: '#8CB32B',
+  greenText: '#5F7A17', // the only green allowed as small text; pass/active
+  greenTint: '#F1F7DE',
+  blue: '#10B0E6', // pw-blue — accents; never small text
+  blueText: '#086A8C', // links / blue small text
+  blueTint: '#E3F5FC',
+  navy: '#123F73', // structure: app bars, headings, button text on green
+  navyHover: '#1B4E8A',
+  navy900: '#0B2A4A',
+  // Neutrals
+  ink: '#0B2A4A', // primary text
+  muted: '#5B6B7C', // pw-steel — secondary text
+  mist: '#E8EDF2',
+  line: '#E1E6EB', // borders, hairlines
+  bg: '#F7F9FB', // pw-offwhite
+  card: '#FFFFFF',
+  // Status (functional, not brand)
+  red: '#9B2626', // fail text on white/tint
+  redFill: '#D03B3B',
+  redTint: '#FBE5E5',
+  amber: '#8A5A0A', // due/warning text
+  amberFill: '#EF9F27',
+  amberTint: '#FDF2DC',
+};
+
+/** Font families (loaded in the root layout via @expo-google-fonts). */
+export const fonts = {
+  heading: 'BarlowSemiCondensed_600SemiBold',
+  headingMedium: 'BarlowSemiCondensed_500Medium',
+  body: 'Inter_400Regular',
+  bodyMedium: 'Inter_500Medium',
+  mono: 'RobotoMono_400Regular',
+  monoMedium: 'RobotoMono_500Medium',
 };
 
 export function SectionCard({ title, children }: { title: string; children: React.ReactNode }) {
@@ -34,11 +70,25 @@ export function SectionCard({ title, children }: { title: string; children: Reac
   );
 }
 
-export function FieldRow({ label, children }: { label: string; children: React.ReactNode }) {
+export function FieldRow({
+  label,
+  optional,
+  error,
+  children,
+}: {
+  label: string;
+  optional?: boolean;
+  error?: string;
+  children: React.ReactNode;
+}) {
   return (
     <View style={styles.fieldRow}>
-      <Text style={styles.label}>{label}</Text>
+      <Text style={styles.label}>
+        {label}
+        {optional ? <Text style={styles.labelOptional}> (optional)</Text> : null}
+      </Text>
       {children}
+      {error ? <Text style={styles.errorText}>{error}</Text> : null}
     </View>
   );
 }
@@ -50,6 +100,7 @@ interface TextFieldProps<T extends FieldValues> {
   placeholder?: string;
   multiline?: boolean;
   editable?: boolean;
+  optional?: boolean;
 }
 
 export function TextField<T extends FieldValues>({
@@ -59,13 +110,14 @@ export function TextField<T extends FieldValues>({
   placeholder,
   multiline,
   editable = true,
+  optional,
 }: TextFieldProps<T>) {
   return (
     <Controller
       control={control}
       name={name}
       render={({ field }) => (
-        <FieldRow label={label}>
+        <FieldRow label={label} optional={optional}>
           <TextInput
             style={[styles.input, !editable && styles.inputDisabled, multiline && styles.multiline]}
             value={field.value == null ? '' : String(field.value)}
@@ -86,15 +138,16 @@ export function NumberField<T extends FieldValues>({
   name,
   label,
   placeholder,
+  optional,
 }: TextFieldProps<T>) {
   return (
     <Controller
       control={control}
       name={name}
       render={({ field }) => (
-        <FieldRow label={label}>
+        <FieldRow label={label} optional={optional}>
           <TextInput
-            style={styles.input}
+            style={[styles.input, styles.mono]}
             value={field.value == null || Number.isNaN(field.value) ? '' : String(field.value)}
             keyboardType="decimal-pad"
             onChangeText={(text) => {
@@ -115,13 +168,14 @@ export function ChoiceField<T extends FieldValues>({
   name,
   label,
   options,
+  optional,
 }: TextFieldProps<T> & { options: { value: string; label: string }[] }) {
   return (
     <Controller
       control={control}
       name={name}
       render={({ field }) => (
-        <FieldRow label={label}>
+        <FieldRow label={label} optional={optional}>
           <View style={styles.chipsRow}>
             {options.map((o) => (
               <Pressable
@@ -172,7 +226,7 @@ export function DateInput({
   return (
     <View>
       <Pressable onPress={() => setShow(true)} style={styles.input}>
-        <Text style={{ fontSize: 14, color: value ? colors.ink : colors.muted }}>
+        <Text style={[styles.mono, { fontSize: 14, color: value ? colors.ink : colors.muted }]}>
           {value || placeholder}
         </Text>
       </Pressable>
@@ -208,37 +262,59 @@ export function Button({
   disabled?: boolean;
   busy?: boolean;
 }) {
-  const bg = kind === 'primary' ? colors.green : kind === 'danger' ? colors.red : colors.card;
-  const fg = kind === 'secondary' ? colors.green : '#fff';
+  // Brand recipes: primary = green fill + NAVY text (never white on green);
+  // secondary = navy outline; danger = solid status red + white text.
+  const bg = kind === 'primary' ? colors.green : kind === 'danger' ? colors.redFill : 'transparent';
+  const fg = kind === 'primary' ? colors.navy : kind === 'danger' ? '#fff' : colors.navy;
   return (
     <Pressable
       onPress={onPress}
       disabled={disabled || busy}
       style={[
         styles.button,
-        { backgroundColor: bg, borderColor: colors.green },
-        kind === 'secondary' && styles.buttonSecondary,
+        { backgroundColor: bg, borderColor: kind === 'secondary' ? colors.navy : bg },
         (disabled || busy) && { opacity: 0.5 },
       ]}
     >
-      {busy ? <ActivityIndicator color={fg} /> : <Text style={{ color: fg, fontWeight: '600' }}>{title}</Text>}
+      {busy ? (
+        <ActivityIndicator color={fg} />
+      ) : (
+        <Text style={{ color: fg, fontFamily: fonts.bodyMedium, fontSize: 15 }}>{title}</Text>
+      )}
     </Pressable>
   );
 }
 
+/** Status chip: tinted pill + dark status text (never colour alone — callers
+ * always pass a word). `filled` is accepted for compatibility but chips are
+ * always tinted per the brand recipe. `mono` sets Roboto Mono for numeric
+ * readouts (e.g. EFD values). */
 export function Badge({
   text,
   tone,
-  filled,
+  mono,
 }: {
   text: string;
   tone: 'ok' | 'warn' | 'bad' | 'muted';
   filled?: boolean;
+  mono?: boolean;
 }) {
-  const map = { ok: colors.green, warn: colors.amber, bad: colors.red, muted: colors.muted };
+  const map = {
+    ok: { bg: colors.greenTint, fg: colors.greenText },
+    warn: { bg: colors.amberTint, fg: colors.amber },
+    bad: { bg: colors.redTint, fg: colors.red },
+    muted: { bg: colors.mist, fg: colors.muted },
+  } as const;
   return (
-    <View style={[styles.badge, { borderColor: map[tone] }, filled && { backgroundColor: map[tone] }]}>
-      <Text style={{ color: filled ? '#fff' : map[tone], fontSize: 12, fontWeight: '700' }}>{text}</Text>
+    <View style={[styles.badge, { backgroundColor: map[tone].bg }]}>
+      <Text
+        style={[
+          { color: map[tone].fg, fontSize: 12, fontFamily: fonts.bodyMedium },
+          mono && { fontFamily: fonts.monoMedium, fontVariant: ['tabular-nums', 'lining-nums'] },
+        ]}
+      >
+        {text}
+      </Text>
     </View>
   );
 }
@@ -247,55 +323,67 @@ export const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   card: {
     backgroundColor: colors.card,
-    borderRadius: 10,
-    padding: 14,
+    borderRadius: 12,
+    padding: 16,
     marginHorizontal: 12,
     marginTop: 12,
     borderWidth: 1,
     borderColor: colors.line,
   },
-  cardTitle: { fontSize: 15, fontWeight: '700', color: colors.ink, marginBottom: 8 },
-  fieldRow: { marginBottom: 10 },
-  label: { fontSize: 12, color: colors.muted, marginBottom: 3 },
+  cardTitle: {
+    fontSize: 18,
+    fontFamily: fonts.heading,
+    color: colors.navy,
+    marginBottom: 8,
+  },
+  fieldRow: { marginBottom: 12 },
+  label: { fontSize: 12, fontFamily: fonts.body, color: colors.muted, marginBottom: 4 },
+  labelOptional: { fontStyle: 'italic' },
+  errorText: { fontSize: 12, fontFamily: fonts.body, color: colors.red, marginTop: 4 },
   input: {
     borderWidth: 1,
     borderColor: colors.line,
-    borderRadius: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     fontSize: 14,
+    fontFamily: fonts.body,
     color: colors.ink,
-    backgroundColor: '#fff',
+    backgroundColor: colors.card,
   },
-  inputDisabled: { backgroundColor: '#eef1ee', color: colors.muted },
+  inputDisabled: { backgroundColor: colors.mist, color: colors.muted },
   multiline: { minHeight: 70, textAlignVertical: 'top' },
-  chipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  /** Numeric readouts: Roboto Mono + tabular figures so columns align. */
+  mono: { fontFamily: fonts.mono, fontVariant: ['tabular-nums', 'lining-nums'] },
+  chipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chip: {
     borderWidth: 1,
     borderColor: colors.line,
-    borderRadius: 14,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    minHeight: 36,
+    justifyContent: 'center',
+    backgroundColor: colors.card,
   },
+  // Green fill takes navy text (hard rule 1).
   chipActive: { backgroundColor: colors.green, borderColor: colors.green },
-  chipText: { color: colors.ink, fontSize: 13 },
-  chipTextActive: { color: '#fff', fontSize: 13 },
-  switchRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
+  chipText: { color: colors.ink, fontSize: 13, fontFamily: fonts.body },
+  chipTextActive: { color: colors.navy, fontSize: 13, fontFamily: fonts.bodyMedium },
+  switchRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
   button: {
-    borderRadius: 8,
-    paddingVertical: 12,
+    borderRadius: 10,
+    paddingVertical: 13,
     minHeight: 44,
     justifyContent: 'center',
     alignItems: 'center',
     marginTop: 8,
-    borderWidth: 1,
-  },
-  buttonSecondary: { backgroundColor: '#fff' },
-  badge: {
     borderWidth: 1.5,
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
+  },
+  badge: {
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
     alignSelf: 'flex-start',
   },
 });

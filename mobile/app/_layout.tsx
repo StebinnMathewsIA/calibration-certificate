@@ -1,9 +1,16 @@
+import {
+  BarlowSemiCondensed_500Medium,
+  BarlowSemiCondensed_600SemiBold,
+} from '@expo-google-fonts/barlow-semi-condensed';
+import { Inter_400Regular, Inter_500Medium } from '@expo-google-fonts/inter';
+import { RobotoMono_400Regular, RobotoMono_500Medium } from '@expo-google-fonts/roboto-mono';
+import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import React, { useEffect } from 'react';
 import { AuthProvider } from '../src/auth/AuthContext';
 import { migrate } from '../src/db/database';
 import { useSignQueue } from '../src/queue/useSignQueue';
-import { colors } from '../src/components/ui';
+import { colors, fonts } from '../src/components/ui';
 
 function QueueRunner() {
   useSignQueue();
@@ -11,17 +18,30 @@ function QueueRunner() {
 }
 
 export default function RootLayout() {
+  const [fontsLoaded] = useFonts({
+    BarlowSemiCondensed_500Medium,
+    BarlowSemiCondensed_600SemiBold,
+    Inter_400Regular,
+    Inter_500Medium,
+    RobotoMono_400Regular,
+    RobotoMono_500Medium,
+  });
+
   useEffect(() => {
     migrate();
   }, []);
+
+  if (!fontsLoaded) return null;
 
   return (
     <AuthProvider>
       <QueueRunner />
       <Stack
         screenOptions={{
-          headerStyle: { backgroundColor: colors.green },
+          // Brand app bar: navy structure, white title.
+          headerStyle: { backgroundColor: colors.navy },
           headerTintColor: '#fff',
+          headerTitleStyle: { fontFamily: fonts.heading },
         }}
       >
         <Stack.Screen name="index" options={{ title: 'Prowalco Calibration' }} />

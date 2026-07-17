@@ -69,7 +69,8 @@ export function SyncBanner({ onQueueDrained }: { onQueueDrained?: () => void }) 
         gap: 10,
         paddingHorizontal: 12,
         paddingVertical: 8,
-        backgroundColor: online ? '#e7eef7' : '#f7efdd',
+        // Brand tints: info blue when online-with-work, warning amber offline.
+        backgroundColor: online ? colors.blueTint : colors.amberTint,
         borderBottomWidth: 1,
         borderColor: colors.line,
       }}
@@ -80,18 +81,18 @@ export function SyncBanner({ onQueueDrained }: { onQueueDrained?: () => void }) 
           onPress={syncNow}
           disabled={syncing}
           style={{
-            borderWidth: 1,
-            borderColor: colors.blue,
-            borderRadius: 6,
+            borderWidth: 1.5,
+            borderColor: colors.blueText,
+            borderRadius: 10,
             paddingHorizontal: 12,
             paddingVertical: 6,
             opacity: syncing ? 0.5 : 1,
           }}
         >
           {syncing ? (
-            <ActivityIndicator size="small" color={colors.blue} />
+            <ActivityIndicator size="small" color={colors.blueText} />
           ) : (
-            <Text style={{ color: colors.blue, fontWeight: '600', fontSize: 13 }}>Sync now</Text>
+            <Text style={{ color: colors.blueText, fontWeight: '600', fontSize: 13 }}>Sync now</Text>
           )}
         </Pressable>
       ) : null}

@@ -124,6 +124,20 @@ Requires a NEW EAS development build — two native modules were added
       signature in the sign-off blocks, and the VO as "F. Surname"
 - [ ] Header avatar shows the first letters of first name + surname
 
+### Brand kit (#23)
+- [ ] Fonts load: headings in Barlow Semi Condensed, body in Inter, numeric
+      inputs/readouts (VFD/VREF, EFD, serials, SHA) in Roboto Mono with
+      aligned digits
+- [ ] App bars are navy with white titles; tab bar is white with a hairline,
+      active tab in dark green
+- [ ] Primary buttons are lime green with NAVY text (no white-on-green
+      anywhere); secondary buttons are navy outlines; danger solid red
+- [ ] Status chips are tinted pills (pass/due/fail) with a word or ✓/⚠/✗ —
+      never colour alone; no ALL-CAPS labels anywhere
+- [ ] Sync banner uses the blue info tint online / amber tint offline
+- [ ] Certificate PDF is visually UNCHANGED (still matches the NRCS document
+      — the brand kit is app-UI only)
+
 ## Signing & offline queue (the milestone-5 acceptance test)
 
 - [ ] Client draws a signature on the pad; "Sign" is blocked until they do

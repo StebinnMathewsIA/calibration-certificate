@@ -61,8 +61,9 @@ export default function QueuedScreen() {
         {STEPS.map((step, i) => {
           const reached = i < current;
           const active = i === current;
+          // Status green as text — never raw brand green (brand rule 2/6).
           const color =
-            reached || (active && done) ? colors.green : active ? colors.amber : colors.muted;
+            reached || (active && done) ? colors.greenText : active ? colors.amber : colors.muted;
           return (
             <View key={step.label} style={{ flexDirection: 'row', marginBottom: 12 }}>
               <View style={{ width: 28, alignItems: 'center' }}>

@@ -111,6 +111,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderWidth: 1,
     borderColor: colors.line,
-    borderRadius: 6,
+    borderRadius: 10,
   },
 });

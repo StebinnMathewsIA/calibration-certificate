@@ -6,7 +6,7 @@ import { WebView } from 'react-native-webview';
 import { useFocusEffect } from 'expo-router';
 import type { Verification } from '@prowalco/schema';
 import { verificationSchema } from '@prowalco/schema';
-import { Badge, Button, SectionCard, colors, styles } from '../../../src/components/ui';
+import { Badge, Button, SectionCard, colors, fonts, styles } from '../../../src/components/ui';
 import * as repo from '../../../src/db/certificateRepo';
 import { certificateHtml } from '../../../src/pdf/certificateHtml';
 
@@ -48,7 +48,7 @@ export default function IssuedScreen() {
   return (
     <ScrollView style={styles.screen} contentContainerStyle={{ paddingBottom: 40 }}>
       <SectionCard title={record.certificateNumber ?? ''}>
-        <Badge filled text={record.state === 'SYNCED' ? 'ISSUED & SYNCED' : 'ISSUED'} tone="ok" />
+        <Badge text={record.state === 'SYNCED' ? '✓ Issued & synced' : '✓ Issued'} tone="ok" />
         <Text style={{ marginTop: 8, color: colors.ink, fontSize: 15, fontWeight: '600' }}>
           {v.site?.customerName} · {v.site?.siteName}
         </Text>
@@ -69,7 +69,7 @@ export default function IssuedScreen() {
               height: 420,
               borderWidth: 1,
               borderColor: colors.line,
-              borderRadius: 6,
+              borderRadius: 12,
               overflow: 'hidden',
             }}
           >
@@ -83,7 +83,14 @@ export default function IssuedScreen() {
 
       <SectionCard title="Verification details">
         <Pressable onPress={() => setShowVerification((s) => !s)} hitSlop={8}>
-          <Text style={{ color: colors.blue, fontWeight: '600', fontSize: 13 }}>
+          <Text
+            style={{
+              color: colors.blueText,
+              fontFamily: fonts.bodyMedium,
+              textDecorationLine: 'underline',
+              fontSize: 13,
+            }}
+          >
             {showVerification ? 'Hide' : 'Show'} signature ID, hash and timestamps
           </Text>
         </Pressable>
@@ -94,11 +101,11 @@ export default function IssuedScreen() {
               {record.signedAt}
             </Text>
             <Text style={{ color: colors.muted, fontSize: 12 }}>Signature ID</Text>
-            <Text style={{ color: colors.ink, fontSize: 13, marginBottom: 6 }} selectable>
+            <Text style={[styles.mono, { color: colors.ink, fontSize: 13, marginBottom: 6 }]} selectable>
               {record.signatureId}
             </Text>
             <Text style={{ color: colors.muted, fontSize: 12 }}>SHA-256 of signed PDF</Text>
-            <Text style={{ color: colors.ink, fontSize: 12 }} selectable>
+            <Text style={[styles.mono, { color: colors.ink, fontSize: 12 }]} selectable>
               {record.signedPdfSha256}
             </Text>
             <Text style={{ color: colors.muted, fontSize: 12, marginTop: 8 }}>

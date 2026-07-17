@@ -3,33 +3,45 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Text, TextInput, View } from 'react-native';
 import type { Checklist, Delivery, HoseResult, Verification } from '@prowalco/schema';
 import { CHECKLIST_ITEMS, DELIVERY_POINT_LABELS, MPE_PERCENT, computeEfd } from '@prowalco/schema';
-import { Badge, Button, SectionCard, colors } from '../../../src/components/ui';
+import { Badge, Button, SectionCard, colors, fonts } from '../../../src/components/ui';
 import { FormScrollView } from '../../../src/components/FormScrollView';
 import * as repo from '../../../src/db/certificateRepo';
 
 // Glove-friendly: the delivery grid is the highest-frequency entry surface.
-const numInput = {
+// Numeric readouts wear Roboto Mono with tabular figures (brand rule 7).
+const numInput: import('react-native').TextStyle = {
   borderWidth: 1,
   borderColor: colors.line,
-  borderRadius: 6,
+  borderRadius: 10,
   paddingHorizontal: 8,
   paddingVertical: 10,
   minHeight: 44,
   color: colors.ink,
   backgroundColor: '#fff',
   fontSize: 16,
-} as const;
+  fontFamily: fonts.mono,
+  fontVariant: ['tabular-nums', 'lining-nums'],
+};
 
 /** How much of the ±MPE band a delivery uses, as a colour-graded bar. */
 function ToleranceBar({ efdPercent }: { efdPercent: number }) {
   const usage = Math.abs(efdPercent) / MPE_PERCENT;
-  const color = usage >= 1 ? colors.red : usage >= 0.75 ? colors.amber : colors.green;
+  // Status colours only — brand green never means "pass" (brand rule 6).
+  const color = usage >= 1 ? colors.redFill : usage >= 0.75 ? colors.amberFill : colors.greenText;
   return (
     <View style={{ marginTop: 6 }}>
       <View style={{ height: 6, borderRadius: 3, backgroundColor: colors.line, overflow: 'hidden' }}>
         <View style={{ width: `${Math.min(usage, 1) * 100}%`, height: 6, backgroundColor: color }} />
       </View>
-      <Text style={{ color: colors.muted, fontSize: 11, marginTop: 2 }}>
+      <Text
+        style={{
+          color: colors.muted,
+          fontSize: 11,
+          marginTop: 2,
+          fontFamily: fonts.mono,
+          fontVariant: ['tabular-nums', 'lining-nums'],
+        }}
+      >
         {Math.round(usage * 100)}% of the ±{MPE_PERCENT} % MPE used
       </Text>
     </View>
@@ -57,18 +69,39 @@ const DELIVERY_FIELDS = ['flowRateLpm', 'vfdMl', 'vrefMl'] as const;
 const numStr = (v?: number) => (v == null || Number.isNaN(v) ? '' : String(v));
 const parseNum = (t: string): number | undefined => (t.trim() === '' ? undefined : Number(t));
 
-function Pill({ label, active, tone, onPress }: { label: string; active: boolean; tone: string; onPress: () => void }) {
+/** Selectable pill following the brand chip recipe: active = tinted
+ * background + dark status/semantic text (never white on a bright fill). */
+const PILL_TONES = {
+  info: { bg: colors.blueTint, fg: colors.blueText },
+  ok: { bg: colors.greenTint, fg: colors.greenText },
+  bad: { bg: colors.redTint, fg: colors.red },
+  muted: { bg: colors.mist, fg: colors.muted },
+} as const;
+
+function Pill({
+  label,
+  active,
+  tone,
+  onPress,
+}: {
+  label: string;
+  active: boolean;
+  tone: keyof typeof PILL_TONES;
+  onPress: () => void;
+}) {
+  const c = PILL_TONES[tone];
   return (
     <Text
       onPress={onPress}
       style={{
         borderWidth: 1,
-        borderColor: active ? tone : colors.line,
-        backgroundColor: active ? tone : '#fff',
-        color: active ? '#fff' : colors.ink,
+        borderColor: active ? c.fg : colors.line,
+        backgroundColor: active ? c.bg : '#fff',
+        color: active ? c.fg : colors.ink,
+        fontFamily: active ? fonts.bodyMedium : fonts.body,
         paddingHorizontal: 10,
         paddingVertical: 4,
-        borderRadius: 14,
+        borderRadius: 999,
         overflow: 'hidden',
         fontSize: 12,
         marginRight: 6,
@@ -195,7 +228,7 @@ export default function ResultsScreen() {
         <SectionCard key={hi} title={`Hose / Pump ${hose.hoseNumber} — ${hose.product}`}>
           {missing.length === 0 ? (
             <View style={{ marginBottom: 6 }}>
-              <Badge filled text="ALL RESULTS ENTERED" tone="ok" />
+              <Badge text="All results entered ✓" tone="ok" />
             </View>
           ) : (
             <Text style={{ color: colors.amber, fontSize: 12, marginBottom: 6 }}>
@@ -205,13 +238,25 @@ export default function ResultsScreen() {
           <Text style={{ fontSize: 12, color: colors.muted }}>Verification status</Text>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginVertical: 6 }}>
             {(['new', 'repaired', 'atu', 'rejected'] as const).map((s) => (
-              <Pill key={s} label={s} active={hose.status === s} tone={colors.blue} onPress={() => setHose(hi, { status: s })} />
+              <Pill
+                key={s}
+                label={s === 'atu' ? 'ATU' : s[0].toUpperCase() + s.slice(1)}
+                active={hose.status === s}
+                tone="info"
+                onPress={() => setHose(hi, { status: s })}
+              />
             ))}
           </View>
           <Text style={{ fontSize: 12, color: colors.muted }}>Test condition</Text>
           <View style={{ flexDirection: 'row', marginVertical: 6 }}>
             {(['hot', 'cold'] as const).map((c) => (
-              <Pill key={c} label={c} active={hose.testCondition === c} tone={colors.blue} onPress={() => setHose(hi, { testCondition: c })} />
+              <Pill
+                key={c}
+                label={c[0].toUpperCase() + c.slice(1)}
+                active={hose.testCondition === c}
+                tone="info"
+                onPress={() => setHose(hi, { testCondition: c })}
+              />
             ))}
           </View>
 
@@ -245,9 +290,9 @@ export default function ResultsScreen() {
               {(['pass', 'fail', 'na'] as const).map((val) => (
                 <Pill
                   key={val}
-                  label={val.toUpperCase()}
+                  label={val === 'na' ? 'N/A' : val[0].toUpperCase() + val.slice(1)}
                   active={hose.checklist[item.key] === val}
-                  tone={val === 'fail' ? colors.red : val === 'pass' ? colors.green : colors.muted}
+                  tone={val === 'fail' ? 'bad' : val === 'pass' ? 'ok' : 'muted'}
                   onPress={() => setChecklist(hi, item.key, val)}
                 />
               ))}
@@ -291,7 +336,7 @@ export default function ResultsScreen() {
                   <Badge
                     text={d.efdPercent == null ? '—' : `${d.efdPercent.toFixed(2)}% ${d.pass ? '✓' : '✗'}`}
                     tone={d.efdPercent == null ? 'muted' : d.pass ? 'ok' : 'bad'}
-                    filled={d.efdPercent != null}
+                    mono={d.efdPercent != null}
                   />
                 </View>
               </View>

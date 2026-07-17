@@ -162,11 +162,11 @@ export default function WorkOrderScreen() {
                     <Text
                       onPress={() => setScanning(true)}
                       style={{
-                        color: colors.green,
+                        color: colors.navy,
                         fontWeight: '600',
-                        borderWidth: 1,
-                        borderColor: colors.green,
-                        borderRadius: 6,
+                        borderWidth: 1.5,
+                        borderColor: colors.navy,
+                        borderRadius: 10,
                         paddingHorizontal: 12,
                         paddingVertical: 9,
                         marginBottom: 6,
@@ -220,7 +220,7 @@ const ADD_FIELD_LABELS: Record<'make' | 'model' | 'serialNumber' | 'saApprovalNu
 const inputStyle = {
   borderWidth: 1,
   borderColor: colors.line,
-  borderRadius: 6,
+  borderRadius: 10,
   paddingHorizontal: 10,
   paddingVertical: 8,
   marginBottom: 6,

@@ -11,11 +11,11 @@ import { processQueue } from '../../src/queue/signQueue';
 import { Badge, Button, colors, styles } from '../../src/components/ui';
 
 const IN_PROGRESS_LABEL: Partial<Record<CertificateState, string>> = {
-  DRAFT: 'DRAFT',
-  READY_TO_SIGN: 'READY TO SIGN',
-  QUEUED_FOR_SIGNING: 'QUEUED',
-  UPLOADING: 'UPLOADING',
-  SIGNED: 'SYNC PENDING',
+  DRAFT: 'Draft',
+  READY_TO_SIGN: 'Ready to sign',
+  QUEUED_FOR_SIGNING: 'Queued',
+  UPLOADING: 'Uploading…',
+  SIGNED: 'Sync pending',
 };
 
 const IN_PROGRESS_TONE: Partial<Record<CertificateState, 'ok' | 'warn' | 'bad' | 'muted'>> = {
@@ -120,7 +120,15 @@ export default function HomeScreen() {
                               </Text>
                               {item.state === 'QUEUED_FOR_SIGNING' ? (
                                 <Pressable onPress={() => retryItem(item.id)} hitSlop={8}>
-                                  <Text style={{ color: colors.blue, fontWeight: '600', fontSize: 13, marginTop: 2 }}>
+                                  <Text
+                                    style={{
+                                      color: colors.blueText,
+                                      fontWeight: '600',
+                                      textDecorationLine: 'underline',
+                                      fontSize: 13,
+                                      marginTop: 2,
+                                    }}
+                                  >
                                     Retry now
                                   </Text>
                                 </Pressable>

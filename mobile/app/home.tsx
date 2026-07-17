@@ -4,9 +4,11 @@ import { Alert, FlatList, Pressable, Text, View } from 'react-native';
 import type { CertificateState } from '@prowalco/schema';
 import { reserveCertificateNumber } from '../src/api/client';
 import { useAuth } from '../src/auth/AuthContext';
+import { SyncBanner } from '../src/components/SyncBanner';
 import { Badge, Button, colors, styles } from '../src/components/ui';
 import { config } from '../src/config';
 import * as repo from '../src/db/certificateRepo';
+import { processQueue } from '../src/queue/signQueue';
 
 const STATE_TONE: Record<CertificateState, 'ok' | 'warn' | 'bad' | 'muted'> = {
   DRAFT: 'muted',
@@ -59,8 +61,15 @@ export default function HomeScreen() {
     }
   };
 
+  const retryItem = async (itemId: string) => {
+    repo.clearRetryBackoff(itemId);
+    await processQueue(accessToken).catch(() => {});
+    setItems(repo.listAll());
+  };
+
   return (
     <View style={styles.screen}>
+      <SyncBanner onQueueDrained={() => setItems(repo.listAll())} />
       <View style={{ padding: 12 }}>
         <Text style={{ color: colors.muted }}>Signed in as {identity?.name}</Text>
         <Button title="New calibration" onPress={newCalibration} busy={creating} />
@@ -92,7 +101,18 @@ export default function HomeScreen() {
                   {(item.form.job as { customerName?: string } | undefined)?.customerName ?? 'New calibration'}
                 </Text>
                 {item.lastError ? (
-                  <Text style={{ color: colors.red, fontSize: 11 }}>{item.lastError}</Text>
+                  <View style={{ marginTop: 4 }}>
+                    <Text style={{ color: colors.red, fontSize: 12 }}>
+                      Last attempt failed: {item.lastError}
+                    </Text>
+                    {item.state === 'QUEUED_FOR_SIGNING' ? (
+                      <Pressable onPress={() => retryItem(item.id)} hitSlop={8}>
+                        <Text style={{ color: colors.blue, fontWeight: '600', fontSize: 13, marginTop: 2 }}>
+                          Retry now
+                        </Text>
+                      </Pressable>
+                    ) : null}
+                  </View>
                 ) : null}
               </View>
               <Badge text={item.state.replaceAll('_', ' ')} tone={STATE_TONE[item.state]} />

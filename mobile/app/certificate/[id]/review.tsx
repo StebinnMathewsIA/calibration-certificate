@@ -1,6 +1,6 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useMemo, useState } from 'react';
-import { Alert, ScrollView, Switch, Text, View } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Alert, ScrollView, Switch, Text, View } from 'react-native';
 import { WebView } from 'react-native-webview';
 import type { AnalysisResponse, CalibrationForm } from '@prowalco/schema';
 import {
@@ -21,6 +21,19 @@ const VERDICT_TONE = {
   fail: 'bad',
   data_anomaly: 'bad',
 } as const;
+
+/** Best-effort mapping of a free-text concern to the form section it is
+ * about, for the "Review in form" deep link. Null = no confident match. */
+function concernSection(concern: string): string | null {
+  const t = concern.toLowerCase();
+  if (/(as[- ]?found|as[- ]?left|test point|reading|indicated|measured|volume|flow|error|identical|k-factor|adjust)/.test(t))
+    return 'results';
+  if (/(temperature|ambient|procedure|condition|leak)/.test(t)) return 'environment';
+  if (/(standard|proving|expired|due date|traceab)/.test(t)) return 'referenceStandards';
+  if (/(serial|nozzle|model|manufacturer|dispenser|pump|grade|product)/.test(t)) return 'uut';
+  if (/(customer|site|work order|calibration date)/.test(t)) return 'job';
+  return null;
+}
 
 function DigestRow({ k, v, bad }: { k: string; v: string; bad?: boolean }) {
   return (
@@ -81,25 +94,47 @@ export default function ReviewScreen() {
 
   if (!record || !form) return <Text>Not found</Text>;
 
-  const runAnalysis = async () => {
+  const [autoError, setAutoError] = useState<string | null>(null);
+
+  const runAnalysis = async (auto = false) => {
+    if (!form) return;
     setAnalyzing(true);
+    setAutoError(null);
     try {
       // Advisory review BEFORE signing so the technician can react on-site.
       const response = await analyzeCalibration(accessToken, form);
       setAnalysis(response);
       repo.saveAnalysis(id, JSON.stringify(response));
     } catch (err) {
-      Alert.alert(
-        'Analysis unavailable',
-        'The Claude review could not run (offline or server issue). You can still sign — the review is advisory.\n\n' +
-          (err instanceof Error ? err.message : String(err)),
-      );
+      if (auto) {
+        // Auto-run failing (offline, server down) must not interrupt the
+        // signing flow with a dialog — the review is advisory.
+        setAutoError(err instanceof Error ? err.message : String(err));
+      } else {
+        Alert.alert(
+          'Analysis unavailable',
+          'The Claude review could not run (offline or server issue). You can still sign — the review is advisory.\n\n' +
+            (err instanceof Error ? err.message : String(err)),
+        );
+      }
     } finally {
       setAnalyzing(false);
     }
   };
 
-  const sign = async () => {
+  // Run the review unprompted the first time a ready form reaches this
+  // screen — an optional button gets skipped; feedback that just appears
+  // gets read.
+  const autoRan = useRef(false);
+  useEffect(() => {
+    if (autoRan.current || analysis || analyzing || !readiness.ready) return;
+    autoRan.current = true;
+    void runAnalysis(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [readiness.ready, analysis, analyzing]);
+
+  const doSign = async () => {
+    if (!form) return;
     setSigning(true);
     try {
       await enqueueForSigning(id, form, gpsConsent);
@@ -109,6 +144,25 @@ export default function ReviewScreen() {
     } finally {
       setSigning(false);
     }
+  };
+
+  const sign = () => {
+    // Gentle friction, never a block: the verdict is advisory and the human
+    // signatory remains responsible (quality procedure).
+    const verdict = analysis?.result.verdict;
+    if (verdict === 'fail' || verdict === 'data_anomaly') {
+      const top = analysis?.result.concerns[0] ?? analysis?.result.summary ?? '';
+      Alert.alert(
+        `Claude review verdict: ${verdict.replace('_', ' ')}`,
+        `${top}\n\nThe review is advisory — you and the technical signatory remain responsible. Sign anyway?`,
+        [
+          { text: 'Not yet', style: 'cancel' },
+          { text: 'Sign anyway', style: 'destructive', onPress: () => void doSign() },
+        ],
+      );
+      return;
+    }
+    void doSign();
   };
 
   return (
@@ -167,18 +221,42 @@ export default function ReviewScreen() {
           An automated metrology review of the results. The verdict is advisory and is recorded in
           the audit trail — you and the technical signatory remain responsible for the certificate.
         </Text>
-        {analysis ? (
+        {analyzing && !analysis ? (
+          <View style={{ paddingVertical: 12, alignItems: 'center' }}>
+            <ActivityIndicator color={colors.green} />
+            <Text style={{ color: colors.muted, fontSize: 13, marginTop: 8 }}>
+              Reviewing the results…
+            </Text>
+          </View>
+        ) : analysis ? (
           <View>
             <Badge
+              filled
               text={analysis.result.verdict.toUpperCase().replace('_', ' ')}
               tone={VERDICT_TONE[analysis.result.verdict]}
             />
             <Text style={{ marginTop: 8, color: colors.ink }}>{analysis.result.summary}</Text>
-            {analysis.result.concerns.map((c, i) => (
-              <Text key={i} style={{ color: colors.amber, marginTop: 4, fontSize: 13 }}>
-                ⚠ {c}
-              </Text>
-            ))}
+            {analysis.result.concerns.map((c, i) => {
+              const section = concernSection(c);
+              return (
+                <View key={i} style={{ marginTop: 6 }}>
+                  <Text style={{ color: colors.amber, fontSize: 13 }}>⚠ {c}</Text>
+                  {section ? (
+                    <Text
+                      style={{ color: colors.blue, fontSize: 13, fontWeight: '600', marginTop: 2 }}
+                      onPress={() =>
+                        router.push({
+                          pathname: '/certificate/[id]/edit',
+                          params: { id, section },
+                        })
+                      }
+                    >
+                      Review in form →
+                    </Text>
+                  ) : null}
+                </View>
+              );
+            })}
             {analysis.result.recommendations.map((r, i) => (
               <Text key={i} style={{ color: colors.blue, marginTop: 4, fontSize: 13 }}>
                 → {r}
@@ -187,13 +265,19 @@ export default function ReviewScreen() {
             <Text style={{ color: colors.muted, fontSize: 11, marginTop: 8 }}>
               {analysis.model} · {analysis.promptVersion} · {analysis.analyzedAt}
             </Text>
+            <Button title="Re-run review" onPress={() => runAnalysis()} busy={analyzing} kind="secondary" />
           </View>
         ) : (
-          <Button title="Run review" onPress={runAnalysis} busy={analyzing} kind="secondary" />
+          <View>
+            {autoError ? (
+              <Text style={{ color: colors.muted, fontSize: 13, marginBottom: 6 }}>
+                The automatic review could not run (offline or server issue) — you can still sign,
+                or try again.
+              </Text>
+            ) : null}
+            <Button title="Run review" onPress={() => runAnalysis()} busy={analyzing} kind="secondary" />
+          </View>
         )}
-        {analysis ? (
-          <Button title="Re-run review" onPress={runAnalysis} busy={analyzing} kind="secondary" />
-        ) : null}
       </SectionCard>
 
       <SectionCard title="Sign">

@@ -248,7 +248,7 @@ function ResultRows({
 }
 
 export default function EditScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, section } = useLocalSearchParams<{ id: string; section?: string }>();
   const router = useRouter();
   const record = useMemo(() => repo.getById(id), [id]);
 
@@ -301,6 +301,15 @@ export default function EditScreen() {
     const y = sectionY.current[key];
     if (y != null) scrollRef.current?.scrollTo({ y: Math.max(y - 6, 0), animated: true });
   };
+
+  // Deep link from a review concern ("Review in form"): scroll to the named
+  // section once layout has produced anchor positions.
+  useEffect(() => {
+    if (!section) return;
+    const timer = setTimeout(() => jumpToSection(section as SectionKey), 400);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [section]);
 
   const anchorProps = (key: SectionKey) => ({
     onLayout: (e: { nativeEvent: { layout: { y: number } } }) => {

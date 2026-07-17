@@ -113,6 +113,15 @@ export function recordRetryFailure(id: string, error: string): void {
   );
 }
 
+/** Manual "Sync now" / "Retry": drop the backoff gate so the next queue
+ * drain attempts this item immediately (idempotency key keeps it safe). */
+export function clearRetryBackoff(id: string): void {
+  db.runSync(`UPDATE certificates SET next_retry_at = NULL, updated_at = ? WHERE id = ?`, [
+    now(),
+    id,
+  ]);
+}
+
 export function saveAnalysis(certificateId: string, responseJson: string): void {
   db.runSync(
     `INSERT OR REPLACE INTO analysis_results (certificate_id, response_json, created_at)

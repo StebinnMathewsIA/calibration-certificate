@@ -4,6 +4,7 @@ import { FlatList, Pressable, Text, View } from 'react-native';
 import { listSites, SiteResolved } from '../../src/api/client';
 import { useAuth } from '../../src/auth/AuthContext';
 import { fetchThrough } from '../../src/db/cache';
+import { SyncBanner } from '../../src/components/SyncBanner';
 import { Button, colors, styles } from '../../src/components/ui';
 
 export default function SitesScreen() {
@@ -34,6 +35,7 @@ export default function SitesScreen() {
 
   return (
     <View style={styles.screen}>
+      <SyncBanner />
       <View style={{ padding: 12 }}>
         <Button
           title={refreshing ? 'Refreshing…' : 'Refresh sites'}

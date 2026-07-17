@@ -16,7 +16,8 @@ import * as LocalAuthentication from 'expo-local-authentication';
 import * as Location from 'expo-location';
 import type { IntentToSign, SignSubmission, Verification } from '@prowalco/schema';
 import { validateReadyToSign } from '@prowalco/schema';
-import { confirmReceipt, submitForSigning } from '../api/client';
+import { confirmReceipt, reserveCertificateNumber, submitForSigning } from '../api/client';
+import { config } from '../config';
 import * as repo from '../db/certificateRepo';
 import { sha256HexOfBase64 } from '../lib/bytes';
 import { persistSignedPdf, renderCertificatePdf } from '../pdf/renderPdf';
@@ -81,6 +82,20 @@ export async function enqueueForSigning(
     pdf_sha256: pdf.sha256,
     intent_json: JSON.stringify(intent),
   });
+}
+
+/** Assign server-reserved certificate numbers to drafts that were started
+ * offline. Rides the same triggers as the queue drain; stops at the first
+ * failure (still offline) and retries on the next drain. */
+export async function backfillCertificateNumbers(accessToken: string | null): Promise<void> {
+  for (const item of repo.listMissingNumber()) {
+    try {
+      const certificateNumber = await reserveCertificateNumber(accessToken, config.branchCode);
+      repo.assignCertificateNumber(item.id, certificateNumber);
+    } catch {
+      return;
+    }
+  }
 }
 
 /** Drains the queue. Called on launch, on app foreground, and whenever

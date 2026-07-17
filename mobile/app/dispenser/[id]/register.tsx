@@ -21,6 +21,7 @@ import { useAuth } from '../../../src/auth/AuthContext';
 import { Button, SectionCard, colors } from '../../../src/components/ui';
 import { FormScrollView } from '../../../src/components/FormScrollView';
 import { config } from '../../../src/config';
+import { fetchThrough } from '../../../src/db/cache';
 import { DELIVERY_NOMINAL_ML, METHOD_REFERENCE, REFERENCE_MEASURES } from '../../../src/data/registers';
 import * as repo from '../../../src/db/certificateRepo';
 
@@ -136,13 +137,33 @@ export default function RegisterScreen() {
         qMaxLpm: qMax ? Number(qMax) : undefined,
         hoses,
       };
-      await saveDispenserDetail(accessToken, id, detail);
+      // Offline the canonical-store save fails but must not block the
+      // verification: the components are snapshotted into the payload below,
+      // and the store catches up on the next online visit.
+      try {
+        await saveDispenserDetail(accessToken, id, detail);
+      } catch {
+        // continue — offline
+      }
 
-      const [site, disp, certificateNumber] = await Promise.all([
-        getSite(accessToken, siteId),
-        getDispenser(accessToken, id),
-        reserveCertificateNumber(accessToken, config.branchCode),
+      // Site/dispenser identity read through the offline cache (populated
+      // when the work order was opened online).
+      const [site, disp] = await Promise.all([
+        fetchThrough(`site:${siteId}`, () => getSite(accessToken, siteId)),
+        fetchThrough(`dispenser:${id}`, () => getDispenser(accessToken, id)),
       ]);
+
+      // Number reservation is server-side; offline the draft starts
+      // numberless and backfillCertificateNumbers() assigns it on reconnect.
+      let certificateNumber: string | null = null;
+      try {
+        certificateNumber = await reserveCertificateNumber(accessToken, config.branchCode);
+      } catch {
+        Alert.alert(
+          'Working offline',
+          'A certificate number will be assigned automatically when the device is back online. You can complete the whole verification now.',
+        );
+      }
 
       // Identity/components carry over (known data); everything the VO
       // determines on-site starts UNSET so nothing reads as a result until
@@ -163,7 +184,7 @@ export default function RegisterScreen() {
 
       const verification: Partial<Verification> = {
         schemaVersion: SCHEMA_VERSION,
-        certificateNumber,
+        certificateNumber: certificateNumber ?? undefined,
         reportType: 'verification',
         site: {
           customerName: site.customerName,
@@ -190,7 +211,7 @@ export default function RegisterScreen() {
         verificationDate: new Date().toISOString().slice(0, 10),
       };
 
-      const draftId = repo.createDraft(certificateNumber, verification);
+      const draftId = repo.createDraft(certificateNumber ?? null, verification);
       router.push({ pathname: '/verification/[id]/results', params: { id: draftId } });
     } catch (err) {
       Alert.alert('Could not start verification', err instanceof Error ? err.message : String(err));

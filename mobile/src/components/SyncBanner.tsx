@@ -3,7 +3,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import { useAuth } from '../auth/AuthContext';
 import * as repo from '../db/certificateRepo';
-import { processQueue } from '../queue/signQueue';
+import { backfillCertificateNumbers, processQueue } from '../queue/signQueue';
 import { colors } from './ui';
 
 /**
@@ -44,6 +44,7 @@ export function SyncBanner({ onQueueDrained }: { onQueueDrained?: () => void }) 
     setSyncing(true);
     try {
       for (const item of repo.listInState('QUEUED_FOR_SIGNING')) repo.clearRetryBackoff(item.id);
+      await backfillCertificateNumbers(accessToken);
       await processQueue(accessToken);
     } finally {
       setSyncing(false);

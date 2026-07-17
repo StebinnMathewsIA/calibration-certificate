@@ -183,7 +183,7 @@ export default function ResultsScreen() {
 
   return (
     <FormScrollView>
-      <SectionCard title={`Certificate ${v.certificateNumber ?? ''}`}>
+      <SectionCard title={`Certificate ${v.certificateNumber ?? '(number pending — assigns when online)'}`}>
         <Text style={{ color: colors.muted, fontSize: 13 }}>
           {v.site?.customerName} · {v.site?.siteName} · {v.dispenser?.serialNumber}
         </Text>

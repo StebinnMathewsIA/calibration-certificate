@@ -215,6 +215,29 @@ Requires a NEW EAS development build — two native modules were added
       Work orders returns — verify on BOTH platforms (touch fall-through to
       the screen layer was the #34 bug)
 
+### Certificate output round 2 (#35, #36, #37)
+
+- [ ] iOS-issued PDF page 1: rotated group labels (LFD Description / Meter /
+      PC Board / Pulsar / Solenoid Valve) sit inside their own column — no
+      overlap with Make/Model/Serial labels (verified in Chromium; iOS
+      renderer is the one that previously overflowed)
+- [ ] Metrologist note: Verification Status prints "New" / "Repaired" /
+      "ATU" / "Rej" (not lowercase raw values)
+- [ ] Newly issued PDF opens in Adobe Reader as a CERTIFIED document
+      (blue-ribbon panel); editing the file afterwards invalidates the
+      certification (DocMDP no-changes) — note: backend must be redeployed
+      for #37 to take effect
+- [ ] App still accepts/verifies the returned signed PDF end-to-end after
+      the certify change
+
+### Internal tester demo package (#38)
+
+- [ ] sashern@prowalco.co.za signs in (any provider) and sees WO-4714 ·
+      Sasol Kyalami Corner with 2 dispensers
+- [ ] DISP-301 prefills complete; DISP-302 asks for identity completion
+- [ ] Owner action (cannot be done from the repo): add the tester to the
+      EAS/TestFlight internal distribution so they can install the build
+
 ## Signing & offline queue (the milestone-5 acceptance test)
 
 - [ ] Client draws a signature on the pad; "Sign" is blocked until they do

@@ -48,6 +48,14 @@ export interface RenderOptions {
 const measure = (ms: ReferenceMeasure[], size: ReferenceMeasure['size']) =>
   ms.find((m) => m.size === size);
 
+/** Display casing per the printed form's "New / Repaired / ATU / Rej" (#36). */
+const HOSE_STATUS_LABELS: Record<string, string> = {
+  new: 'New',
+  repaired: 'Repaired',
+  atu: 'ATU',
+  rejected: 'Rej',
+};
+
 // ---------------------------------------------------------------------------
 // Page 1 — certificate grid (component fields as rows, hoses as columns)
 // ---------------------------------------------------------------------------
@@ -149,7 +157,7 @@ function metrologistGrid(v: Verification): string {
     ${identityRow('LFD Make & Model', () => cell(d.makeModel))}
     ${identityRow('LFD Serial number', () => cell(d.serialNumber))}
     ${identityRow('LFD Hose number', (h) => cell(h.hoseNumber))}
-    ${identityRow('Verification Status (New / Repaired / ATU / Rej)', (h) => cell(h.status))}
+    ${identityRow('Verification Status (New / Repaired / ATU / Rej)', (h) => cell(HOSE_STATUS_LABELS[h.status] ?? h.status))}
     ${identityRow('Product', (h) => cell(h.product))}
     ${identityRow('Totalizer reading before', (h) => cell(h.totalizerBefore))}
     ${identityRow('Totalizer reading after', (h) => cell(h.totalizerAfter))}
@@ -208,8 +216,14 @@ export function certificateHtml(v: Verification, opts: RenderOptions = {}): stri
   table.grid, table.idgrid { width: 100%; border-collapse: collapse; }
   table.grid td, table.idgrid td { border: 1px solid #000; padding: 1px 4px; font-size: 7pt; }
   table.idgrid td.lbl, table.grid td.lbl { font-weight: bold; white-space: nowrap; background: #f4f4f4; }
-  td.rot { width: 14px; text-align: center; background: #f4f4f4; }
-  td.rot span { writing-mode: vertical-rl; transform: rotate(180deg); font-weight: bold; font-size: 7pt; }
+  /* Rotated group labels: transform-based centring — the iOS print renderer
+     does not contain writing-mode text inside a narrow cell and the label
+     spilled over the neighbouring cells (#35). */
+  td.rot { width: 18px; position: relative; background: #f4f4f4; overflow: hidden; }
+  td.rot span { position: absolute; top: 50%; left: 50%;
+    transform: translate(-50%, -50%) rotate(-90deg); transform-origin: center;
+    white-space: nowrap; font-weight: bold; font-size: 6pt; line-height: 1.15;
+    text-align: center; }
 
   .comply { font-size: 6.8pt; margin-top: 6px; }
 
@@ -299,7 +313,7 @@ export function certificateHtml(v: Verification, opts: RenderOptions = {}): stri
 
 <table class="idgrid">
   <tr>
-    <td class="rot" rowspan="2"><span>LFD Description</span></td>
+    <td class="rot" rowspan="2"><span>LFD<br/>Description</span></td>
     <td class="lbl">Make &amp; Model</td><td>${cell(dispenser.makeModel)}</td>
     <td class="lbl">Serial No.:</td><td>${cell(dispenser.serialNumber)}</td>
   </tr>

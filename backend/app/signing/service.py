@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 
 from pyhanko.pdf_utils.incremental_writer import IncrementalPdfFileWriter
 from pyhanko.sign import fields, signers, timestamps
-from pyhanko.sign.fields import SigFieldSpec, SigSeedSubFilter
+from pyhanko.sign.fields import MDPPerm, SigFieldSpec, SigSeedSubFilter
 from pyhanko.stamp import TextStampStyle
 
 from .keys import SigningKeyProvider
@@ -57,6 +57,11 @@ class SigningService:
             reason=f"Issue of calibration certificate {certificate_number}",
             location="Prowalco (Pty) Ltd",
             subfilter=SigSeedSubFilter.PADES,
+            # Certification signature, no changes allowed: the document is
+            # locked at issue and any later modification invalidates the
+            # certification instead of showing as "changes after signing".
+            certify=True,
+            docmdp_permissions=MDPPerm.NO_CHANGES,
         )
         pdf_signer = signers.PdfSigner(
             meta,

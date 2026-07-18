@@ -1,9 +1,10 @@
 import { Redirect, useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useMemo, useState } from 'react';
-import { FlatList, Pressable, Text, View } from 'react-native';
+import { Alert, FlatList, Pressable, Text, View } from 'react-native';
 import type { CertificateState, Verification } from '@prowalco/schema';
 import { listWorkOrders, WorkOrderSummary } from '../../src/api/client';
 import { useAuth } from '../../src/auth/AuthContext';
+import { TrashIcon } from '../../src/components/BrandHeader';
 import { GreetingHeader } from '../../src/components/GreetingHeader';
 import { SyncBanner } from '../../src/components/SyncBanner';
 import { fetchThrough } from '../../src/db/cache';
@@ -37,6 +38,22 @@ function resumePath(state: CertificateState): string {
 const recordWorkOrderId = (r: repo.CertificateRecord): string | undefined =>
   (r.form as Partial<Verification>).workOrderId;
 
+/** Editable pre-signing states — the only ones that may be deleted (#41). */
+const isDraftState = (s: CertificateState) => s === 'DRAFT' || s === 'READY_TO_SIGN';
+
+/** "Last saved" readout (#40): relative while recent, absolute after a day. */
+function formatLastSaved(iso: string): string {
+  const saved = new Date(iso);
+  const mins = Math.floor((Date.now() - saved.getTime()) / 60_000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins} min ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours} h ago`;
+  const hh = String(saved.getHours()).padStart(2, '0');
+  const mm = String(saved.getMinutes()).padStart(2, '0');
+  return `${saved.toISOString().slice(0, 10)} ${hh}:${mm}`;
+}
+
 export default function HomeScreen() {
   const { identity, accessToken, loading } = useAuth();
   const router = useRouter();
@@ -48,7 +65,14 @@ export default function HomeScreen() {
   const loadLocal = useCallback(() => {
     // Every verification on this device that has not fully synced — drafts
     // were previously orphaned the moment the VO left the results screen.
-    setInProgress(repo.listAll().filter((r) => r.state !== 'SYNCED'));
+    // Most recently worked-on first (#40): autosave touches updatedAt on
+    // every field change, so this surfaces the draft the VO was busy with.
+    setInProgress(
+      repo
+        .listAll()
+        .filter((r) => r.state !== 'SYNCED')
+        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
+    );
     setArchivedCount(repo.listArchived().length);
   }, []);
 
@@ -82,6 +106,26 @@ export default function HomeScreen() {
     repo.clearRetryBackoff(itemId);
     await processQueue(accessToken).catch(() => {});
     loadLocal();
+  };
+
+  const confirmDeleteDraft = (item: repo.CertificateRecord) => {
+    const v = item.form as Partial<Verification>;
+    const label = v.site?.siteName ?? v.site?.customerName ?? 'This draft';
+    Alert.alert(
+      'Delete draft?',
+      `${label}${item.certificateNumber ? ` (${item.certificateNumber})` : ''} will be removed from this device. This cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            repo.deleteDraft(item.id);
+            loadLocal();
+          },
+        },
+      ],
+    );
   };
 
   // In-progress items grouped under their work order (#30); anything whose
@@ -131,6 +175,11 @@ export default function HomeScreen() {
               {v.dispenser?.serialNumber ? `S/N ${v.dispenser.serialNumber} · ` : ''}
               {item.certificateNumber ?? 'number pending'}
             </Text>
+            {isDraftState(item.state) ? (
+              <Text style={{ color: colors.muted, fontSize: 11, marginTop: 2 }}>
+                Last saved {formatLastSaved(item.updatedAt)}
+              </Text>
+            ) : null}
             {item.lastError ? (
               <View style={{ marginTop: 4 }}>
                 <Text style={{ color: colors.red, fontSize: 12 }}>
@@ -158,6 +207,17 @@ export default function HomeScreen() {
             text={IN_PROGRESS_LABEL[item.state] ?? item.state}
             tone={IN_PROGRESS_TONE[item.state] ?? 'muted'}
           />
+          {isDraftState(item.state) ? (
+            <Pressable
+              onPress={() => confirmDeleteDraft(item)}
+              hitSlop={10}
+              accessibilityRole="button"
+              accessibilityLabel="Delete draft"
+              style={{ marginLeft: 12 }}
+            >
+              <TrashIcon color={colors.muted} />
+            </Pressable>
+          ) : null}
         </View>
       </Pressable>
     );
@@ -168,16 +228,17 @@ export default function HomeScreen() {
       <GreetingHeader
         openWorkOrders={workOrders.length}
         checking={refreshing && workOrders.length === 0}
+        onRefresh={load}
+        refreshing={refreshing}
       />
       <SyncBanner onQueueDrained={loadLocal} />
-      <View style={{ padding: 12 }}>
-        <Button
-          title={refreshing ? 'Refreshing…' : 'Refresh work orders'}
-          kind="secondary"
-          onPress={load}
-          busy={refreshing}
-        />
-      </View>
+      {refreshing ? (
+        // The refresh action lives in the header icon (#39); the familiar
+        // loading bar still appears here while a refresh is in flight.
+        <View style={{ padding: 12 }}>
+          <Button title="Refreshing…" kind="secondary" onPress={() => {}} busy />
+        </View>
+      ) : null}
       <FlatList
         data={workOrders}
         keyExtractor={(x) => x.id}

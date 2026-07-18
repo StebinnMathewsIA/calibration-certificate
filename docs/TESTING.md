@@ -238,6 +238,25 @@ Requires a NEW EAS development build — two native modules were added
 - [ ] Owner action (cannot be done from the repo): add the tester to the
       EAS/TestFlight internal distribution so they can install the build
 
+### Home refresh icon, draft recency & deletion (#39, #40, #41)
+
+- [ ] Idle Home shows NO full-width "Refresh work orders" button; a circular
+      refresh icon sits in the greeting header left of the avatar
+- [ ] Tapping the icon refreshes work orders; while in flight the icon shows
+      a spinner and the familiar "Refreshing…" loading bar appears below the
+      header, then disappears when done
+- [ ] VoiceOver/TalkBack read the icon as "Refresh work orders"
+- [ ] Draft / Ready-to-sign cards show "Last saved …" ("just now" → "N min
+      ago" → "N h ago" → date + time); editing a draft and returning to Home
+      updates it
+- [ ] With several drafts under one work order, the most recently edited
+      draft is listed first; editing an older one moves it to the top
+- [ ] Trash icon appears ONLY on Draft / Ready-to-sign cards (not queued /
+      uploading / signed); tapping it asks for confirmation naming the site
+      and certificate number
+- [ ] Cancel keeps the draft; Delete removes it permanently (still gone
+      after app kill/restart)
+
 ## Signing & offline queue (the milestone-5 acceptance test)
 
 - [ ] Client draws a signature on the pad; "Sign" is blocked until they do

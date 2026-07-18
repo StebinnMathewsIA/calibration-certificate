@@ -46,6 +46,53 @@ export function WorkOrdersTabIcon({ color, focused }: { color: string; focused?:
   );
 }
 
+/** Circular-arrow refresh glyph — header refresh action (#39). */
+export function RefreshIcon({ color, size = 22 }: { color: string; size?: number }) {
+  const sw = 2;
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M20 12a8 8 0 1 1-2.9-6.16"
+        stroke={color}
+        strokeWidth={sw}
+        strokeLinecap="round"
+      />
+      <Path
+        d="M20.2 3.6v4.3h-4.3"
+        stroke={color}
+        strokeWidth={sw}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
+
+/** Waste-bin glyph — draft deletion (#41). */
+export function TrashIcon({ color, size = 20 }: { color: string; size?: number }) {
+  const sw = 1.8;
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Line x1={4.5} y1={6.5} x2={19.5} y2={6.5} stroke={color} strokeWidth={sw} strokeLinecap="round" />
+      <Path
+        d="M9.5 6V4.5A1.5 1.5 0 0 1 11 3h2a1.5 1.5 0 0 1 1.5 1.5V6"
+        stroke={color}
+        strokeWidth={sw}
+        strokeLinecap="round"
+      />
+      <Path
+        d="M6.5 6.5l.8 12.1a2 2 0 0 0 2 1.9h5.4a2 2 0 0 0 2-1.9l.8-12.1"
+        stroke={color}
+        strokeWidth={sw}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <Line x1={10} y1={10.5} x2={10} y2={16.5} stroke={color} strokeWidth={sw} strokeLinecap="round" />
+      <Line x1={14} y1={10.5} x2={14} y2={16.5} stroke={color} strokeWidth={sw} strokeLinecap="round" />
+    </Svg>
+  );
+}
+
 export function SitesTabIcon({ color, focused }: { color: string; focused?: boolean }) {
   const sw = focused ? 2.2 : 1.8;
   return (

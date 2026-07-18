@@ -111,6 +111,21 @@ export function archiveDraftsForClosedWorkOrders(closedWorkOrderIds: string[]): 
   return eligible.length;
 }
 
+/** Permanently delete a draft (#41). Only DRAFT / READY_TO_SIGN are
+ * deletable — anything queued, signed, or synced is part of the signing
+ * pipeline and audit trail and must never be removed here. A reserved
+ * certificate number on the draft is abandoned, never reused (numbers are
+ * immutable and server-allocated; gaps are acceptable). Returns true if the
+ * record was deleted. */
+export function deleteDraft(id: string): boolean {
+  const rec = getById(id);
+  if (!rec || (rec.state !== 'DRAFT' && rec.state !== 'READY_TO_SIGN')) return false;
+  db.runSync(`DELETE FROM analysis_results WHERE certificate_id = ?`, [id]);
+  // State re-checked in SQL so a concurrent transition cannot race the guard.
+  db.runSync(`DELETE FROM certificates WHERE id = ? AND state IN ('DRAFT', 'READY_TO_SIGN')`, [id]);
+  return true;
+}
+
 export function saveDraftForm(id: string, form: Partial<Verification>): void {
   // Any edit puts the certificate back into DRAFT (READY_TO_SIGN is only a
   // validation gate, never a resting place for edited content).

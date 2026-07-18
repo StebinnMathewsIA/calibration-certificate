@@ -5,10 +5,11 @@
  * navy wordmark bar in favour of this.
  */
 import React from 'react';
-import { Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../auth/AuthContext';
 import { getProfile, TechProfile } from '../profile/profileStore';
+import { RefreshIcon } from './BrandHeader';
 import { colors, fonts } from './ui';
 import { HeaderProfileButton } from './HeaderProfileButton';
 
@@ -25,10 +26,15 @@ function greetingName(profile: TechProfile, identityName: string): string {
 export function GreetingHeader({
   openWorkOrders,
   checking,
+  onRefresh,
+  refreshing,
 }: {
   openWorkOrders: number;
   /** True while the first refresh is still in flight (nothing cached yet). */
   checking: boolean;
+  /** Header refresh action (#39) — the icon button left of the avatar. */
+  onRefresh?: () => void;
+  refreshing?: boolean;
 }) {
   const insets = useSafeAreaInsets();
   const { identity } = useAuth();
@@ -59,6 +65,32 @@ export function GreetingHeader({
           {subtitle}
         </Text>
       </View>
+      {onRefresh ? (
+        <Pressable
+          onPress={onRefresh}
+          disabled={refreshing}
+          accessibilityRole="button"
+          accessibilityLabel="Refresh work orders"
+          hitSlop={8}
+          style={{
+            width: 40,
+            height: 40,
+            borderRadius: 20,
+            marginRight: 10,
+            borderWidth: 1,
+            borderColor: colors.line,
+            backgroundColor: colors.card,
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          {refreshing ? (
+            <ActivityIndicator size="small" color={colors.navy} />
+          ) : (
+            <RefreshIcon color={colors.navy} />
+          )}
+        </Pressable>
+      ) : null}
       <HeaderProfileButton variant="onLight" />
     </View>
   );

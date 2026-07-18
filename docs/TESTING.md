@@ -189,6 +189,18 @@ Requires a NEW EAS development build — two native modules were added
 - [ ] Existing installs upgrade cleanly (archived_at column added without
       losing drafts)
 
+### Home greeting header (#32)
+
+- [ ] Home shows "Hello, {first name}" (profile first name; sensible word
+      from the sign-in name when the profile is empty) with the open
+      work-order count beneath — no wordmark/logo on this screen
+- [ ] Count matches the "My open work orders" list and still shows from
+      cache in airplane mode
+- [ ] Greeting doesn't collide with the status bar (safe area respected,
+      both platforms)
+- [ ] Avatar top-right opens My profile; Sites tab keeps the navy wordmark
+      bar
+
 ## Signing & offline queue (the milestone-5 acceptance test)
 
 - [ ] Client draws a signature on the pad; "Sign" is blocked until they do

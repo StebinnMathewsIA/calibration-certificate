@@ -4,6 +4,7 @@ import { FlatList, Pressable, Text, View } from 'react-native';
 import type { CertificateState, Verification } from '@prowalco/schema';
 import { listWorkOrders, WorkOrderSummary } from '../../src/api/client';
 import { useAuth } from '../../src/auth/AuthContext';
+import { GreetingHeader } from '../../src/components/GreetingHeader';
 import { SyncBanner } from '../../src/components/SyncBanner';
 import { fetchThrough } from '../../src/db/cache';
 import * as repo from '../../src/db/certificateRepo';
@@ -164,6 +165,10 @@ export default function HomeScreen() {
 
   return (
     <View style={styles.screen}>
+      <GreetingHeader
+        openWorkOrders={workOrders.length}
+        checking={refreshing && workOrders.length === 0}
+      />
       <SyncBanner onQueueDrained={loadLocal} />
       <View style={{ padding: 12 }}>
         <Button

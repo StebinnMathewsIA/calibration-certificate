@@ -16,8 +16,10 @@ export function initialsOf(name: string): string {
   return base.slice(0, 2).toUpperCase();
 }
 
-/** Circular avatar (the technician's initials) in the header — opens profile. */
-export function HeaderProfileButton() {
+/** Circular avatar (the technician's initials) in the header — opens profile.
+ * `variant` picks the tint: white-on-navy app bars (default) or navy-on-light
+ * for in-content headers like the Home greeting. */
+export function HeaderProfileButton({ variant = 'onNavy' }: { variant?: 'onNavy' | 'onLight' }) {
   const router = useRouter();
   const { identity } = useAuth();
   // Prefer the profile display name (set from the sign-in details at setup),
@@ -26,6 +28,7 @@ export function HeaderProfileButton() {
   const name = profile.displayName || identity?.name || identity?.subject || '';
   // Real first/surname initials when the profile has them; guessed otherwise.
   const initials = profileInitials(profile) ?? initialsOf(name);
+  const onLight = variant === 'onLight';
 
   return (
     <Pressable
@@ -34,16 +37,24 @@ export function HeaderProfileButton() {
       accessibilityLabel="Open profile"
       hitSlop={8}
       style={{
-        width: 34,
-        height: 34,
-        borderRadius: 17,
-        marginRight: 12,
-        backgroundColor: '#ffffff',
+        width: onLight ? 40 : 34,
+        height: onLight ? 40 : 34,
+        borderRadius: onLight ? 20 : 17,
+        marginRight: onLight ? 0 : 12,
+        backgroundColor: onLight ? colors.navy : '#ffffff',
         alignItems: 'center',
         justifyContent: 'center',
       }}
     >
-      <Text style={{ color: colors.navy, fontWeight: '800', fontSize: 13 }}>{initials}</Text>
+      <Text
+        style={{
+          color: onLight ? '#ffffff' : colors.navy,
+          fontWeight: '800',
+          fontSize: onLight ? 14 : 13,
+        }}
+      >
+        {initials}
+      </Text>
     </Pressable>
   );
 }

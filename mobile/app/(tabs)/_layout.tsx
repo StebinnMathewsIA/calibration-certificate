@@ -38,6 +38,8 @@ export default function TabsLayout() {
         name="home"
         options={{
           title: 'Work orders',
+          // Home renders its own greeting header (#32) — no wordmark bar.
+          headerShown: false,
           tabBarIcon: ({ color, focused }) => <WorkOrdersTabIcon color={color} focused={focused} />,
         }}
       />

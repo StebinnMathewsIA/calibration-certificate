@@ -29,12 +29,17 @@ class Settings(BaseSettings):
     supabase_storage_bucket: str = "certificates"
 
     # Signing
-    signing_key_provider: str = "local"  # "local" | "aws_kms" (stub)
+    signing_key_provider: str = "local"  # "local" | "aws_kms"
     signing_key_dir: str = str(BACKEND_DIR / "dev-keys")
     # Diskless hosts (e.g. Render): supply key material as base64 env vars —
-    # takes precedence over signing_key_dir when set.
+    # takes precedence over signing_key_dir when set. With aws_kms only the
+    # CERT vars apply (the private key never exists as a file).
     signing_key_pem_b64: str = ""
     signing_cert_pem_b64: str = ""
+    signing_cert_chain_pem_b64: str = ""
+    # aws_kms provider: the signing key lives in AWS KMS (non-exportable).
+    aws_region: str = ""
+    aws_kms_key_id: str = ""  # key ID, ARN, or alias/... name
     # PoC convenience: generate an ephemeral self-signed dev key at boot when
     # no key material exists. NOT for production — the key changes on every
     # restart/deploy (already-issued PDFs stay verifiable; they embed their
@@ -64,4 +69,13 @@ def validate_settings(settings: Settings) -> list[str]:
         problems.append("SUPABASE_URL must be set (https://<project-ref>.supabase.co)")
     if not settings.supabase_service_role_key:
         problems.append("SUPABASE_SERVICE_ROLE_KEY must be set (server-only key)")
+    if settings.signing_key_provider == "aws_kms":
+        if not settings.aws_kms_key_id:
+            problems.append("AWS_KMS_KEY_ID must be set when SIGNING_KEY_PROVIDER=aws_kms")
+        has_cert_file = (Path(settings.signing_key_dir) / "kms-signing-cert.pem").exists()
+        if not settings.signing_cert_pem_b64 and not has_cert_file:
+            problems.append(
+                "aws_kms provider needs SIGNING_CERT_PEM_B64 (or kms-signing-cert.pem "
+                "in SIGNING_KEY_DIR) — run scripts/issue_cert_for_kms_key.py"
+            )
     return problems

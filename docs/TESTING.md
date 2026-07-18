@@ -153,6 +153,19 @@ Requires a NEW EAS development build — two native modules were added
       (non-dev) signing certificate is configured — dev cert will show as
       untrusted, which is expected
 
+## Production signing — AWS KMS (#24)
+
+Needs a real AWS account (the code path itself is covered by
+`backend/tests/test_kms_signer.py` against a fake KMS).
+
+- [ ] Provision per docs/key-rotation-runbook.md § Provisioning; backend
+      starts with `SIGNING_KEY_PROVIDER=aws_kms` and refuses to start when
+      the key ID or certificate is missing
+- [ ] Sign a staging verification end-to-end; signature validates against
+      `ca-cert.pem` (Adobe: trusted after adding the internal CA)
+- [ ] CloudTrail shows one `kms:Sign` event per issued certificate
+- [ ] Confirm no `SIGNING_KEY_PEM_B64` remains in the host env
+
 ## Claude analysis
 
 - [ ] Verdict card renders for pass / marginal / fail / data_anomaly

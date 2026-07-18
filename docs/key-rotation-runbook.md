@@ -12,6 +12,45 @@ never exportable and never exist on a device or in the repo.
 | Internal CA key (v1) | Offline / KMS | Issues the signing certificate | 3–5 years |
 | TSA | External trusted authority | RFC 3161 timestamps | n/a (external) |
 
+## Provisioning (AWS KMS — implemented, issue #24)
+
+One-time setup for the production signing path
+(`backend/app/signing/keys.py`, `AwsKmsKeyProvider`):
+
+1. **Create the key** (non-exportable, sign/verify usage):
+   ```
+   aws kms create-key --key-spec RSA_3072 --key-usage SIGN_VERIFY \
+     --description "Prowalco certificate signing"
+   aws kms create-alias --alias-name alias/prowalco-signing \
+     --target-key-id <KeyId from above>
+   ```
+2. **Create an IAM user/role for the signing service** with a least-privilege
+   policy — only these two actions, only on this key:
+   ```json
+   { "Version": "2012-10-17", "Statement": [{
+       "Effect": "Allow",
+       "Action": ["kms:Sign", "kms:GetPublicKey"],
+       "Resource": "<key ARN>" }] }
+   ```
+3. **Issue the signing certificate** for the KMS public key from the internal
+   CA (created on first run — keep `ca-key.pem` offline):
+   ```
+   cd backend && python scripts/issue_cert_for_kms_key.py \
+     --key-id alias/prowalco-signing --region af-south-1
+   ```
+4. **Configure the signing service** (e.g. Render env) with the values the
+   script prints:
+   `SIGNING_KEY_PROVIDER=aws_kms`, `AWS_KMS_KEY_ID`, `AWS_REGION`,
+   `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` (the step-2 principal),
+   `SIGNING_CERT_PEM_B64`, `SIGNING_CERT_CHAIN_PEM_B64`.
+   Remove `SIGNING_KEY_PEM_B64` — with aws_kms the private key never exists
+   as a file. Startup fails fast if the key ID or certificate is missing.
+5. **Verify**: sign a staging certificate; the signature must validate against
+   `ca-cert.pem` (Adobe shows trusted once the CA is added to trust — the
+   out-of-the-box green tick requires an AATL CA, tracked separately).
+6. Every `kms:Sign` call is logged in CloudTrail — this is the independent
+   signing log referenced in the e-signature procedure.
+
 ## Scheduled rotation (no compromise)
 
 1. Create the new asymmetric key in KMS (`kms:CreateKey`, signing usage).

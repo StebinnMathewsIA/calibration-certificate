@@ -286,6 +286,17 @@ Requires a NEW EAS development build — two native modules were added
 - [ ] Last card on each tab scrolls fully into view above the pill (scroll
       padding was reduced — check nothing hides behind the bar)
 
+### TestFlight auto-submit build (#46)
+
+- [ ] One-time on a computer: `cd mobile && npx eas-cli build -p ios
+      --profile production --auto-submit` — the interactive prompts store
+      the Apple distribution cert + App Store Connect API key with EAS
+- [ ] After that, the eas-build workflow with platform=ios,
+      profile=production, submit=true queues a build that lands in
+      TestFlight with no manual steps
+- [ ] Internal Testing group in App Store Connect includes the tester and
+      they receive the build notification
+
 ## Signing & offline queue (the milestone-5 acceptance test)
 
 - [ ] Client draws a signature on the pad; "Sign" is blocked until they do

@@ -22,6 +22,10 @@ on:
         type: choice
         default: preview
         options: [preview, development, production]
+      submit:
+        description: "Auto-submit the finished iOS build to TestFlight (needs Apple credentials stored with EAS; ignored for Android)"
+        type: boolean
+        default: false
 
 jobs:
   eas-build:
@@ -60,13 +64,24 @@ jobs:
 
       - name: Queue EAS build
         run: |
+          # --auto-submit: Expo's cloud submits the finished build to
+          # TestFlight using the Apple credentials stored with EAS (one-time
+          # interactive setup). iOS only — there is no Play Store setup.
+          submit_flag=""
+          if [ "${{ inputs.submit }}" = "true" ] && [ "${{ inputs.platform }}" = "ios" ]; then
+            submit_flag="--auto-submit"
+          fi
           eas build --platform ${{ inputs.platform }} --profile ${{ inputs.profile }} \
-            --non-interactive --no-wait 2>&1 | tee build-output.txt
+            --non-interactive --no-wait $submit_flag 2>&1 | tee build-output.txt
           url=$(grep -Eo 'https://expo\.dev/[^ ]*builds/[a-z0-9-]+' build-output.txt | head -1 || true)
           {
             echo "## EAS build queued"
             echo ""
             echo "Platform: **${{ inputs.platform }}** — profile: **${{ inputs.profile }}**"
+            if [ -n "$submit_flag" ]; then
+              echo ""
+              echo "Auto-submit to TestFlight: **requested** (submission runs in Expo's cloud when the build finishes)"
+            fi
             echo ""
             if [ -n "$url" ]; then
               echo "Build page (install link/QR appears when finished): $url"

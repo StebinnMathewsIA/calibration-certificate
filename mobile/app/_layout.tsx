@@ -38,10 +38,13 @@ export default function RootLayout() {
       <QueueRunner />
       <Stack
         screenOptions={{
-          // Brand app bar: navy structure, white title.
+          // Brand app bar: flat navy structure, white Barlow title, minimal
+          // back affordance (no iOS back-label clutter, no shadows).
           headerStyle: { backgroundColor: colors.navy },
+          headerShadowVisible: false,
           headerTintColor: '#fff',
           headerTitleStyle: { fontFamily: fonts.heading },
+          headerBackButtonDisplayMode: 'minimal',
         }}
       >
         <Stack.Screen name="index" options={{ title: 'Prowalco Calibration' }} />

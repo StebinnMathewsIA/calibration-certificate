@@ -138,6 +138,16 @@ Requires a NEW EAS development build — two native modules were added
 - [ ] Certificate PDF is visually UNCHANGED (still matches the NRCS document
       — the brand kit is app-UI only)
 
+### Header & bottom nav (#25)
+- [ ] Tab screens show the "prowalco" wordmark (green, blue "o") left-aligned
+      on a flat navy bar with the avatar on the right
+- [ ] Tab icons are the custom clipboard / fuel-pump vectors — correctly
+      tinted dark-green active / steel inactive, slightly bolder when active;
+      no emoji anywhere
+- [ ] Tab bar: white, hairline top border, no shadow; labels legible at 11px
+- [ ] Stack screens (work order, results, sign…) keep flat navy bars with a
+      minimal back arrow (no iOS back-label text)
+
 ## Signing & offline queue (the milestone-5 acceptance test)
 
 - [ ] Client draws a signature on the pad; "Sign" is blocked until they do

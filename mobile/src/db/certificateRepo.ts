@@ -19,6 +19,8 @@ export interface CertificateRecord {
   retryCount: number;
   nextRetryAt: string | null;
   lastError: string | null;
+  /** Set when the draft was archived because its work order closed (#31). */
+  archivedAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -42,6 +44,7 @@ function fromRow(r: Row): CertificateRecord {
     retryCount: (r.retry_count as number) ?? 0,
     nextRetryAt: (r.next_retry_at as string) ?? null,
     lastError: (r.last_error as string) ?? null,
+    archivedAt: (r.archived_at as string) ?? null,
     createdAt: r.created_at as string,
     updatedAt: r.updated_at as string,
   };
@@ -66,14 +69,46 @@ export function getById(id: string): CertificateRecord | null {
 
 export function listAll(): CertificateRecord[] {
   return db
-    .getAllSync<Row>('SELECT * FROM certificates ORDER BY created_at DESC')
+    .getAllSync<Row>('SELECT * FROM certificates WHERE archived_at IS NULL ORDER BY created_at DESC')
     .map(fromRow);
 }
 
 export function listInState(state: CertificateState): CertificateRecord[] {
   return db
-    .getAllSync<Row>('SELECT * FROM certificates WHERE state = ? ORDER BY created_at', [state])
+    .getAllSync<Row>(
+      'SELECT * FROM certificates WHERE state = ? AND archived_at IS NULL ORDER BY created_at',
+      [state],
+    )
     .map(fromRow);
+}
+
+export function listArchived(): CertificateRecord[] {
+  return db
+    .getAllSync<Row>('SELECT * FROM certificates WHERE archived_at IS NOT NULL ORDER BY created_at DESC')
+    .map(fromRow);
+}
+
+/** Archive drafts whose work order has closed (#31). Only DRAFT /
+ * READY_TO_SIGN are eligible — anything already in the signing pipeline must
+ * finish issuing and syncing. Returns how many were archived. */
+export function archiveDraftsForClosedWorkOrders(closedWorkOrderIds: string[]): number {
+  if (closedWorkOrderIds.length === 0) return 0;
+  const closed = new Set(closedWorkOrderIds);
+  const eligible = db
+    .getAllSync<Row>(
+      `SELECT * FROM certificates
+       WHERE archived_at IS NULL AND state IN ('DRAFT', 'READY_TO_SIGN')`,
+    )
+    .map(fromRow)
+    .filter((r) => r.form.workOrderId != null && closed.has(r.form.workOrderId));
+  for (const r of eligible) {
+    db.runSync(`UPDATE certificates SET archived_at = ?, updated_at = ? WHERE id = ?`, [
+      now(),
+      now(),
+      r.id,
+    ]);
+  }
+  return eligible.length;
 }
 
 export function saveDraftForm(id: string, form: Partial<Verification>): void {
@@ -117,7 +152,9 @@ export function recordRetryFailure(id: string, error: string): void {
 export function listMissingNumber(): CertificateRecord[] {
   return db
     .getAllSync<Row>(
-      `SELECT * FROM certificates WHERE certificate_number IS NULL AND state = 'DRAFT' ORDER BY created_at`,
+      `SELECT * FROM certificates
+       WHERE certificate_number IS NULL AND state = 'DRAFT' AND archived_at IS NULL
+       ORDER BY created_at`,
     )
     .map(fromRow);
 }

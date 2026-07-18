@@ -1,5 +1,5 @@
 import { Redirect, useFocusEffect, useRouter } from 'expo-router';
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { FlatList, Pressable, Text, View } from 'react-native';
 import type { CertificateState, Verification } from '@prowalco/schema';
 import { listWorkOrders, WorkOrderSummary } from '../../src/api/client';
@@ -33,17 +33,22 @@ function resumePath(state: CertificateState): string {
   return '/verification/[id]/results';
 }
 
+const recordWorkOrderId = (r: repo.CertificateRecord): string | undefined =>
+  (r.form as Partial<Verification>).workOrderId;
+
 export default function HomeScreen() {
   const { identity, accessToken, loading } = useAuth();
   const router = useRouter();
   const [workOrders, setWorkOrders] = useState<WorkOrderSummary[]>([]);
   const [inProgress, setInProgress] = useState<repo.CertificateRecord[]>([]);
+  const [archivedCount, setArchivedCount] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
 
   const loadLocal = useCallback(() => {
     // Every verification on this device that has not fully synced — drafts
     // were previously orphaned the moment the VO left the results screen.
     setInProgress(repo.listAll().filter((r) => r.state !== 'SYNCED'));
+    setArchivedCount(repo.listArchived().length);
   }, []);
 
   const load = useCallback(async () => {
@@ -51,7 +56,14 @@ export default function HomeScreen() {
     loadLocal();
     try {
       const wo = await fetchThrough('workorders', () => listWorkOrders(accessToken));
-      setWorkOrders(wo);
+      // A work order reported closed archives its local drafts (#31). Only a
+      // positive 'completed' status archives — a fetch failure (offline, no
+      // cache) reaches the catch below and archives nothing.
+      repo.archiveDraftsForClosedWorkOrders(
+        wo.filter((w) => w.status === 'completed').map((w) => w.id),
+      );
+      setWorkOrders(wo.filter((w) => w.status !== 'completed'));
+      loadLocal();
     } catch {
       // offline with no cache — leave the list empty
     } finally {
@@ -71,7 +83,84 @@ export default function HomeScreen() {
     loadLocal();
   };
 
+  // In-progress items grouped under their work order (#30); anything whose
+  // work order is not displayed (no id, or no longer assigned) stays in the
+  // fallback section so it never disappears.
+  const byWorkOrder = useMemo(() => {
+    const m = new Map<string, repo.CertificateRecord[]>();
+    for (const r of inProgress) {
+      const woId = recordWorkOrderId(r);
+      if (!woId) continue;
+      m.set(woId, [...(m.get(woId) ?? []), r]);
+    }
+    return m;
+  }, [inProgress]);
+
+  const unallocated = useMemo(() => {
+    const displayed = new Set(workOrders.map((w) => w.id));
+    return inProgress.filter((r) => {
+      const woId = recordWorkOrderId(r);
+      return !woId || !displayed.has(woId);
+    });
+  }, [inProgress, workOrders]);
+
   if (!loading && !identity) return <Redirect href="/" />;
+
+  const inProgressCard = (item: repo.CertificateRecord, nested: boolean) => {
+    const v = item.form as Partial<Verification>;
+    return (
+      <Pressable
+        key={item.id}
+        onPress={() =>
+          router.push({ pathname: resumePath(item.state) as never, params: { id: item.id } })
+        }
+      >
+        <View
+          style={[
+            styles.card,
+            { flexDirection: 'row', alignItems: 'center' },
+            nested ? { marginLeft: 28, marginTop: 0 } : null,
+          ]}
+        >
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontWeight: '700', color: colors.ink }}>
+              {v.site?.siteName ?? v.site?.customerName ?? 'Verification'}
+            </Text>
+            <Text style={{ color: colors.muted, fontSize: 12 }}>
+              {v.dispenser?.serialNumber ? `S/N ${v.dispenser.serialNumber} · ` : ''}
+              {item.certificateNumber ?? 'number pending'}
+            </Text>
+            {item.lastError ? (
+              <View style={{ marginTop: 4 }}>
+                <Text style={{ color: colors.red, fontSize: 12 }}>
+                  Last attempt failed: {item.lastError}
+                </Text>
+                {item.state === 'QUEUED_FOR_SIGNING' ? (
+                  <Pressable onPress={() => retryItem(item.id)} hitSlop={8}>
+                    <Text
+                      style={{
+                        color: colors.blueText,
+                        fontWeight: '600',
+                        textDecorationLine: 'underline',
+                        fontSize: 13,
+                        marginTop: 2,
+                      }}
+                    >
+                      Retry now
+                    </Text>
+                  </Pressable>
+                ) : null}
+              </View>
+            ) : null}
+          </View>
+          <Badge
+            text={IN_PROGRESS_LABEL[item.state] ?? item.state}
+            tone={IN_PROGRESS_TONE[item.state] ?? 'muted'}
+          />
+        </View>
+      </Pressable>
+    );
+  };
 
   return (
     <View style={styles.screen}>
@@ -90,60 +179,12 @@ export default function HomeScreen() {
         contentContainerStyle={{ paddingBottom: 24 }}
         ListHeaderComponent={
           <>
-            {inProgress.length > 0 ? (
+            {unallocated.length > 0 ? (
               <>
                 <Text style={{ marginHorizontal: 12, fontWeight: '700', color: colors.ink }}>
                   In progress on this device
                 </Text>
-                {inProgress.map((item) => {
-                  const v = item.form as Partial<Verification>;
-                  return (
-                    <Pressable
-                      key={item.id}
-                      onPress={() =>
-                        router.push({ pathname: resumePath(item.state) as never, params: { id: item.id } })
-                      }
-                    >
-                      <View style={[styles.card, { flexDirection: 'row', alignItems: 'center' }]}>
-                        <View style={{ flex: 1 }}>
-                          <Text style={{ fontWeight: '700', color: colors.ink }}>
-                            {v.site?.siteName ?? v.site?.customerName ?? 'Verification'}
-                          </Text>
-                          <Text style={{ color: colors.muted, fontSize: 12 }}>
-                            {v.dispenser?.serialNumber ? `S/N ${v.dispenser.serialNumber} · ` : ''}
-                            {item.certificateNumber ?? 'number pending'}
-                          </Text>
-                          {item.lastError ? (
-                            <View style={{ marginTop: 4 }}>
-                              <Text style={{ color: colors.red, fontSize: 12 }}>
-                                Last attempt failed: {item.lastError}
-                              </Text>
-                              {item.state === 'QUEUED_FOR_SIGNING' ? (
-                                <Pressable onPress={() => retryItem(item.id)} hitSlop={8}>
-                                  <Text
-                                    style={{
-                                      color: colors.blueText,
-                                      fontWeight: '600',
-                                      textDecorationLine: 'underline',
-                                      fontSize: 13,
-                                      marginTop: 2,
-                                    }}
-                                  >
-                                    Retry now
-                                  </Text>
-                                </Pressable>
-                              ) : null}
-                            </View>
-                          ) : null}
-                        </View>
-                        <Badge
-                          text={IN_PROGRESS_LABEL[item.state] ?? item.state}
-                          tone={IN_PROGRESS_TONE[item.state] ?? 'muted'}
-                        />
-                      </View>
-                    </Pressable>
-                  );
-                })}
+                {unallocated.map((item) => inProgressCard(item, false))}
               </>
             ) : null}
             <Text style={{ marginHorizontal: 12, marginTop: 4, fontWeight: '700', color: colors.ink }}>
@@ -152,28 +193,40 @@ export default function HomeScreen() {
           </>
         }
         renderItem={({ item }) => (
-          <Pressable
-            onPress={() => router.push({ pathname: '/workorder/[id]', params: { id: item.id } })}
-          >
-            <View style={[styles.card, { flexDirection: 'row', alignItems: 'center' }]}>
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontWeight: '700', color: colors.ink }}>{item.reference}</Text>
-                <Text style={{ color: colors.muted, fontSize: 12 }}>
-                  {item.site.customerName} · {item.site.siteName}
-                </Text>
-                <Text style={{ color: colors.muted, fontSize: 11 }}>
-                  {item.dispenserIds.length} dispenser(s)
-                  {item.scheduledDate ? ` · ${item.scheduledDate}` : ''}
-                </Text>
+          <>
+            <Pressable
+              onPress={() => router.push({ pathname: '/workorder/[id]', params: { id: item.id } })}
+            >
+              <View style={[styles.card, { flexDirection: 'row', alignItems: 'center' }]}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontWeight: '700', color: colors.ink }}>{item.reference}</Text>
+                  <Text style={{ color: colors.muted, fontSize: 12 }}>
+                    {item.site.customerName} · {item.site.siteName}
+                  </Text>
+                  <Text style={{ color: colors.muted, fontSize: 11 }}>
+                    {item.dispenserIds.length} dispenser(s)
+                    {item.scheduledDate ? ` · ${item.scheduledDate}` : ''}
+                  </Text>
+                </View>
+                <Badge text={item.status.replaceAll('_', ' ')} tone="muted" />
               </View>
-              <Badge text={item.status.replaceAll('_', ' ')} tone="muted" />
-            </View>
-          </Pressable>
+            </Pressable>
+            {(byWorkOrder.get(item.id) ?? []).map((r) => inProgressCard(r, true))}
+          </>
         )}
         ListEmptyComponent={
           <Text style={{ textAlign: 'center', color: colors.muted, marginTop: 20 }}>
             No open work orders. Pull refresh when online.
           </Text>
+        }
+        ListFooterComponent={
+          archivedCount > 0 ? (
+            <Text
+              style={{ marginHorizontal: 12, marginTop: 16, fontSize: 12, color: colors.muted }}
+            >
+              {archivedCount} archived draft{archivedCount === 1 ? '' : 's'} from closed work orders
+            </Text>
+          ) : null
         }
       />
     </View>

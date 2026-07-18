@@ -174,6 +174,21 @@ Requires a NEW EAS development build — two native modules were added
 - [ ] A profile the VO already typed a name into is NEVER overwritten by
       sign-in seeding
 
+### Drafts grouped under work orders; archive on close (#30, #31)
+
+- [ ] A draft started from a work order appears indented under that work
+      order's card on Home (not in a separate flat list)
+- [ ] An in-progress item whose work order is no longer shown (or that has no
+      work order) still appears under "In progress on this device"
+- [ ] Mark a work order `completed` in the backend fixtures → Refresh work
+      orders → its drafts leave the list and the muted "N archived draft(s)
+      from closed work orders" line appears; the work order card is gone too
+- [ ] A QUEUED/SIGNED verification for that closed work order is NOT
+      archived and continues to sync
+- [ ] Airplane mode + Refresh archives nothing
+- [ ] Existing installs upgrade cleanly (archived_at column added without
+      losing drafts)
+
 ## Signing & offline queue (the milestone-5 acceptance test)
 
 - [ ] Client draws a signature on the pad; "Sign" is blocked until they do

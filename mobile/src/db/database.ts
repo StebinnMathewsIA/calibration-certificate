@@ -45,7 +45,17 @@ const MIGRATIONS: string[] = [
    );`,
 ];
 
+/** SQLite has no ADD COLUMN IF NOT EXISTS — guard with the table info. */
+function addColumnIfMissing(table: string, column: string, ddl: string): void {
+  const cols = db.getAllSync<{ name: string }>(`PRAGMA table_info(${table})`);
+  if (!cols.some((c) => c.name === column)) {
+    db.execSync(`ALTER TABLE ${table} ADD COLUMN ${column} ${ddl}`);
+  }
+}
+
 export function migrate(): void {
   db.execSync('PRAGMA journal_mode = WAL;');
   for (const sql of MIGRATIONS) db.execSync(sql);
+  // Drafts archived when their work order closes (#31).
+  addColumnIfMissing('certificates', 'archived_at', 'TEXT');
 }

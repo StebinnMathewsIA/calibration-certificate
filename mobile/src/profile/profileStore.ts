@@ -46,6 +46,20 @@ export function profileInitials(p: TechProfile): string | null {
   return null;
 }
 
+/** Seed the real name parts from an IdP sign-in. Never overwrites a name the
+ * VO typed themselves — only fills a profile that has neither part. */
+export function seedProfileName(subject: string, firstName: string, lastName: string): void {
+  if (!firstName && !lastName) return;
+  const p = getProfile(subject);
+  if (p.firstName || p.lastName) return;
+  saveProfile(subject, {
+    ...p,
+    firstName: firstName || undefined,
+    lastName: lastName || undefined,
+    displayName: [firstName, lastName].filter(Boolean).join(' '),
+  });
+}
+
 const key = (subject: string) => `profile:${subject}`;
 
 export function getProfile(subject: string): TechProfile {

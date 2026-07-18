@@ -162,6 +162,18 @@ Requires a NEW EAS development build — two native modules were added
       online once → the identity rebuilds and new certificates no longer show
       the email
 
+### Apple / IdP name capture (#29)
+
+- [ ] FIRST Apple authorization (revoke first: Settings → Apple ID → Sign-In
+      &amp; Security → Sign in with Apple → this app → Stop using Apple ID):
+      sign in with Apple → My profile shows First name(s) + Surname prefilled,
+      and they SURVIVE sign-out/sign-in (persisted to Supabase user metadata —
+      check the user's `user_metadata` in the Supabase dashboard)
+- [ ] Microsoft/Google sign-in with given/family name claims seeds an empty
+      profile the same way
+- [ ] A profile the VO already typed a name into is NEVER overwritten by
+      sign-in seeding
+
 ## Signing & offline queue (the milestone-5 acceptance test)
 
 - [ ] Client draws a signature on the pad; "Sign" is blocked until they do

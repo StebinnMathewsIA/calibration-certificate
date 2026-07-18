@@ -15,6 +15,7 @@ import { Platform } from 'react-native';
 import type { TechnicianIdentity } from '@prowalco/schema';
 import { config } from '../config';
 import { signatoryDisplayName } from '../lib/signatoryName';
+import { seedProfileName } from '../profile/profileStore';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -117,6 +118,17 @@ function toSession(tokens: TokenResponse, provider: Provider): StoredSession {
   };
 }
 
+/** Seed the local profile's name parts from an IdP sign-in (best-effort — the
+ * profile screen remains the authority once the VO has typed anything). */
+function captureIdpName(session: StoredSession, given: string, family: string): void {
+  try {
+    seedProfileName(session.identity.subject, given.trim(), family.trim());
+  } catch {
+    // Profile store unavailable is not fatal — the VO can still type their
+    // name on the profile screen.
+  }
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<StoredSession | null>(null);
   const [loading, setLoading] = useState(true);
@@ -183,12 +195,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       nonce: rawNonce,
     });
     const session = toSession(tokens, 'apple');
-    // Apple only shares the name on the FIRST authorization — prefer it when given.
-    if (credential.fullName?.givenName || credential.fullName?.familyName) {
+    // Apple only shares the name on the FIRST authorization — this is the one
+    // chance to capture it, so persist it everywhere before it is lost.
+    const given = credential.fullName?.givenName ?? '';
+    const family = credential.fullName?.familyName ?? '';
+    if (given || family) {
       session.identity.name = signatoryDisplayName({
-        givenName: credential.fullName?.givenName ?? undefined,
-        familyName: credential.fullName?.familyName ?? undefined,
+        givenName: given || undefined,
+        familyName: family || undefined,
       });
+      captureIdpName(session, given, family);
+      // Store it in Supabase user metadata so every future session — on any
+      // device — resolves the real name instead of the email mailbox.
+      await fetch(authUrl('/user'), {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          apikey: config.supabase.anonKey,
+          Authorization: `Bearer ${session.accessToken}`,
+        },
+        body: JSON.stringify({
+          data: {
+            given_name: given || undefined,
+            family_name: family || undefined,
+            full_name: [given, family].filter(Boolean).join(' '),
+          },
+        }),
+      }).catch(() => {});
     }
     await persist(session);
   }, [persist]);
@@ -218,7 +251,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!code) throw new Error('No authorization code returned');
 
       const tokens = await tokenRequest('pkce', { auth_code: code, code_verifier: verifier });
-      await persist(toSession(tokens, provider));
+      const session = toSession(tokens, provider);
+      captureIdpName(
+        session,
+        tokens.user.user_metadata?.given_name ?? '',
+        tokens.user.user_metadata?.family_name ?? '',
+      );
+      await persist(session);
     },
     [persist, signInWithAppleNative],
   );

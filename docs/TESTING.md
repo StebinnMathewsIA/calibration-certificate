@@ -211,6 +211,9 @@ Requires a NEW EAS development build — two native modules were added
 - [ ] Last card on each tab scrolls fully clear of the pill
 - [ ] Pill clears the iOS home indicator / Android gesture bar
 - [ ] VoiceOver/TalkBack read "Work orders" / "Sites" with selected state
+- [ ] (#34) Tapping Sites in the pill actually opens the Sites tab, and
+      Work orders returns — verify on BOTH platforms (touch fall-through to
+      the screen layer was the #34 bug)
 
 ## Signing & offline queue (the milestone-5 acceptance test)
 

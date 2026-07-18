@@ -22,6 +22,12 @@ export function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarP
         right: 0,
         bottom: insets.bottom + 12,
         alignItems: 'center',
+        // The tab screens are react-native-screens containers stretched over
+        // the whole window; without an explicit stacking order the screen
+        // layer can win the hit-test and swallow taps meant for the pill
+        // (#34). zIndex covers iOS, elevation covers Android.
+        zIndex: 10,
+        elevation: 10,
       }}
     >
       <View
@@ -49,12 +55,15 @@ export function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarP
               target: route.key,
               canPreventDefault: true,
             });
-            if (!focused && !event.defaultPrevented) navigation.navigate(route.name);
+            if (!focused && !event.defaultPrevented) {
+              navigation.navigate({ name: route.name, params: route.params, merge: true });
+            }
           };
           return (
             <Pressable
               key={route.key}
               onPress={onPress}
+              hitSlop={6}
               accessibilityRole="tab"
               accessibilityState={{ selected: focused }}
               accessibilityLabel={options.title ?? route.name}

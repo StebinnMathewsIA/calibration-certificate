@@ -17,10 +17,14 @@ E2E_TECHNICIAN_EMAIL = "calibration-e2e@example.com"
 # real technician sign-in emails here (or swap in the real OnKeyProvider).
 DEMO_TECHNICIAN_EMAIL = "stebinn@gmail.com"
 
+# Internal tester (issue #38) — signs in with this email via any provider.
+TESTER_TECHNICIAN_EMAIL = "sashern@prowalco.co.za"
+
 TECHNICIANS: dict[str, dict] = {
     E2E_TECHNICIAN_EMAIL: {"email": E2E_TECHNICIAN_EMAIL, "name": "E2E Technician"},
     "thabo@prowalco.example": {"email": "thabo@prowalco.example", "name": "Thabo M."},
     DEMO_TECHNICIAN_EMAIL: {"email": DEMO_TECHNICIAN_EMAIL, "name": "Prowalco Demo"},
+    TESTER_TECHNICIAN_EMAIL: {"email": TESTER_TECHNICIAN_EMAIL, "name": "Sashern (Internal Tester)"},
 }
 
 SITES: dict[str, dict] = {
@@ -43,6 +47,13 @@ SITES: dict[str, dict] = {
         "siteName": "Midrand Truck Stop",
         "address": "Old Pretoria Rd, Midrand, 1685",
         "telephone": "011 000 1234",
+    },
+    "SITE-004": {
+        "id": "SITE-004",
+        "customerName": "Sasol",
+        "siteName": "Kyalami Corner",
+        "address": "Cnr Main Rd & Kyalami Blvd, Midrand, 1684",
+        "telephone": "011 466 0000",
     },
 }
 
@@ -81,6 +92,19 @@ DISPENSERS: dict[str, dict] = {
         "id": "DISP-202",
         "siteId": "SITE-003",
     },
+    "DISP-301": {
+        "id": "DISP-301",
+        "siteId": "SITE-004",
+        "make": "Tatsuno",
+        "model": "SS-LX-E",
+        "serialNumber": "TSN-30877",
+        "saApprovalNumber": "119-AA20",
+    },
+    # Deliberately partial — the tester completes its identity on-site.
+    "DISP-302": {
+        "id": "DISP-302",
+        "siteId": "SITE-004",
+    },
 }
 
 WORK_ORDERS: dict[str, dict] = {
@@ -110,5 +134,14 @@ WORK_ORDERS: dict[str, dict] = {
         "dispenserIds": ["DISP-201", "DISP-202"],
         "status": "open",
         "scheduledDate": "2026-07-18",
+    },
+    "WO-004": {
+        "id": "WO-004",
+        "reference": "WO-4714",
+        "assignedTechnicianEmail": TESTER_TECHNICIAN_EMAIL,
+        "siteId": "SITE-004",
+        "dispenserIds": ["DISP-301", "DISP-302"],
+        "status": "open",
+        "scheduledDate": "2026-07-21",
     },
 }

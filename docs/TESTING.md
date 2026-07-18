@@ -257,6 +257,24 @@ Requires a NEW EAS development build — two native modules were added
 - [ ] Cancel keeps the draft; Delete removes it permanently (still gone
       after app kill/restart)
 
+### Shared tab header + guaranteed back button (#42, #43)
+
+- [ ] Sites tab shows the same header as Home: large "Sites" title, site
+      count subtitle, refresh icon left of the avatar — no navy wordmark bar
+- [ ] Sites refresh via the icon works; "Refreshing…" bar shows only while
+      in flight; avatar still opens My profile
+- [ ] **#43 regression:** Home → tap a work-order card → a back chevron IS
+      visible in the navy header and returns to Home (verify on BOTH
+      platforms; this was the stranded-screen bug)
+- [ ] Back chevron present and working on every pushed screen: site,
+      dispenser identity, components, results, review & sign, signing
+      status, certificate, profile
+- [ ] Sign-in screen shows no back chevron — including immediately after
+      signing out from the profile screen
+- [ ] Signature capture screen still has NO back button and no swipe-back
+      (Save / Cancel only)
+- [ ] iOS swipe-back gesture still works alongside the custom chevron
+
 ## Signing & offline queue (the milestone-5 acceptance test)
 
 - [ ] Client draws a signature on the pad; "Sign" is blocked until they do

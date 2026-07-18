@@ -10,6 +10,7 @@ import React, { useEffect } from 'react';
 import { AuthProvider } from '../src/auth/AuthContext';
 import { migrate } from '../src/db/database';
 import { useSignQueue } from '../src/queue/useSignQueue';
+import { HeaderBackButton } from '../src/components/HeaderBackButton';
 import { colors, fonts } from '../src/components/ui';
 
 function QueueRunner() {
@@ -45,6 +46,10 @@ export default function RootLayout() {
           headerTintColor: '#fff',
           headerTitleStyle: { fontFamily: fonts.heading },
           headerBackButtonDisplayMode: 'minimal',
+          // Own chevron on every stack screen (#43): the native back button
+          // can vanish above a headerShown:false screen (react-native-screens
+          // #1460), which left the work-order screen with no way home.
+          headerLeft: ({ tintColor }) => <HeaderBackButton tintColor={tintColor} />,
         }}
       >
         <Stack.Screen name="index" options={{ title: 'Prowalco Calibration' }} />
@@ -61,7 +66,12 @@ export default function RootLayout() {
           name="signature"
           // Locked: no swipe-to-dismiss and no back button, so a downward
           // drawing stroke can never close the window — only Save / Cancel do.
-          options={{ title: 'Signature', headerBackVisible: false, gestureEnabled: false }}
+          options={{
+            title: 'Signature',
+            headerBackVisible: false,
+            gestureEnabled: false,
+            headerLeft: () => null,
+          }}
         />
         <Stack.Screen name="verification/[id]/issued" options={{ title: 'Certificate' }} />
       </Stack>

@@ -38,6 +38,8 @@ export default function TabsLayout() {
         name="sites"
         options={{
           title: 'Sites',
+          // Sites shares the in-content header pattern with Home (#42).
+          headerShown: false,
           tabBarIcon: ({ color, focused }) => <SitesTabIcon color={color} focused={focused} />,
         }}
       />

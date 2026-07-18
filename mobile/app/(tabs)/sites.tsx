@@ -4,6 +4,7 @@ import { FlatList, Pressable, Text, View } from 'react-native';
 import { listSites, SiteResolved } from '../../src/api/client';
 import { useAuth } from '../../src/auth/AuthContext';
 import { fetchThrough } from '../../src/db/cache';
+import { GreetingHeader } from '../../src/components/GreetingHeader';
 import { SyncBanner } from '../../src/components/SyncBanner';
 import { Button, colors, styles } from '../../src/components/ui';
 
@@ -35,15 +36,24 @@ export default function SitesScreen() {
 
   return (
     <View style={styles.screen}>
+      <GreetingHeader
+        title="Sites"
+        subtitle={
+          refreshing && sites.length === 0
+            ? 'Checking sites…'
+            : `${sites.length} site${sites.length === 1 ? '' : 's'} on record`
+        }
+        onRefresh={load}
+        refreshing={refreshing}
+      />
       <SyncBanner />
-      <View style={{ padding: 12 }}>
-        <Button
-          title={refreshing ? 'Refreshing…' : 'Refresh sites'}
-          kind="secondary"
-          onPress={load}
-          busy={refreshing}
-        />
-      </View>
+      {refreshing ? (
+        // Refresh lives in the header icon (#42, same pattern as Home #39);
+        // the loading bar only appears while a refresh is in flight.
+        <View style={{ padding: 12 }}>
+          <Button title="Refreshing…" kind="secondary" onPress={() => {}} busy />
+        </View>
+      ) : null}
       <FlatList
         data={sites}
         keyExtractor={(x) => x.id}

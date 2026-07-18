@@ -24,27 +24,35 @@ function greetingName(profile: TechProfile, identityName: string): string {
 }
 
 export function GreetingHeader({
-  openWorkOrders,
+  openWorkOrders = 0,
   checking,
   onRefresh,
   refreshing,
+  title,
+  subtitle: subtitleProp,
 }: {
-  openWorkOrders: number;
+  openWorkOrders?: number;
   /** True while the first refresh is still in flight (nothing cached yet). */
-  checking: boolean;
+  checking?: boolean;
   /** Header refresh action (#39) — the icon button left of the avatar. */
   onRefresh?: () => void;
   refreshing?: boolean;
+  /** Shared tab-header mode (#42): a fixed title (e.g. "Sites") instead of
+   * the greeting, with an explicit subtitle. */
+  title?: string;
+  subtitle?: string;
 }) {
   const insets = useSafeAreaInsets();
   const { identity } = useAuth();
   const profile = getProfile(identity?.subject ?? '');
 
-  const subtitle = checking
-    ? 'Checking work orders…'
-    : openWorkOrders === 0
-      ? 'No open work orders'
-      : `You have ${openWorkOrders} open work order${openWorkOrders === 1 ? '' : 's'}`;
+  const subtitle =
+    subtitleProp ??
+    (checking
+      ? 'Checking work orders…'
+      : openWorkOrders === 0
+        ? 'No open work orders'
+        : `You have ${openWorkOrders} open work order${openWorkOrders === 1 ? '' : 's'}`);
 
   return (
     <View
@@ -59,7 +67,7 @@ export function GreetingHeader({
     >
       <View style={{ flex: 1 }}>
         <Text style={{ fontFamily: fonts.heading, fontSize: 28, color: colors.ink }}>
-          Hello, {greetingName(profile, identity?.name ?? '')}
+          {title ?? `Hello, ${greetingName(profile, identity?.name ?? '')}`}
         </Text>
         <Text style={{ fontFamily: fonts.body, fontSize: 14, color: colors.muted, marginTop: 2 }}>
           {subtitle}

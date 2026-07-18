@@ -243,8 +243,7 @@ Requires a NEW EAS development build — two native modules were added
 - [ ] Idle Home shows NO full-width "Refresh work orders" button; a circular
       refresh icon sits in the greeting header left of the avatar
 - [ ] Tapping the icon refreshes work orders; while in flight the icon shows
-      a spinner and the familiar "Refreshing…" loading bar appears below the
-      header, then disappears when done
+      a spinner (the in-content "Refreshing…" bar was removed by #44)
 - [ ] VoiceOver/TalkBack read the icon as "Refresh work orders"
 - [ ] Draft / Ready-to-sign cards show "Last saved …" ("just now" → "N min
       ago" → "N h ago" → date + time); editing a draft and returning to Home
@@ -261,8 +260,8 @@ Requires a NEW EAS development build — two native modules were added
 
 - [ ] Sites tab shows the same header as Home: large "Sites" title, site
       count subtitle, refresh icon left of the avatar — no navy wordmark bar
-- [ ] Sites refresh via the icon works; "Refreshing…" bar shows only while
-      in flight; avatar still opens My profile
+- [ ] Sites refresh via the icon works (spinner in the icon only, no bar —
+      #44); avatar still opens My profile
 - [ ] **#43 regression:** Home → tap a work-order card → a back chevron IS
       visible in the navy header and returns to Home (verify on BOTH
       platforms; this was the stranded-screen bug)
@@ -274,6 +273,18 @@ Requires a NEW EAS development build — two native modules were added
 - [ ] Signature capture screen still has NO back button and no swipe-back
       (Save / Cancel only)
 - [ ] iOS swipe-back gesture still works alongside the custom chevron
+
+### Single refresh indicator + tappable bottom nav (#44, #45)
+
+- [ ] Refresh on Home and Sites shows ONLY the spinner inside the header
+      icon — no "Refreshing…" bar ever appears, and the list does not jump
+- [ ] **#45 regression (was the broken one):** tapping the fuel-pump icon
+      in the pill OPENS the Sites tab; tapping the clipboard returns to
+      Work orders — verify on BOTH platforms
+- [ ] Pill still looks floating (centred, rounded, shadow, navy active
+      square) and clears the iOS home indicator / Android gesture bar
+- [ ] Last card on each tab scrolls fully into view above the pill (scroll
+      padding was reduced — check nothing hides behind the bar)
 
 ## Signing & offline queue (the milestone-5 acceptance test)
 

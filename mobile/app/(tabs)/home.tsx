@@ -10,7 +10,7 @@ import { SyncBanner } from '../../src/components/SyncBanner';
 import { fetchThrough } from '../../src/db/cache';
 import * as repo from '../../src/db/certificateRepo';
 import { processQueue } from '../../src/queue/signQueue';
-import { Badge, Button, colors, styles } from '../../src/components/ui';
+import { Badge, colors, styles } from '../../src/components/ui';
 
 const IN_PROGRESS_LABEL: Partial<Record<CertificateState, string>> = {
   DRAFT: 'Draft',
@@ -232,17 +232,12 @@ export default function HomeScreen() {
         refreshing={refreshing}
       />
       <SyncBanner onQueueDrained={loadLocal} />
-      {refreshing ? (
-        // The refresh action lives in the header icon (#39); the familiar
-        // loading bar still appears here while a refresh is in flight.
-        <View style={{ padding: 12 }}>
-          <Button title="Refreshing…" kind="secondary" onPress={() => {}} busy />
-        </View>
-      ) : null}
       <FlatList
         data={workOrders}
         keyExtractor={(x) => x.id}
-        contentContainerStyle={{ paddingBottom: 120 }}
+        // The in-flow tab bar reserves its own space now (#45) — only a
+        // small breathing gap is needed.
+        contentContainerStyle={{ paddingBottom: 24 }}
         ListHeaderComponent={
           <>
             {unallocated.length > 0 ? (

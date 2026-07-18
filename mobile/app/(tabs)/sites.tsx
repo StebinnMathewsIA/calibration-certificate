@@ -6,7 +6,7 @@ import { useAuth } from '../../src/auth/AuthContext';
 import { fetchThrough } from '../../src/db/cache';
 import { GreetingHeader } from '../../src/components/GreetingHeader';
 import { SyncBanner } from '../../src/components/SyncBanner';
-import { Button, colors, styles } from '../../src/components/ui';
+import { colors, styles } from '../../src/components/ui';
 
 export default function SitesScreen() {
   const { identity, accessToken, loading } = useAuth();
@@ -47,17 +47,11 @@ export default function SitesScreen() {
         refreshing={refreshing}
       />
       <SyncBanner />
-      {refreshing ? (
-        // Refresh lives in the header icon (#42, same pattern as Home #39);
-        // the loading bar only appears while a refresh is in flight.
-        <View style={{ padding: 12 }}>
-          <Button title="Refreshing…" kind="secondary" onPress={() => {}} busy />
-        </View>
-      ) : null}
       <FlatList
         data={sites}
         keyExtractor={(x) => x.id}
-        contentContainerStyle={{ paddingBottom: 120 }}
+        // The in-flow tab bar reserves its own space now (#45).
+        contentContainerStyle={{ paddingBottom: 24 }}
         ListHeaderComponent={
           <Text style={{ marginHorizontal: 12, marginTop: 4, fontWeight: '700', color: colors.ink }}>
             Sites &amp; certificates

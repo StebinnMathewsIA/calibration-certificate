@@ -3,31 +3,27 @@
  * centred pill opens the screen up instead of a full-width bar. Active tab
  * sits in a navy rounded square with a white icon; inactive tabs are plain
  * muted icons. Icons only — the buttons carry accessibility labels.
+ *
+ * The bar sits in the navigator's normal layout flow, NOT position:absolute
+ * over the screen container: overlaying react-native-screens content on the
+ * new architecture left the pill untappable on device even with an explicit
+ * stacking order (#34, #45). In-flow, the pill reserves its own strip and
+ * hit-testing is trivial — nothing can swallow the taps.
  */
 import type { BottomTabBarProps } from '@react-navigation/bottom-tabs';
+import { CommonActions } from '@react-navigation/native';
 import React from 'react';
 import { Pressable, View } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from './ui';
 
-export function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
-  const insets = useSafeAreaInsets();
-
+export function FloatingTabBar({ state, descriptors, navigation, insets }: BottomTabBarProps) {
   return (
     <View
-      pointerEvents="box-none"
       style={{
-        position: 'absolute',
-        left: 0,
-        right: 0,
-        bottom: insets.bottom + 12,
         alignItems: 'center',
-        // The tab screens are react-native-screens containers stretched over
-        // the whole window; without an explicit stacking order the screen
-        // layer can win the hit-test and swallow taps meant for the pill
-        // (#34). zIndex covers iOS, elevation covers Android.
-        zIndex: 10,
-        elevation: 10,
+        backgroundColor: colors.bg,
+        paddingTop: 8,
+        paddingBottom: insets.bottom + 10,
       }}
     >
       <View
@@ -56,7 +52,12 @@ export function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarP
               canPreventDefault: true,
             });
             if (!focused && !event.defaultPrevented) {
-              navigation.navigate({ name: route.name, params: route.params, merge: true });
+              // Same dispatch as the stock BottomTabBar: a navigate action
+              // targeted at this tab navigator's state (#45).
+              navigation.dispatch({
+                ...CommonActions.navigate(route.name, route.params),
+                target: state.key,
+              });
             }
           };
           return (

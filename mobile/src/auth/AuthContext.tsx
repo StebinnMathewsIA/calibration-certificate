@@ -14,6 +14,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 import { Platform } from 'react-native';
 import type { TechnicianIdentity } from '@prowalco/schema';
 import { config } from '../config';
+import { signatoryDisplayName } from '../lib/signatoryName';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -69,7 +70,12 @@ interface SupabaseUser {
   id: string;
   email?: string;
   app_metadata?: { provider?: string };
-  user_metadata?: { full_name?: string; name?: string };
+  user_metadata?: {
+    full_name?: string;
+    name?: string;
+    given_name?: string;
+    family_name?: string;
+  };
 }
 
 interface TokenResponse {
@@ -100,7 +106,12 @@ function toSession(tokens: TokenResponse, provider: Provider): StoredSession {
     expiresAt: Math.floor(Date.now() / 1000) + tokens.expires_in,
     identity: {
       subject: u.id,
-      name: u.user_metadata?.full_name ?? u.user_metadata?.name ?? u.email ?? 'Technician',
+      name: signatoryDisplayName({
+        givenName: u.user_metadata?.given_name,
+        familyName: u.user_metadata?.family_name,
+        fullName: u.user_metadata?.full_name ?? u.user_metadata?.name,
+        email: u.email,
+      }),
       authMethod: provider,
     },
   };
@@ -123,7 +134,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const raw = await SecureStore.getItemAsync(SESSION_KEY);
         if (!raw) return;
         let stored: StoredSession = JSON.parse(raw);
-        if (stored.expiresAt < Date.now() / 1000 + 60) {
+        // Sessions persisted before the initials-and-surname fix may carry a
+        // raw email as the display name — force a refresh to rebuild identity.
+        const staleIdentity = stored.identity.name.includes('@');
+        if (staleIdentity || stored.expiresAt < Date.now() / 1000 + 60) {
           try {
             const tokens = await tokenRequest('refresh_token', {
               refresh_token: stored.refreshToken,
@@ -170,10 +184,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
     const session = toSession(tokens, 'apple');
     // Apple only shares the name on the FIRST authorization — prefer it when given.
-    const name = [credential.fullName?.givenName, credential.fullName?.familyName]
-      .filter(Boolean)
-      .join(' ');
-    if (name) session.identity.name = name;
+    if (credential.fullName?.givenName || credential.fullName?.familyName) {
+      session.identity.name = signatoryDisplayName({
+        givenName: credential.fullName?.givenName ?? undefined,
+        familyName: credential.fullName?.familyName ?? undefined,
+      });
+    }
     await persist(session);
   }, [persist]);
 

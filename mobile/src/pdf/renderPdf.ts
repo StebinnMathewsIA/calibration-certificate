@@ -10,6 +10,12 @@ export interface RenderedPdf {
   sha256: string;
 }
 
+// A4 landscape in PDF points (1 pt = 1/72 in). The iOS print renderer ignores
+// the CSS @page size and falls back to 612x792 (US Letter portrait) unless the
+// page size is passed here explicitly — keep in sync with @page in
+// certificateHtml.ts.
+const A4_LANDSCAPE = { width: 842, height: 595 };
+
 /** Renders the certificate PDF on-device and computes its binary SHA-256
  * (queue integrity + upload verification). The client and VO signatures are
  * drawn images embedded before the technician cryptographically signs, so
@@ -20,6 +26,7 @@ export async function renderCertificatePdf(
 ): Promise<RenderedPdf> {
   const { uri } = await Print.printToFileAsync({
     html: certificateHtml(verification, signatures),
+    ...A4_LANDSCAPE,
   });
   const base64 = await FileSystem.readAsStringAsync(uri, {
     encoding: FileSystem.EncodingType.Base64,

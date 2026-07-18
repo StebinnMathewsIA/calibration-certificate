@@ -148,6 +148,20 @@ Requires a NEW EAS development build — two native modules were added
 - [ ] Stack screens (work order, results, sign…) keep flat navy bars with a
       minimal back arrow (no iOS back-label text)
 
+### Certificate page size & VO name (#27, #28)
+
+- [ ] A certificate issued from an **iOS** device is A4 landscape — open the
+      PDF and check the page measures 842×595 pt / 297×210 mm (was US Letter
+      portrait before #27); Android output unchanged
+- [ ] With an empty profile and an IdP account that has no display name, the
+      certificate VO field shows a name (e.g. "Stebinn" or "S. Mathews"
+      depending on what the mailbox yields) — NEVER the email address
+- [ ] Sign in with an account whose IdP profile HAS a name → VO falls back to
+      "Initial & Surname" form when the app profile is empty
+- [ ] A session from before #28 (VO name showed the email): relaunch the app
+      online once → the identity rebuilds and new certificates no longer show
+      the email
+
 ## Signing & offline queue (the milestone-5 acceptance test)
 
 - [ ] Client draws a signature on the pad; "Sign" is blocked until they do

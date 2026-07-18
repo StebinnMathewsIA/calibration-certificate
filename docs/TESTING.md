@@ -201,6 +201,17 @@ Requires a NEW EAS development build — two native modules were added
 - [ ] Avatar top-right opens My profile; Sites tab keeps the navy wordmark
       bar
 
+### Floating pill bottom nav (#33)
+
+- [ ] Bottom nav is a centred floating pill (card surface, hairline border);
+      no full-width bar; both navs stay on brand (navy active square, custom
+      clipboard/fuel-pump icons, no foreign colours or emoji)
+- [ ] Active tab = navy rounded square with white icon; switching tabs moves
+      it and the inactive icon is muted
+- [ ] Last card on each tab scrolls fully clear of the pill
+- [ ] Pill clears the iOS home indicator / Android gesture bar
+- [ ] VoiceOver/TalkBack read "Work orders" / "Sites" with selected state
+
 ## Signing & offline queue (the milestone-5 acceptance test)
 
 - [ ] Client draws a signature on the pad; "Sign" is blocked until they do

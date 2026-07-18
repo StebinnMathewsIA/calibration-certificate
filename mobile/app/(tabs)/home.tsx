@@ -181,7 +181,7 @@ export default function HomeScreen() {
       <FlatList
         data={workOrders}
         keyExtractor={(x) => x.id}
-        contentContainerStyle={{ paddingBottom: 24 }}
+        contentContainerStyle={{ paddingBottom: 120 }}
         ListHeaderComponent={
           <>
             {unallocated.length > 0 ? (

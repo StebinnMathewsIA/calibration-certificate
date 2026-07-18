@@ -47,7 +47,7 @@ export default function SitesScreen() {
       <FlatList
         data={sites}
         keyExtractor={(x) => x.id}
-        contentContainerStyle={{ paddingBottom: 24 }}
+        contentContainerStyle={{ paddingBottom: 120 }}
         ListHeaderComponent={
           <Text style={{ marginHorizontal: 12, marginTop: 4, fontWeight: '700', color: colors.ink }}>
             Sites &amp; certificates

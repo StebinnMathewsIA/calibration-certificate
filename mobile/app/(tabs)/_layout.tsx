@@ -5,12 +5,16 @@ import {
   SitesTabIcon,
   WorkOrdersTabIcon,
 } from '../../src/components/BrandHeader';
-import { colors, fonts } from '../../src/components/ui';
+import { colors } from '../../src/components/ui';
+import { FloatingTabBar } from '../../src/components/FloatingTabBar';
 import { HeaderProfileButton } from '../../src/components/HeaderProfileButton';
 
 export default function TabsLayout() {
   return (
     <Tabs
+      // Bottom nav: floating brand pill (#33) — navy active square, custom
+      // brand vectors, card surface. Replaces the full-width bar.
+      tabBar={(props) => <FloatingTabBar {...props} />}
       screenOptions={{
         // Brand app bar: flat navy, wordmark left, avatar right (no shadows).
         headerStyle: { backgroundColor: colors.navy },
@@ -19,19 +23,6 @@ export default function TabsLayout() {
         headerTitleAlign: 'left',
         headerTitle: () => <BrandWordmark />,
         headerRight: () => <HeaderProfileButton />,
-        // Bottom nav recipe: white bar, hairline top border only, active items
-        // in the dark pass-green (never raw brand green as small text).
-        tabBarStyle: {
-          backgroundColor: colors.card,
-          borderTopWidth: 1,
-          borderTopColor: colors.line,
-          elevation: 0,
-          height: 60,
-          paddingTop: 6,
-        },
-        tabBarActiveTintColor: colors.greenText,
-        tabBarInactiveTintColor: colors.muted,
-        tabBarLabelStyle: { fontFamily: fonts.bodyMedium, fontSize: 11, marginBottom: 6 },
       }}
     >
       <Tabs.Screen

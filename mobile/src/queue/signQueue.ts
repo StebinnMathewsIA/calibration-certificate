@@ -16,10 +16,18 @@ import * as LocalAuthentication from 'expo-local-authentication';
 import * as Location from 'expo-location';
 import type { IntentToSign, SignSubmission, Verification } from '@prowalco/schema';
 import { validateReadyToSign } from '@prowalco/schema';
-import { confirmReceipt, reserveCertificateNumber, submitForSigning } from '../api/client';
+import { Platform } from 'react-native';
+import {
+  confirmReceipt,
+  DeviceAuth,
+  enrollDevice,
+  reserveCertificateNumber,
+  submitForSigning,
+} from '../api/client';
 import { config } from '../config';
 import * as repo from '../db/certificateRepo';
 import { sha256HexOfBase64 } from '../lib/bytes';
+import { getOrCreateDeviceKey, signDeviceMessage } from '../lib/deviceKey';
 import { persistSignedPdf, renderCertificatePdf } from '../pdf/renderPdf';
 
 export class SignQueueError extends Error {}
@@ -105,6 +113,11 @@ export async function processQueue(accessToken: string | null): Promise<void> {
   const queued = repo.listInState('QUEUED_FOR_SIGNING');
   const nowIso = new Date().toISOString();
 
+  // Device binding (#52): make sure this device is enrolled before uploading.
+  // Best-effort — a failure degrades to headerless uploads, which the server
+  // only rejects once DEVICE_BINDING_ENFORCE is on.
+  if (queued.length > 0) await ensureDeviceEnrolled(accessToken);
+
   for (const item of queued) {
     if (item.nextRetryAt && item.nextRetryAt > nowIso) continue;
     if (!item.pdfUri || !item.pdfSha256 || !item.idempotencyKey || !item.intent) continue;
@@ -127,7 +140,11 @@ export async function processQueue(accessToken: string | null): Promise<void> {
         pdfBase64: base64,
         intentToSign: item.intent,
       };
-      const response = await submitForSigning(accessToken, submission);
+      const response = await submitForSigning(
+        accessToken,
+        submission,
+        await buildDeviceAuth(item.pdfSha256),
+      );
 
       // Verify what came back before trusting it.
       if (sha256HexOfBase64(response.signedPdfBase64) !== response.signedPdfSha256) {
@@ -169,6 +186,45 @@ export async function processQueue(accessToken: string | null): Promise<void> {
     } catch {
       // stay SIGNED; next drain retries
     }
+  }
+}
+
+// Enroll once per app run (idempotent server-side; re-run after restart).
+let enrolledThisRun = false;
+
+async function ensureDeviceEnrolled(accessToken: string | null): Promise<void> {
+  if (enrolledThisRun) return;
+  try {
+    const deviceId = await getDeviceId();
+    const key = await getOrCreateDeviceKey();
+    await enrollDevice(accessToken, {
+      deviceId,
+      publicKeyPem: key.publicKeyPem,
+      platform: Platform.OS,
+    });
+    enrolledThisRun = true;
+  } catch {
+    // Offline, key ops unavailable, or pending approval — uploads proceed
+    // without headers; the server enforces only when the flag is on, and an
+    // enforcement 403 surfaces on the queue card with the server's reason.
+  }
+}
+
+/** Device-binding proof for one upload (#52): ECDSA over
+ * `deviceId.timestamp.pdfSha256`, computed at upload time (device is online
+ * here, so the freshness window applies to clock skew only). */
+async function buildDeviceAuth(pdfSha256: string): Promise<DeviceAuth | undefined> {
+  try {
+    const deviceId = await getDeviceId();
+    const key = await getOrCreateDeviceKey();
+    const timestamp = String(Math.floor(Date.now() / 1000));
+    return {
+      deviceId,
+      timestamp,
+      signature: signDeviceMessage(key.privateKeyPem, `${deviceId}.${timestamp}.${pdfSha256}`),
+    };
+  } catch {
+    return undefined;
   }
 }
 

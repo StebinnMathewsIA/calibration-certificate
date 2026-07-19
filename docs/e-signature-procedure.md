@@ -45,6 +45,13 @@ token) is the possession factor and the device credential at the signing
 re-prompt (step 1) is the knowledge factor. Configuration is documented in
 [mfa-setup.md](mfa-setup.md).
 
+**Device binding (vendor-enforced).** Independently of any customer tenant,
+each device holds an enrolled keypair (trust-on-first-use; one owner per
+device, changes require admin approval) and every certificate upload is
+signed with the device key. The signing service verifies this signature and
+records the outcome in the audit event, so possession of the enrolled device
+is cryptographically provable per certificate.
+
 ## 4. Offline signing semantics (assessor-relevant)
 
 Technicians work at forecourts with poor connectivity. When signing is queued

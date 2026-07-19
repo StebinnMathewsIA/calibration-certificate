@@ -309,6 +309,25 @@ Requires a NEW EAS development build — two native modules were added
       PIN/pattern (fallback path)
 - [ ] Tablet issue checklist/MDM: screen lock required on every field device
 
+### Device binding — trust-on-first-use (#51, #52)
+
+Rollout order matters: verify on-device FIRST, then set
+`DEVICE_BINDING_ENFORCE=true` (+ `ADMIN_EMAILS`) on Render.
+
+- [ ] Fresh install, sign a certificate → upload succeeds; Supabase `devices`
+      table shows one `active` row for this device + account, and the audit
+      event's `deviceBinding.result` is `verified`
+- [ ] Sign in with a DIFFERENT account on the same device → its enrollment
+      row is `pending`
+- [ ] With `DEVICE_BINDING_ENFORCE=true`: the pending account's upload is
+      refused with "Ask your administrator to approve this device"; after
+      `POST /v1/devices/approve` (admin email) it succeeds
+- [ ] Revoked device (`POST /v1/devices/revoke`) cannot sign when enforced
+- [ ] Reinstall the app (same account) → re-enrolls with a new key, still
+      `active`, signing keeps working
+- [ ] Offline sign → queue → reconnect flow unchanged (device signature is
+      computed at upload time)
+
 ## Signing & offline queue (the milestone-5 acceptance test)
 
 - [ ] Client draws a signature on the pad; "Sign" is blocked until they do

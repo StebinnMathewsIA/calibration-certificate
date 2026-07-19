@@ -44,15 +44,40 @@ export async function reserveCertificateNumber(token: string | null, branch: str
   return body.certificateNumber;
 }
 
+/** Device-binding proof attached to a signing upload (#52). */
+export interface DeviceAuth {
+  deviceId: string;
+  timestamp: string;
+  signature: string;
+}
+
 export async function submitForSigning(
   token: string | null,
   submission: SignSubmission,
+  deviceAuth?: DeviceAuth,
 ): Promise<SignResponse> {
   const body = await request('/v1/certificates/sign', token, {
     method: 'POST',
     body: JSON.stringify(submission),
+    headers: deviceAuth
+      ? {
+          'X-Device-Id': deviceAuth.deviceId,
+          'X-Device-Timestamp': deviceAuth.timestamp,
+          'X-Device-Signature': deviceAuth.signature,
+        }
+      : undefined,
   });
   return signResponseSchema.parse(body);
+}
+
+export async function enrollDevice(
+  token: string | null,
+  body: { deviceId: string; publicKeyPem: string; platform?: string; model?: string },
+): Promise<{ status: 'active' | 'pending' | 'revoked' }> {
+  return (await request('/v1/devices/enroll', token, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  })) as { status: 'active' | 'pending' | 'revoked' };
 }
 
 export async function confirmReceipt(token: string | null, certificateNumber: string): Promise<void> {

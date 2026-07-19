@@ -51,6 +51,17 @@ class Settings(BaseSettings):
     anthropic_model: str = "claude-opus-4-8"
     analysis_enabled: bool = True
 
+    # Device binding (#51). Enforcement is flag-gated for a safe rollout:
+    # off (default) verifies+audits device signatures when present but never
+    # blocks; on requires a valid signature from an active enrolled device.
+    device_binding_enforce: bool = False
+    # Comma-separated emails allowed to approve/revoke device enrollments.
+    admin_emails: str = ""
+
+    @property
+    def admin_email_list(self) -> list[str]:
+        return [e.strip().lower() for e in self.admin_emails.split(",") if e.strip()]
+
 
 @lru_cache
 def get_settings() -> Settings:

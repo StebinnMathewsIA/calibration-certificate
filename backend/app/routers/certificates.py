@@ -2,7 +2,7 @@ import base64
 import binascii
 import hashlib
 
-from fastapi import APIRouter, Body, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, Header, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -10,7 +10,8 @@ from .. import audit
 from ..auth import Identity, get_identity
 from ..config import Settings, get_settings
 from ..db import get_db
-from ..models import Certificate, SequenceCounter
+from ..devices import STATUS_ACTIVE, check_device_binding
+from ..models import Certificate, Device, SequenceCounter
 from ..pdf_store import PdfStore, get_pdf_store
 from ..readiness import validate_ready_to_sign
 from ..schema_validation import validate_sign_submission
@@ -71,6 +72,9 @@ def sign_certificate(
     settings: Settings = Depends(get_settings),
     signing_service: SigningService = Depends(get_signing_service),
     pdf_store: PdfStore = Depends(get_pdf_store),
+    x_device_id: str | None = Header(default=None),
+    x_device_timestamp: str | None = Header(default=None),
+    x_device_signature: str | None = Header(default=None),
 ) -> dict:
     # 1. Structural validation against the shared (zod-derived) JSON Schema
     violations = validate_sign_submission(submission)
@@ -98,6 +102,37 @@ def sign_certificate(
     # 4. The signed-in identity must be the VO (technician) on the verification.
     if verification["signOff"]["vo"]["identity"]["subject"] != identity.subject:
         raise HTTPException(status_code=403, detail="Token subject does not match signing VO")
+
+    # 4b. Device binding (#51): the upload must be signed by an enrolled,
+    #     active device key for this account. Enforcement is flag-gated for
+    #     rollout; the outcome is always recorded in the audit event.
+    enrolled_key: str | None = None
+    if x_device_id:
+        device_row = db.scalar(
+            select(Device).where(
+                Device.device_id == x_device_id,
+                Device.subject == identity.subject,
+                Device.status == STATUS_ACTIVE,
+            )
+        )
+        enrolled_key = device_row.public_key_pem if device_row else None
+    device_check = check_device_binding(
+        enrolled_key, x_device_id, x_device_timestamp, x_device_signature, submission["pdfSha256"]
+    )
+    if settings.device_binding_enforce and device_check.result != "verified":
+        audit.record(
+            db,
+            cert_number,
+            audit.CERT_SIGN_REJECTED,
+            identity.subject,
+            {"reasons": [f"device binding: {device_check.reason}"]},
+        )
+        db.commit()
+        raise HTTPException(
+            status_code=403,
+            detail=f"Device not authorised to sign: {device_check.reason}. "
+            "Ask your administrator to approve this device.",
+        )
 
     # 5. Cross-field readiness checks (measures in date, recomputed EFD, ...)
     reasons = validate_ready_to_sign(verification)
@@ -137,6 +172,7 @@ def sign_certificate(
             "intentToSign": submission["intentToSign"],
             "unsignedPdfSha256": submission["pdfSha256"],
             "authMethod": verification["signOff"]["vo"]["identity"]["authMethod"],
+            "deviceBinding": {"result": device_check.result, "deviceId": device_check.device_id},
         },
     )
     result = signing_service.sign_certificate_pdf(

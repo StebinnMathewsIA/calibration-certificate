@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import JSON, DateTime, Float, String
+from sqlalchemy import JSON, DateTime, Float, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -120,4 +120,24 @@ class DispenserDetail(Base):
     q_min_lpm: Mapped[float | None] = mapped_column(Float, nullable=True)
     q_max_lpm: Mapped[float | None] = mapped_column(Float, nullable=True)
     hoses: Mapped[list] = mapped_column(JSON, default=list)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class Device(Base):
+    """Device-binding enrollment register (#51). One row per (device, account)
+    pair; the public key lets the signing endpoint cryptographically verify
+    which physical device submitted a certificate package."""
+
+    __tablename__ = "devices"
+
+    device_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    subject: Mapped[str] = mapped_column(String(200), primary_key=True)
+    public_key_pem: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(16), default="active")  # 'active'|'pending'|'revoked'
+    platform: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    model: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    technician_email: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    enrolled_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    approved_by: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)

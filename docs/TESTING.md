@@ -297,6 +297,18 @@ Requires a NEW EAS development build — two native modules were added
 - [ ] Internal Testing group in App Store Connect includes the tester and
       they receive the build notification
 
+### IdP-enforced MFA (#50)
+
+- [ ] Owner: complete the console setup in docs/mfa-setup.md (Entra security
+      defaults OR Conditional Access; Google 2SV if used; passkeys optional)
+- [ ] Fresh tablet, first sign-in → MFA challenge appears in the sign-in
+      browser; sign-in completes back into the app
+- [ ] Subsequent app launches on the same tablet → NO MFA challenge (session
+      refreshes silently)
+- [ ] On a tablet without biometrics, Sign still asks for the device
+      PIN/pattern (fallback path)
+- [ ] Tablet issue checklist/MDM: screen lock required on every field device
+
 ## Signing & offline queue (the milestone-5 acceptance test)
 
 - [ ] Client draws a signature on the pad; "Sign" is blocked until they do

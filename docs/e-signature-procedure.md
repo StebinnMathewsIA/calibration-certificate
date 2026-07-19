@@ -38,6 +38,13 @@ service, and the audit trail.
 A certificate exists **only** as the signed PDF. Unsigned output is never
 distributed and is not a certificate.
 
+**Identity protection (two-factor).** The technician's sign-in identity is
+MFA-protected at the identity provider: the first sign-in on a device carries
+the MFA challenge, after which the enrolled device (hardware-backed session
+token) is the possession factor and the device credential at the signing
+re-prompt (step 1) is the knowledge factor. Configuration is documented in
+[mfa-setup.md](mfa-setup.md).
+
 ## 4. Offline signing semantics (assessor-relevant)
 
 Technicians work at forecourts with poor connectivity. When signing is queued

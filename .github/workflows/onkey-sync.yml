@@ -39,10 +39,18 @@ jobs:
           code=$(echo "$response" | tail -n 1)
           echo "HTTP ${code}"
           echo "$body"
+          # Backfill runs server-side in the background — also show status.
+          status=$(curl -sS -m 60 \
+            -H "Authorization: Bearer ${{ secrets.ONKEY_SYNC_TOKEN }}" \
+            "https://prowalco-calibration-api.onrender.com/v1/onkey/status" || true)
           {
             echo "## OnKey sync (${mode})"
             echo '```json'
             echo "$body"
+            echo '```'
+            echo "### Store status"
+            echo '```json'
+            echo "$status"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
           [ "$code" = "200" ]

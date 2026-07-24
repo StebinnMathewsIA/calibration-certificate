@@ -61,9 +61,9 @@ export default function ProfileScreen() {
     }, [subject, identity?.name, loaded]),
   );
 
-  // The technician register is the source of truth for name/staff/manager
-  // (#62): prefill anything the local profile does not have. Offline just
-  // keeps the local values.
+  // The technician register is the SOURCE OF TRUTH for the name (#63): it is
+  // shown read-only and cached into the local store so offline certificate
+  // printing and the Home greeting keep working. Offline keeps local values.
   useFocusEffect(
     useCallback(() => {
       let cancelled = false;
@@ -72,16 +72,25 @@ export default function ProfileScreen() {
           if (cancelled) return;
           setTechnician(tech);
           setRegisterEditable(editable);
-          const p = getProfile(subject);
-          if (!p.firstName && !p.lastName) {
-            if (tech.firstName) setFirstName(tech.firstName);
-            if (tech.lastName) setLastName(tech.lastName);
-            if (!tech.firstName && !tech.lastName && tech.name) {
-              const words = tech.name.split(/\s+/).filter(Boolean);
-              setFirstName(words.slice(0, -1).join(' '));
-              setLastName(words[words.length - 1] ?? '');
-            }
+          let first = tech.firstName ?? '';
+          let last = tech.lastName ?? '';
+          if (!first && !last && tech.name) {
+            const words = tech.name.split(/\s+/).filter(Boolean);
+            first = words.slice(0, -1).join(' ');
+            last = words[words.length - 1] ?? '';
           }
+          if (first || last) {
+            setFirstName(first);
+            setLastName(last);
+            const p = getProfile(subject);
+            saveProfile(subject, {
+              ...p,
+              firstName: first || undefined,
+              lastName: last || undefined,
+              displayName: `${first} ${last}`.trim() || p.displayName,
+            });
+          }
+          const p = getProfile(subject);
           if (!p.pliersNumber && tech.pliersNumber) setPliers(tech.pliersNumber);
         })
         .catch(() => {});
@@ -97,29 +106,21 @@ export default function ProfileScreen() {
   );
 
   const save = () => {
-    if (!firstName.trim() || !lastName.trim()) {
-      Alert.alert(
-        'Name incomplete',
-        'Enter your first name(s) and surname — the certificate prints the VO as "Initial & Surname".',
-      );
-      return;
-    }
+    // Name comes from the technician register (#63) — only pliers and the
+    // signature are self-service. Keep whatever name is cached locally.
+    const p = getProfile(subject);
     saveProfile(subject, {
-      firstName: firstName.trim(),
-      lastName: lastName.trim(),
-      // Kept for anything still reading the legacy single field.
-      displayName: `${firstName.trim()} ${lastName.trim()}`,
+      ...p,
+      firstName: firstName.trim() || p.firstName,
+      lastName: lastName.trim() || p.lastName,
+      displayName: `${firstName.trim()} ${lastName.trim()}`.trim() || p.displayName,
       pliersNumber: pliers.trim(),
       signatureSvg: signatureSvg || undefined,
     });
-    // Persist to the technician register too (#62) — best-effort; demo alias
-    // accounts are read-only there and offline saves stay local.
-    if (registerEditable) {
-      patchMyTechnician(accessToken, {
-        firstName: firstName.trim(),
-        lastName: lastName.trim(),
-        ...(pliers.trim() ? { pliersNumber: pliers.trim() } : {}),
-      }).catch(() => {});
+    // Persist pliers to the technician register too — best-effort; demo
+    // alias accounts are read-only there and offline saves stay local.
+    if (registerEditable && pliers.trim()) {
+      patchMyTechnician(accessToken, { pliersNumber: pliers.trim() }).catch(() => {});
     }
     Alert.alert('Profile saved', 'Your name, VO number and signature will be used on certificates you sign.');
     router.back();
@@ -132,10 +133,11 @@ export default function ProfileScreen() {
           Signed in as {identity?.name}. These details are used on the certificates you sign as the
           Verifying Officer.
         </Text>
-        <Text style={{ fontSize: 12, color: colors.muted }}>First name(s)</Text>
-        <TextInput style={inputStyle} value={firstName} onChangeText={setFirstName} autoCapitalize="words" />
-        <Text style={{ fontSize: 12, color: colors.muted }}>Surname</Text>
-        <TextInput style={inputStyle} value={lastName} onChangeText={setLastName} autoCapitalize="words" />
+        <Text style={{ fontSize: 12, color: colors.muted }}>Name (from the technician register)</Text>
+        <Text style={{ fontSize: 16, color: colors.ink, fontWeight: '600', marginBottom: 8 }}>
+          {`${firstName} ${lastName}`.trim() ||
+            'No name on record yet — it comes from the technician register'}
+        </Text>
         {firstName.trim() || lastName.trim() ? (
           <Text style={{ fontSize: 13, color: colors.ink }}>
             On certificate (Initial &amp; Surname): <Text style={{ fontWeight: '700' }}>{onCertificate}</Text>

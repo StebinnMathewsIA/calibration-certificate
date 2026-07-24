@@ -342,15 +342,17 @@ Rollout order matters: verify on-device FIRST, then set
 - [ ] Supabase: `onkey_woe001` row count matches the export volume;
       `select data from onkey_woe001 limit 1` shows a full WOE001 row
 
-### Profile from the technician register (#62)
+### Profile from the technician register (#62, #63)
 
-- [ ] Open My profile signed in as a demo alias → first/surname prefill from
-      the ridden technician's register record; "OnKey record: <staff code> ·
-      Manager: …" line shows; "Demo account — register is read-only" note
-- [ ] A real technician (direct OnKey email) saving name + pliers persists
-      to the register (check onkey_technicians row) and re-appears on a
-      fresh install
-- [ ] Offline: profile loads from the local store unchanged
+- [ ] Name shows READ-ONLY from the register (no editable name inputs);
+      "OnKey record: <staff code> · Manager: …" line shows
+- [ ] Demo alias → the ridden technician's name displays; "Demo account —
+      register is read-only" note; saving pliers stays local only
+- [ ] A real technician (direct OnKey email) saving pliers persists to the
+      register (check onkey_technicians row) and re-appears on a fresh
+      install
+- [ ] Certificate still prints Initial & Surname from the register-sourced
+      name; offline profile loads from the local store unchanged
 
 ### Production work orders from OnKey (#55, #57)
 

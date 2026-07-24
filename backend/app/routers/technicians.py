@@ -61,8 +61,9 @@ def my_technician(
 
 
 class TechnicianPatch(BaseModel):
-    firstName: str | None = Field(default=None, max_length=100)
-    lastName: str | None = Field(default=None, max_length=100)
+    """Only the pliers number is self-service (#63): name and surname come
+    from the technician register and are corrected at source."""
+
     pliersNumber: str | None = Field(default=None, max_length=64)
 
 
@@ -80,11 +81,7 @@ def patch_my_technician(
         )
     updates = {
         column: value.strip()
-        for column, value in {
-            "first_name": body.firstName,
-            "last_name": body.lastName,
-            "pliers_number": body.pliersNumber,
-        }.items()
+        for column, value in {"pliers_number": body.pliersNumber}.items()
         if value is not None and value.strip()
     }
     if not updates:

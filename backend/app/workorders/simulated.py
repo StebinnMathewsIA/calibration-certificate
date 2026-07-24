@@ -39,5 +39,13 @@ class SimulatedOnKeyProvider(WorkOrderProvider):
 
 
 def get_provider() -> WorkOrderProvider:
-    """Selected by config later; only the simulated provider exists in the PoC."""
+    """Selected by WORKORDER_PROVIDER (#47): 'simulated' serves the fixtures;
+    'onkey' selects the real provider once its field mapping lands."""
+    from ..config import get_settings
+
+    settings = get_settings()
+    if settings.workorder_provider == "onkey":
+        from .onkey import OnKeyProvider
+
+        return OnKeyProvider(settings)
     return SimulatedOnKeyProvider()

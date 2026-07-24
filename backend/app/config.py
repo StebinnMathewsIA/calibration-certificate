@@ -51,6 +51,15 @@ class Settings(BaseSettings):
     anthropic_model: str = "claude-opus-4-8"
     analysis_enabled: bool = True
 
+    # OnKey work-order integration (#47). Credentials are server-side only —
+    # set in Render's Environment (never in the repo, never in the app).
+    # 'simulated' serves the fixtures; flip to 'onkey' once the provider's
+    # field mapping lands (blocked on the OnKey API documentation).
+    workorder_provider: str = "simulated"  # "simulated" | "onkey"
+    onkey_base_url: str = ""
+    onkey_username: str = ""
+    onkey_password: str = ""
+
     # Device binding (#51). Enforcement is flag-gated for a safe rollout:
     # off (default) verifies+audits device signatures when present but never
     # blocks; on requires a valid signature from an active enrolled device.

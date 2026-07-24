@@ -34,3 +34,13 @@ services:
         value: "false"
       - key: ADMIN_EMAILS
         sync: false
+      # OnKey (#47): credentials live ONLY here (Render Environment). Flip
+      # WORKORDER_PROVIDER to "onkey" once the provider mapping lands.
+      - key: WORKORDER_PROVIDER
+        value: "simulated"
+      - key: ONKEY_BASE_URL
+        sync: false
+      - key: ONKEY_USERNAME
+        sync: false
+      - key: ONKEY_PASSWORD
+        sync: false

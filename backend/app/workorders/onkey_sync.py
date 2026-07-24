@@ -73,26 +73,30 @@ def split_date_range(start: datetime, end: datetime, chunk_days: int) -> list[tu
     return ranges
 
 
-def export_chunked(
+def iter_export_chunks(
     fetch,  # (start: datetime, end: datetime) -> list[dict]
     start: datetime,
     end: datetime,
     max_records: int,
     level: str = "month",
-) -> dict[str, dict]:
-    """Pull a range in chunks; when a chunk hits the record cap, split it to
-    the next-finer level. Returns rows keyed by content hash (deduplicated)."""
+):
+    """Yield {hash: row} per leaf chunk; when a chunk hits the record cap,
+    split it to the next-finer level. Streaming keeps memory bounded and lets
+    the caller persist each chunk as it lands (durable backfill progress)."""
     chunk_days, next_level = _SPLIT_LEVELS[level]
-    rows_by_hash: dict[str, dict] = {}
     for chunk_start, chunk_end in split_date_range(start, end, chunk_days):
         rows = fetch(chunk_start, chunk_end)
         if len(rows) >= max_records and next_level is not None:
-            rows_by_hash.update(
-                export_chunked(fetch, chunk_start, chunk_end, max_records, next_level)
-            )
+            yield from iter_export_chunks(fetch, chunk_start, chunk_end, max_records, next_level)
         else:
-            for row in rows:
-                rows_by_hash[row_content_hash(row)] = row
+            yield {row_content_hash(row): row for row in rows}
+
+
+def export_chunked(fetch, start, end, max_records: int, level: str = "month") -> dict[str, dict]:
+    """All chunks merged (deduplicated) — used for small windows and tests."""
+    rows_by_hash: dict[str, dict] = {}
+    for chunk in iter_export_chunks(fetch, start, end, max_records, level):
+        rows_by_hash.update(chunk)
     return rows_by_hash
 
 
@@ -229,19 +233,21 @@ def run_sync(db: Session, settings: Settings, mode: str) -> SyncSummary:
     else:
         raise ValueError("mode must be 'incremental' or 'backfill'")
 
+    summary = SyncSummary(mode=mode, window_start=start.isoformat(), window_end=end.isoformat())
+    columns: set[str] = set()
     with OnKeySoapClient(settings) as client:
-        rows_by_hash = export_chunked(
+        # Persist per chunk: bounded memory, and a killed backfill keeps all
+        # completed chunks (re-running skips them via the content hashes).
+        for chunk in iter_export_chunks(
             client.export_window, start, end, settings.onkey_max_records
-        )
-
-    inserted, refreshed = upsert_rows(db, rows_by_hash)
-    columns = sorted({k for row in rows_by_hash.values() for k in row}) if rows_by_hash else []
-    return SyncSummary(
-        mode=mode,
-        window_start=start.isoformat(),
-        window_end=end.isoformat(),
-        rows_fetched=len(rows_by_hash),
-        rows_inserted=inserted,
-        rows_refreshed=refreshed,
-        columns=columns,
-    )
+        ):
+            if not chunk:
+                continue
+            inserted, refreshed = upsert_rows(db, chunk)
+            summary.rows_fetched += len(chunk)
+            summary.rows_inserted += inserted
+            summary.rows_refreshed += refreshed
+            for row in chunk.values():
+                columns.update(row.keys())
+    summary.columns = sorted(columns)
+    return summary

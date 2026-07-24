@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from ..config import Settings, get_settings
 from ..db import SessionLocal, get_db
+from ..workorders.onkey_directory import busiest_open_technician
 from ..workorders.onkey_sync import run_sync
 
 router = APIRouter(prefix="/v1/onkey", tags=["onkey"])
@@ -78,6 +79,20 @@ def sync(
         "rowsRefreshed": summary.rows_refreshed,
         "columns": summary.columns,
         "registers": summary.registers,
+        # PII-free verification of the demo alias (#57): count only — this
+        # response lands in public workflow logs.
+        "aliasTarget": _alias_target(db, settings),
+    }
+
+
+def _alias_target(db: Session, settings: Settings) -> dict:
+    if not settings.onkey_demo_alias_email_list:
+        return {"configured": False}
+    busiest = busiest_open_technician(db)
+    return {
+        "configured": True,
+        "resolved": busiest is not None,
+        "openCount": busiest["openCount"] if busiest else 0,
     }
 
 

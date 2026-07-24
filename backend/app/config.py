@@ -71,6 +71,13 @@ class Settings(BaseSettings):
     # makes unchanged rows no-ops, so only the delta is written.
     onkey_sync_window_days: int = 35
     onkey_backfill_start: str = "2024-01-01"
+    # Demo/test sign-ins that ride the busiest technician's real work orders
+    # (#57) instead of resolving via onkey_technicians.email.
+    onkey_demo_alias_emails: str = ""
+
+    @property
+    def onkey_demo_alias_email_list(self) -> list[str]:
+        return [e.strip().lower() for e in self.onkey_demo_alias_emails.split(",") if e.strip()]
 
     # Device binding (#51). Enforcement is flag-gated for a safe rollout:
     # off (default) verifies+audits device signatures when present but never

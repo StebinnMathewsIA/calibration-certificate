@@ -48,3 +48,6 @@ services:
       # report/dataset settings default in code (config.py).
       - key: ONKEY_SYNC_TOKEN
         sync: false
+      # Demo sign-ins that see the busiest technician's live workload (#57).
+      - key: ONKEY_DEMO_ALIAS_EMAILS
+        value: "stebinn@gmail.com,sashern@prowalco.co.za"

@@ -44,3 +44,7 @@ services:
         sync: false
       - key: ONKEY_PASSWORD
         sync: false
+      # WOE001 sync (#47): token shared with the GitHub Actions cron; the
+      # report/dataset settings default in code (config.py).
+      - key: ONKEY_SYNC_TOKEN
+        sync: false

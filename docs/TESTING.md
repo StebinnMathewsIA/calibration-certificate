@@ -328,6 +328,20 @@ Rollout order matters: verify on-device FIRST, then set
 - [ ] Offline sign → queue → reconnect flow unchanged (device signature is
       computed at upload time)
 
+### OnKey WOE001 sync (#47)
+
+- [ ] Owner: generate a long random token; set it as `ONKEY_SYNC_TOKEN` on
+      Render (Environment) AND as repo Actions secret `ONKEY_SYNC_TOKEN`
+- [ ] Owner: default branch must be `main` — scheduled workflows only run
+      from the default branch
+- [ ] One-time backfill: Actions → onkey-sync → Run workflow → mode
+      `backfill` → job summary shows rows fetched/inserted and the WOE001
+      column list (paste the columns into #47 for the provider mapping)
+- [ ] The 5-min schedule runs on its own; repeat runs show rowsInserted ≈ 0
+      when nothing changed (delta-only writes)
+- [ ] Supabase: `onkey_woe001` row count matches the export volume;
+      `select data from onkey_woe001 limit 1` shows a full WOE001 row
+
 ## Signing & offline queue (the milestone-5 acceptance test)
 
 - [ ] Client draws a signature on the pad; "Sign" is blocked until they do

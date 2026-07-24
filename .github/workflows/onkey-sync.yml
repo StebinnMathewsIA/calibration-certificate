@@ -1,0 +1,48 @@
+name: onkey-sync
+
+# Drives the OnKey WOE001 incremental sync (#47) every 5 minutes and doubles
+# as the keep-alive for the free-tier Render instance. Content-hash dedupe
+# server-side means each run writes only the delta.
+#
+# Required repository secret:
+#   ONKEY_SYNC_TOKEN   Must equal the ONKEY_SYNC_TOKEN env var on Render.
+#
+# NOTE: scheduled workflows only run from the repository's DEFAULT branch.
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Sync mode (backfill = everything since ONKEY_BACKFILL_START)"
+        type: choice
+        default: incremental
+        options: [incremental, backfill]
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger sync
+        run: |
+          if [ -z "${{ secrets.ONKEY_SYNC_TOKEN }}" ]; then
+            echo "::error::Missing repository secret ONKEY_SYNC_TOKEN"
+            exit 1
+          fi
+          mode="${{ inputs.mode || 'incremental' }}"
+          # Free-tier Render wakes from sleep on first request; allow time.
+          response=$(curl -sS -m 280 -w "\n%{http_code}" -X POST \
+            -H "Authorization: Bearer ${{ secrets.ONKEY_SYNC_TOKEN }}" \
+            "https://prowalco-calibration-api.onrender.com/v1/onkey/sync?mode=${mode}")
+          body=$(echo "$response" | head -n -1)
+          code=$(echo "$response" | tail -n 1)
+          echo "HTTP ${code}"
+          echo "$body"
+          {
+            echo "## OnKey sync (${mode})"
+            echo '```json'
+            echo "$body"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          [ "$code" = "200" ]

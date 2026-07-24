@@ -59,6 +59,18 @@ class Settings(BaseSettings):
     onkey_base_url: str = ""
     onkey_username: str = ""
     onkey_password: str = ""
+    # WOE001 export sync (SOAP; values from Prowalco's existing export tooling)
+    onkey_connection: str = "ONKEY"
+    onkey_report_code: str = "WOE001"
+    onkey_dataset_name: str = "WOE001"
+    onkey_max_records: int = 5000
+    # Bearer token the sync endpoints require (the scheduled GitHub Actions
+    # cron presents it). Empty = sync endpoints disabled.
+    onkey_sync_token: str = ""
+    # Incremental pulls re-fetch this rolling window; content-hash dedupe
+    # makes unchanged rows no-ops, so only the delta is written.
+    onkey_sync_window_days: int = 35
+    onkey_backfill_start: str = "2024-01-01"
 
     # Device binding (#51). Enforcement is flag-gated for a safe rollout:
     # off (default) verifies+audits device signatures when present but never

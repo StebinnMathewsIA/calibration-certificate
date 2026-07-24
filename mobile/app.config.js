@@ -11,6 +11,13 @@
 // eas.json.
 module.exports = ({ config }) => ({
   ...config,
+  // EAS Update (#61): the project id is injected by `eas init` in CI, so the
+  // build's update URL and the publish target always agree. Locally without a
+  // project id, updates are simply disabled (dev client uses Metro anyway).
+  ...(config.extra?.eas?.projectId
+    ? { updates: { url: `https://u.expo.dev/${config.extra.eas.projectId}` } }
+    : {}),
+  runtimeVersion: { policy: 'appVersion' },
   extra: {
     ...(config.extra ?? {}),
     apiUrl: process.env.EXPO_PUBLIC_API_URL ?? 'https://prowalco-calibration-api.onrender.com',

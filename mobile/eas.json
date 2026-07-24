@@ -16,6 +16,7 @@
     },
     "preview": {
       "distribution": "internal",
+      "channel": "preview",
       "env": {
         "EXPO_PUBLIC_API_URL": "https://prowalco-calibration-api.onrender.com",
         "EXPO_PUBLIC_SUPABASE_URL": "https://pkaadtgmdouuhgrcshft.supabase.co",
@@ -25,6 +26,7 @@
     },
     "production": {
       "autoIncrement": true,
+      "channel": "production",
       "env": {
         "EXPO_PUBLIC_API_URL": "https://prowalco-calibration-api.onrender.com",
         "EXPO_PUBLIC_SUPABASE_URL": "https://pkaadtgmdouuhgrcshft.supabase.co",

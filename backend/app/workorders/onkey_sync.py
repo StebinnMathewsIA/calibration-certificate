@@ -272,11 +272,15 @@ def derive_registers(db: Session) -> dict:
     db.execute(
         text(
             """
-            INSERT INTO onkey_sites (site_number, site_name, branch_code, updated_at)
+            INSERT INTO onkey_sites (site_number, site_name, branch_code,
+                                     gps_location, oil_company_code, oil_company_name, updated_at)
             SELECT DISTINCT ON (data->>'SiteNumber')
                    data->>'SiteNumber',
                    nullif(data->>'SiteName', ''),
                    nullif(data->>'BranchCodeLocation', ''),
+                   nullif(data->>'AssetParentAssetGeographicDataLocationNonShell', ''),
+                   nullif(data->>'WorkOrderSiteCode', ''),
+                   nullif(data->>'WorkOrderSiteDescription', ''),
                    now()
             FROM onkey_woe001
             WHERE coalesce(data->>'SiteNumber', '') <> ''
@@ -284,6 +288,9 @@ def derive_registers(db: Session) -> dict:
             ON CONFLICT (site_number) DO UPDATE SET
                 site_name = coalesce(EXCLUDED.site_name, onkey_sites.site_name),
                 branch_code = coalesce(EXCLUDED.branch_code, onkey_sites.branch_code),
+                gps_location = coalesce(EXCLUDED.gps_location, onkey_sites.gps_location),
+                oil_company_code = coalesce(EXCLUDED.oil_company_code, onkey_sites.oil_company_code),
+                oil_company_name = coalesce(EXCLUDED.oil_company_name, onkey_sites.oil_company_name),
                 updated_at = now()
             """
         )
@@ -361,6 +368,12 @@ def derive_registers(db: Session) -> dict:
         counts[table.removeprefix("onkey_")] = db.execute(
             text(f"SELECT count(*) FROM {table}")  # noqa: S608 — fixed table names
         ).scalar()
+    counts["sites_with_gps"] = db.execute(
+        text("SELECT count(*) FROM onkey_sites WHERE gps_location IS NOT NULL")
+    ).scalar()
+    counts["sites_with_oil_company"] = db.execute(
+        text("SELECT count(*) FROM onkey_sites WHERE oil_company_name IS NOT NULL")
+    ).scalar()
     return counts
 
 

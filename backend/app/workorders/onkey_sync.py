@@ -82,9 +82,11 @@ def iter_export_chunks(
 ):
     """Yield {hash: row} per leaf chunk; when a chunk hits the record cap,
     split it to the next-finer level. Streaming keeps memory bounded and lets
-    the caller persist each chunk as it lands (durable backfill progress)."""
+    the caller persist each chunk as it lands (durable backfill progress).
+    Chunks run NEWEST-FIRST so the current month — the data the app needs —
+    is persisted within minutes; history fills in behind it."""
     chunk_days, next_level = _SPLIT_LEVELS[level]
-    for chunk_start, chunk_end in split_date_range(start, end, chunk_days):
+    for chunk_start, chunk_end in reversed(split_date_range(start, end, chunk_days)):
         rows = fetch(chunk_start, chunk_end)
         if len(rows) >= max_records and next_level is not None:
             yield from iter_export_chunks(fetch, chunk_start, chunk_end, max_records, next_level)

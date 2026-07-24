@@ -65,6 +65,10 @@ export const workOrderSeedSchema = z.object({
   siteId: z.string().min(1).max(64),
   dispenserIds: z.array(z.string().min(1).max(64)).default([]),
   status: workOrderStatusSchema.default('open'),
+  /** Raw OnKey queue status (e.g. "Allocated") — drives the Home sections. */
+  statusDetail: z.string().max(100).optional(),
+  /** OnKey staff code of the assignee (demo alias accounts resolve to this). */
+  staffCode: z.string().max(64).optional(),
   scheduledDate: isoDate.optional(),
 });
 

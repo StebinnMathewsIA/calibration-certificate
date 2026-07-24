@@ -89,6 +89,10 @@ export declare const workOrderSeedSchema: z.ZodObject<{
     siteId: z.ZodString;
     dispenserIds: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
     status: z.ZodDefault<z.ZodEnum<["open", "in_progress", "completed"]>>;
+    /** Raw OnKey queue status (e.g. "Allocated") — drives the Home sections. */
+    statusDetail: z.ZodOptional<z.ZodString>;
+    /** OnKey staff code of the assignee (demo alias accounts resolve to this). */
+    staffCode: z.ZodOptional<z.ZodString>;
     scheduledDate: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
     status: "open" | "in_progress" | "completed";
@@ -97,6 +101,8 @@ export declare const workOrderSeedSchema: z.ZodObject<{
     reference: string;
     assignedTechnicianEmail: string;
     dispenserIds: string[];
+    statusDetail?: string | undefined;
+    staffCode?: string | undefined;
     scheduledDate?: string | undefined;
 }, {
     id: string;
@@ -105,6 +111,8 @@ export declare const workOrderSeedSchema: z.ZodObject<{
     assignedTechnicianEmail: string;
     status?: "open" | "in_progress" | "completed" | undefined;
     dispenserIds?: string[] | undefined;
+    statusDetail?: string | undefined;
+    staffCode?: string | undefined;
     scheduledDate?: string | undefined;
 }>;
 /** The full seed bundle a provider returns for one work order. */
@@ -117,6 +125,10 @@ export declare const workOrderBundleSchema: z.ZodObject<{
         siteId: z.ZodString;
         dispenserIds: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
         status: z.ZodDefault<z.ZodEnum<["open", "in_progress", "completed"]>>;
+        /** Raw OnKey queue status (e.g. "Allocated") — drives the Home sections. */
+        statusDetail: z.ZodOptional<z.ZodString>;
+        /** OnKey staff code of the assignee (demo alias accounts resolve to this). */
+        staffCode: z.ZodOptional<z.ZodString>;
         scheduledDate: z.ZodOptional<z.ZodString>;
     }, "strip", z.ZodTypeAny, {
         status: "open" | "in_progress" | "completed";
@@ -125,6 +137,8 @@ export declare const workOrderBundleSchema: z.ZodObject<{
         reference: string;
         assignedTechnicianEmail: string;
         dispenserIds: string[];
+        statusDetail?: string | undefined;
+        staffCode?: string | undefined;
         scheduledDate?: string | undefined;
     }, {
         id: string;
@@ -133,6 +147,8 @@ export declare const workOrderBundleSchema: z.ZodObject<{
         assignedTechnicianEmail: string;
         status?: "open" | "in_progress" | "completed" | undefined;
         dispenserIds?: string[] | undefined;
+        statusDetail?: string | undefined;
+        staffCode?: string | undefined;
         scheduledDate?: string | undefined;
     }>;
     site: z.ZodObject<{
@@ -194,6 +210,8 @@ export declare const workOrderBundleSchema: z.ZodObject<{
         reference: string;
         assignedTechnicianEmail: string;
         dispenserIds: string[];
+        statusDetail?: string | undefined;
+        staffCode?: string | undefined;
         scheduledDate?: string | undefined;
     };
     dispensers: {
@@ -219,6 +237,8 @@ export declare const workOrderBundleSchema: z.ZodObject<{
         assignedTechnicianEmail: string;
         status?: "open" | "in_progress" | "completed" | undefined;
         dispenserIds?: string[] | undefined;
+        statusDetail?: string | undefined;
+        staffCode?: string | undefined;
         scheduledDate?: string | undefined;
     };
     dispensers?: {

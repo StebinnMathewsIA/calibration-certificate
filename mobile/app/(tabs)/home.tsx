@@ -38,6 +38,19 @@ function resumePath(state: CertificateState): string {
 const recordWorkOrderId = (r: repo.CertificateRecord): string | undefined =>
   (r.form as Partial<Verification>).workOrderId;
 
+/** Home section order for open work orders — owner-defined OnKey statuses
+ * (#55). Work orders with any other/no statusDetail land in "Open". */
+const OPEN_SECTION_ORDER = [
+  'To be Planned',
+  'Allocated',
+  'Incomplete for Spares',
+  'Work Order Received',
+  'Referral',
+  'Work Resumed',
+];
+
+type HomeListItem = { kind: 'header'; title: string } | { kind: 'wo'; wo: WorkOrderSummary };
+
 /** Editable pre-signing states — the only ones that may be deleted (#41). */
 const isDraftState = (s: CertificateState) => s === 'DRAFT' || s === 'READY_TO_SIGN';
 
@@ -149,6 +162,29 @@ export default function HomeScreen() {
     });
   }, [inProgress, workOrders]);
 
+  // Section per OnKey status in the owner-defined order (#55); anything with
+  // an unknown/missing statusDetail (e.g. the simulated provider) lands in a
+  // plain "Open" section so nothing disappears.
+  const sectionedItems = useMemo<HomeListItem[]>(() => {
+    const items: HomeListItem[] = [];
+    const leftovers = new Set(workOrders.map((w) => w.id));
+    for (const title of OPEN_SECTION_ORDER) {
+      const inSection = workOrders.filter((w) => w.statusDetail === title);
+      if (inSection.length === 0) continue;
+      items.push({ kind: 'header', title });
+      for (const wo of inSection) {
+        items.push({ kind: 'wo', wo });
+        leftovers.delete(wo.id);
+      }
+    }
+    const rest = workOrders.filter((w) => leftovers.has(w.id));
+    if (rest.length > 0) {
+      if (items.length > 0) items.push({ kind: 'header', title: 'Open' });
+      for (const wo of rest) items.push({ kind: 'wo', wo });
+    }
+    return items;
+  }, [workOrders]);
+
   if (!loading && !identity) return <Redirect href="/" />;
 
   const inProgressCard = (item: repo.CertificateRecord, nested: boolean) => {
@@ -233,8 +269,8 @@ export default function HomeScreen() {
       />
       <SyncBanner onQueueDrained={loadLocal} />
       <FlatList
-        data={workOrders}
-        keyExtractor={(x) => x.id}
+        data={sectionedItems}
+        keyExtractor={(x) => (x.kind === 'header' ? `h:${x.title}` : x.wo.id)}
         // The in-flow tab bar reserves its own space now (#45) — only a
         // small breathing gap is needed.
         contentContainerStyle={{ paddingBottom: 24 }}
@@ -253,28 +289,51 @@ export default function HomeScreen() {
             </Text>
           </>
         }
-        renderItem={({ item }) => (
-          <>
-            <Pressable
-              onPress={() => router.push({ pathname: '/workorder/[id]', params: { id: item.id } })}
+        renderItem={({ item }) =>
+          item.kind === 'header' ? (
+            // One section per OnKey status, in the owner-defined order (#55).
+            <Text
+              style={{
+                marginHorizontal: 12,
+                marginTop: 14,
+                marginBottom: 2,
+                fontSize: 13,
+                fontWeight: '700',
+                color: colors.muted,
+                textTransform: 'uppercase',
+                letterSpacing: 0.5,
+              }}
             >
-              <View style={[styles.card, { flexDirection: 'row', alignItems: 'center' }]}>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ fontWeight: '700', color: colors.ink }}>{item.reference}</Text>
-                  <Text style={{ color: colors.muted, fontSize: 12 }}>
-                    {item.site.customerName} · {item.site.siteName}
-                  </Text>
-                  <Text style={{ color: colors.muted, fontSize: 11 }}>
-                    {item.dispenserIds.length} dispenser(s)
-                    {item.scheduledDate ? ` · ${item.scheduledDate}` : ''}
-                  </Text>
+              {item.title}
+            </Text>
+          ) : (
+            <>
+              <Pressable
+                onPress={() =>
+                  router.push({ pathname: '/workorder/[id]', params: { id: item.wo.id } })
+                }
+              >
+                <View style={[styles.card, { flexDirection: 'row', alignItems: 'center' }]}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontWeight: '700', color: colors.ink }}>{item.wo.reference}</Text>
+                    <Text style={{ color: colors.muted, fontSize: 12 }}>
+                      {item.wo.site.customerName} · {item.wo.site.siteName}
+                    </Text>
+                    <Text style={{ color: colors.muted, fontSize: 11 }}>
+                      {item.wo.dispenserIds.length} dispenser(s)
+                      {item.wo.scheduledDate ? ` · due ${item.wo.scheduledDate}` : ''}
+                    </Text>
+                  </View>
+                  <Badge
+                    text={(item.wo.statusDetail ?? item.wo.status).replaceAll('_', ' ')}
+                    tone="muted"
+                  />
                 </View>
-                <Badge text={item.status.replaceAll('_', ' ')} tone="muted" />
-              </View>
-            </Pressable>
-            {(byWorkOrder.get(item.id) ?? []).map((r) => inProgressCard(r, true))}
-          </>
-        )}
+              </Pressable>
+              {(byWorkOrder.get(item.wo.id) ?? []).map((r) => inProgressCard(r, true))}
+            </>
+          )
+        }
         ListEmptyComponent={
           <Text style={{ textAlign: 'center', color: colors.muted, marginTop: 20 }}>
             No open work orders. Pull refresh when online.

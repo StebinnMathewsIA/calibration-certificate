@@ -179,7 +179,14 @@ def get_workorder(
     if wo is None:
         raise HTTPException(status_code=404, detail="Unknown work order")
     if identity.email and wo["assignedTechnicianEmail"].lower() != identity.email.lower():
-        raise HTTPException(status_code=403, detail="Work order is not assigned to you")
+        # Demo alias accounts (#57) resolve to a staff code rather than their
+        # own email — allow when the resolved codes match.
+        from ..config import get_settings as _get_settings
+        from ..workorders.onkey_directory import resolve_staff_code_for_email
+
+        my_code = resolve_staff_code_for_email(db, _get_settings(), identity.email)
+        if not my_code or my_code != wo.get("staffCode"):
+            raise HTTPException(status_code=403, detail="Work order is not assigned to you")
     return {
         "workOrder": wo,
         "site": _resolve_site(db, provider, wo["siteId"]),

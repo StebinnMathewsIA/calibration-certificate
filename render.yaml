@@ -36,8 +36,11 @@ services:
         sync: false
       # OnKey (#47): credentials live ONLY here (Render Environment). Flip
       # WORKORDER_PROVIDER to "onkey" once the provider mapping lands.
+      # Production data source (#55): the app serves work orders from the
+      # registers mined out of the WOE001 sync. "simulated" remains only for
+      # CI tests and local dev.
       - key: WORKORDER_PROVIDER
-        value: "simulated"
+        value: "onkey"
       - key: ONKEY_BASE_URL
         sync: false
       - key: ONKEY_USERNAME

@@ -60,6 +60,10 @@ exports.workOrderSeedSchema = zod_1.z.object({
     siteId: zod_1.z.string().min(1).max(64),
     dispenserIds: zod_1.z.array(zod_1.z.string().min(1).max(64)).default([]),
     status: exports.workOrderStatusSchema.default('open'),
+    /** Raw OnKey queue status (e.g. "Allocated") — drives the Home sections. */
+    statusDetail: zod_1.z.string().max(100).optional(),
+    /** OnKey staff code of the assignee (demo alias accounts resolve to this). */
+    staffCode: zod_1.z.string().max(64).optional(),
     scheduledDate: isoDate.optional(),
 });
 /** The full seed bundle a provider returns for one work order. */

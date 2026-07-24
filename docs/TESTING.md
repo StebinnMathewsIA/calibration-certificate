@@ -342,6 +342,22 @@ Rollout order matters: verify on-device FIRST, then set
 - [ ] Supabase: `onkey_woe001` row count matches the export volume;
       `select data from onkey_woe001 limit 1` shows a full WOE001 row
 
+### Production work orders from OnKey (#55, #57)
+
+- [ ] Sign in as stebinn@gmail.com or sashern@prowalco.co.za (demo aliases) →
+      Home shows the busiest technician's REAL open work orders, grouped
+      into sections: To be Planned / Allocated / Incomplete for Spares /
+      Work Order Received / Referral / Work Resumed (empty sections hidden)
+- [ ] Greeting subtitle count matches the number of listed work orders
+- [ ] A work-order card shows oil company · site name, dispenser count and
+      due date; opening it shows the site and its equipment
+- [ ] Equipment with no make/model/serial shows "identity incomplete" and
+      the on-site completion flow persists it
+- [ ] A real technician signing in with their own OnKey email sees THEIR
+      open work orders (pick a friendly guinea pig)
+- [ ] Closed/costed/cancelled work orders never render on Home
+- [ ] Offline: previously loaded work orders still show from cache
+
 ## Signing & offline queue (the milestone-5 acceptance test)
 
 - [ ] Client draws a signature on the pad; "Sign" is blocked until they do

@@ -26,7 +26,9 @@ from sqlalchemy.orm import Session
 from ..config import Settings
 
 SOAP_NS = "{http://contracts.pragmaproducts.com/onkey/System/v1}"
-SOURCE_DATE_COLUMN = "StartDate"
+# WOE001's own timestamp column (the StartDate/EndDate names are only the
+# query parameters; the output carries the queue-transition time).
+SOURCE_DATE_COLUMN = "WorkOrderQueueStatusChangedOn"
 
 # month -> week -> day, mirroring the proven export script.
 _SPLIT_LEVELS = {"month": (31, "week"), "week": (7, "day"), "day": (1, None)}
@@ -187,6 +189,7 @@ class SyncSummary:
     rows_inserted: int = 0
     rows_refreshed: int = 0
     columns: list[str] = field(default_factory=list)
+    registers: dict = field(default_factory=dict)
 
 
 def upsert_rows(db: Session, rows_by_hash: dict[str, dict]) -> tuple[int, int]:
@@ -222,6 +225,145 @@ def upsert_rows(db: Session, rows_by_hash: dict[str, dict]) -> tuple[int, int]:
     return (len(new_hashes), len(existing))
 
 
+# SQL casts abort on malformed values; WOE001 dates are ISO-with-offset, and
+# this guard keeps one stray value from failing the whole derivation.
+_SAFE_TS = """
+CASE WHEN {col} ~ '^\\d{{4}}-\\d{{2}}-\\d{{2}}' THEN ({col})::timestamptz ELSE NULL END
+"""
+
+
+def _ts(col_expr: str) -> str:
+    return _SAFE_TS.format(col=col_expr)
+
+
+def derive_registers(db: Session) -> dict:
+    """Mine the raw WOE001 snapshot log into the technician / site /
+    equipment / current-work-order registers (#54). Latest queue transition
+    per work order Code wins. Idempotent — runs after every sync."""
+    # Backfill the event-timestamp index for rows synced before the column fix.
+    db.execute(
+        text(
+            "UPDATE onkey_woe001 SET start_date_ts = "
+            + _ts("data->>'WorkOrderQueueStatusChangedOn'")
+            + " WHERE start_date_ts IS NULL AND data ? 'WorkOrderQueueStatusChangedOn'"
+        )
+    )
+
+    db.execute(
+        text(
+            """
+            INSERT INTO onkey_technicians (staff_code, name, email, updated_at)
+            SELECT DISTINCT ON (data->>'StaffCode')
+                   data->>'StaffCode',
+                   nullif(data->>'StaffDescription', ''),
+                   nullif(data->>'StaffEmail', ''),
+                   now()
+            FROM onkey_woe001
+            WHERE coalesce(data->>'StaffCode', '') <> ''
+            ORDER BY data->>'StaffCode', start_date_ts DESC NULLS LAST
+            ON CONFLICT (staff_code) DO UPDATE SET
+                name = coalesce(EXCLUDED.name, onkey_technicians.name),
+                email = coalesce(EXCLUDED.email, onkey_technicians.email),
+                updated_at = now()
+            """
+        )
+    )
+
+    db.execute(
+        text(
+            """
+            INSERT INTO onkey_sites (site_number, site_name, branch_code, updated_at)
+            SELECT DISTINCT ON (data->>'SiteNumber')
+                   data->>'SiteNumber',
+                   nullif(data->>'SiteName', ''),
+                   nullif(data->>'BranchCodeLocation', ''),
+                   now()
+            FROM onkey_woe001
+            WHERE coalesce(data->>'SiteNumber', '') <> ''
+            ORDER BY data->>'SiteNumber', start_date_ts DESC NULLS LAST
+            ON CONFLICT (site_number) DO UPDATE SET
+                site_name = coalesce(EXCLUDED.site_name, onkey_sites.site_name),
+                branch_code = coalesce(EXCLUDED.branch_code, onkey_sites.branch_code),
+                updated_at = now()
+            """
+        )
+    )
+
+    db.execute(
+        text(
+            """
+            INSERT INTO onkey_equipment (equipment_number, site_number, description, updated_at)
+            SELECT DISTINCT ON (data->>'EquipmentNumber')
+                   data->>'EquipmentNumber',
+                   nullif(data->>'SiteNumber', ''),
+                   nullif(data->>'WorkOrderAssetParentAssetParentAssetDescription', ''),
+                   now()
+            FROM onkey_woe001
+            WHERE coalesce(data->>'EquipmentNumber', '') <> ''
+            ORDER BY data->>'EquipmentNumber', start_date_ts DESC NULLS LAST
+            ON CONFLICT (equipment_number) DO UPDATE SET
+                site_number = coalesce(EXCLUDED.site_number, onkey_equipment.site_number),
+                description = coalesce(EXCLUDED.description, onkey_equipment.description),
+                updated_at = now()
+            """
+        )
+    )
+
+    db.execute(
+        text(
+            f"""
+            INSERT INTO onkey_workorders (
+                code, status_code, status_description, status_changed_on,
+                staff_code, site_number, equipment_number,
+                received_on, required_by, complete_by, completed_on,
+                contract_type, work_required, work_performed, updated_at)
+            SELECT DISTINCT ON (data->>'Code')
+                   data->>'Code',
+                   nullif(data->>'WorkOrderQueueNewStatusCode', ''),
+                   nullif(data->>'WorkOrderQueueNewStatusDescription', ''),
+                   {_ts("data->>'WorkOrderQueueStatusChangedOn'")},
+                   nullif(data->>'StaffCode', ''),
+                   nullif(data->>'SiteNumber', ''),
+                   nullif(data->>'EquipmentNumber', ''),
+                   {_ts("data->>'ReceivedOn'")},
+                   {_ts("data->>'RequiredBy'")},
+                   {_ts("data->>'CompleteBy'")},
+                   {_ts("data->>'CompletedOn'")},
+                   nullif(data->>'ContractType', ''),
+                   nullif(data->>'WorkRequired', ''),
+                   nullif(data->>'WorkPerformed', ''),
+                   now()
+            FROM onkey_woe001
+            WHERE coalesce(data->>'Code', '') <> ''
+            ORDER BY data->>'Code', start_date_ts DESC NULLS LAST
+            ON CONFLICT (code) DO UPDATE SET
+                status_code = EXCLUDED.status_code,
+                status_description = EXCLUDED.status_description,
+                status_changed_on = EXCLUDED.status_changed_on,
+                staff_code = coalesce(EXCLUDED.staff_code, onkey_workorders.staff_code),
+                site_number = coalesce(EXCLUDED.site_number, onkey_workorders.site_number),
+                equipment_number = coalesce(EXCLUDED.equipment_number, onkey_workorders.equipment_number),
+                received_on = coalesce(EXCLUDED.received_on, onkey_workorders.received_on),
+                required_by = coalesce(EXCLUDED.required_by, onkey_workorders.required_by),
+                complete_by = coalesce(EXCLUDED.complete_by, onkey_workorders.complete_by),
+                completed_on = coalesce(EXCLUDED.completed_on, onkey_workorders.completed_on),
+                contract_type = coalesce(EXCLUDED.contract_type, onkey_workorders.contract_type),
+                work_required = coalesce(EXCLUDED.work_required, onkey_workorders.work_required),
+                work_performed = coalesce(EXCLUDED.work_performed, onkey_workorders.work_performed),
+                updated_at = now()
+            """
+        )
+    )
+    db.commit()
+
+    counts = {}
+    for table in ("onkey_technicians", "onkey_sites", "onkey_equipment", "onkey_workorders"):
+        counts[table.removeprefix("onkey_")] = db.execute(
+            text(f"SELECT count(*) FROM {table}")  # noqa: S608 — fixed table names
+        ).scalar()
+    return counts
+
+
 def run_sync(db: Session, settings: Settings, mode: str) -> SyncSummary:
     """mode 'incremental': rolling window (delta via content-hash dedupe);
     mode 'backfill': everything since ONKEY_BACKFILL_START."""
@@ -252,4 +394,5 @@ def run_sync(db: Session, settings: Settings, mode: str) -> SyncSummary:
             for row in chunk.values():
                 columns.update(row.keys())
     summary.columns = sorted(columns)
+    summary.registers = derive_registers(db)
     return summary

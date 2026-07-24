@@ -77,6 +77,7 @@ def sync(
         "rowsInserted": summary.rows_inserted,
         "rowsRefreshed": summary.rows_refreshed,
         "columns": summary.columns,
+        "registers": summary.registers,
     }
 
 

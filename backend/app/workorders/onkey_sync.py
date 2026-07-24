@@ -288,7 +288,10 @@ def derive_registers(db: Session) -> dict:
             ON CONFLICT (site_number) DO UPDATE SET
                 site_name = coalesce(EXCLUDED.site_name, onkey_sites.site_name),
                 branch_code = coalesce(EXCLUDED.branch_code, onkey_sites.branch_code),
-                gps_location = coalesce(EXCLUDED.gps_location, onkey_sites.gps_location),
+                -- Manual gap edits (#60) always win over synced data.
+                gps_location = CASE WHEN onkey_sites.manual_fields ? 'gps_location'
+                                    THEN onkey_sites.gps_location
+                                    ELSE coalesce(EXCLUDED.gps_location, onkey_sites.gps_location) END,
                 oil_company_code = coalesce(EXCLUDED.oil_company_code, onkey_sites.oil_company_code),
                 oil_company_name = coalesce(EXCLUDED.oil_company_name, onkey_sites.oil_company_name),
                 updated_at = now()
@@ -361,6 +364,59 @@ def derive_registers(db: Session) -> dict:
             """
         )
     )
+    # Master-data enrichment (#59): fill register blanks from the owner-loaded
+    # master tables. Fill-blanks only, and never a manually-set field (#60).
+    db.execute(
+        text(
+            """
+            UPDATE onkey_sites s SET
+                address = CASE WHEN s.manual_fields ? 'address' THEN s.address
+                               ELSE coalesce(s.address, m.address) END,
+                gps_location = CASE WHEN s.manual_fields ? 'gps_location' THEN s.gps_location
+                                    ELSE coalesce(s.gps_location, m.gps_location) END,
+                branch_code = coalesce(s.branch_code, m.branch),
+                is_active = coalesce(m.is_active, s.is_active),
+                updated_at = now()
+            FROM (
+                SELECT DISTINCT ON (location_code) location_code, address, gps_location, branch, is_active
+                FROM onkey_location_master
+                WHERE coalesce(location_code, '') <> ''
+                ORDER BY location_code, is_active DESC NULLS LAST, code
+            ) m
+            WHERE m.location_code = s.site_number
+            """
+        )
+    )
+    db.execute(
+        text(
+            r"""
+            UPDATE onkey_equipment e SET
+                description = coalesce(e.description, m.description),
+                is_active = coalesce(m.is_active, e.is_active),
+                site_number = coalesce(e.site_number, m.location_code),
+                updated_at = now()
+            FROM onkey_location_master m
+            WHERE substring(m.code from '\((\d+)\)') = e.equipment_number
+            """
+        )
+    )
+    db.execute(
+        text(
+            """
+            UPDATE onkey_technicians t SET
+                first_name = coalesce(t.first_name, m.first_name),
+                last_name = coalesce(t.last_name, m.last_name),
+                manager = coalesce(t.manager, m.manager),
+                base_latitude = coalesce(t.base_latitude, m.latitude),
+                base_longitude = coalesce(t.base_longitude, m.longitude),
+                email = coalesce(t.email, m.email),
+                updated_at = now()
+            FROM onkey_technician_master m
+            WHERE lower(m.email) = lower(t.email)
+               OR (t.email IS NULL AND lower(m.display_name) = lower(t.name))
+            """
+        )
+    )
     db.commit()
 
     counts = {}
@@ -373,6 +429,12 @@ def derive_registers(db: Session) -> dict:
     ).scalar()
     counts["sites_with_oil_company"] = db.execute(
         text("SELECT count(*) FROM onkey_sites WHERE oil_company_name IS NOT NULL")
+    ).scalar()
+    counts["sites_with_address"] = db.execute(
+        text("SELECT count(*) FROM onkey_sites WHERE address IS NOT NULL")
+    ).scalar()
+    counts["technicians_with_base"] = db.execute(
+        text("SELECT count(*) FROM onkey_technicians WHERE base_latitude IS NOT NULL")
     ).scalar()
     return counts
 

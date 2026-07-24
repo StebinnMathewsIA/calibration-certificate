@@ -7,12 +7,15 @@ The incremental window is small and runs inline. Backfill spans years and
 outlives Render's HTTP proxy window, so it runs in a background thread: the
 endpoint returns 202 immediately and /status reports progress."""
 import hmac
+import json
 import threading
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from ..auth import Identity, get_identity
 from ..config import Settings, get_settings
 from ..db import SessionLocal, get_db
 from ..workorders.onkey_directory import busiest_open_technician
@@ -94,6 +97,58 @@ def _alias_target(db: Session, settings: Settings) -> dict:
         "resolved": busiest is not None,
         "openCount": busiest["openCount"] if busiest else 0,
     }
+
+
+class SitePatch(BaseModel):
+    """Gap edits a signed-in technician may make to a site (#60)."""
+
+    gpsLocation: str | None = Field(default=None, max_length=200)
+    address: str | None = Field(default=None, max_length=400)
+    telephone: str | None = Field(default=None, max_length=64)
+
+
+@router.patch("/sites/{site_number}")
+def patch_site(
+    site_number: str,
+    body: SitePatch,
+    db: Session = Depends(get_db),
+    identity: Identity = Depends(get_identity),
+) -> dict:
+    """Fill register gaps by hand. Fields set here are recorded in
+    manual_fields and are never overwritten by the sync again."""
+    updates = {
+        column: value.strip()
+        for column, value in {
+            "gps_location": body.gpsLocation,
+            "address": body.address,
+            "telephone": body.telephone,
+        }.items()
+        if value is not None and value.strip()
+    }
+    if not updates:
+        raise HTTPException(status_code=422, detail="No fields to update")
+    exists = db.execute(
+        text("SELECT 1 FROM onkey_sites WHERE site_number = :sn"), {"sn": site_number}
+    ).scalar()
+    if not exists:
+        raise HTTPException(status_code=404, detail="Unknown site")
+    set_clause = ", ".join(f"{column} = :{column}" for column in updates)
+    db.execute(
+        text(
+            f"UPDATE onkey_sites SET {set_clause}, "  # noqa: S608 — fixed column names
+            "manual_fields = manual_fields || cast(:mkeys as jsonb), "
+            "manual_updated_by = :by, manual_updated_at = now(), updated_at = now() "
+            "WHERE site_number = :sn"
+        ),
+        {
+            **updates,
+            "mkeys": json.dumps({column: True for column in updates}),
+            "by": identity.email or identity.subject,
+            "sn": site_number,
+        },
+    )
+    db.commit()
+    return {"siteNumber": site_number, "updated": sorted(updates), "manual": True}
 
 
 @router.get("/status")

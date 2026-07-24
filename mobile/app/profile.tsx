@@ -2,6 +2,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useState } from 'react';
 import { Alert, Text, TextInput, View } from 'react-native';
 import { useAuth } from '../src/auth/AuthContext';
+import { getMyTechnician, MyTechnician, patchMyTechnician } from '../src/api/client';
 import { Badge, Button, SectionCard, colors } from '../src/components/ui';
 import { FormScrollView } from '../src/components/FormScrollView';
 import { readCache } from '../src/db/cache';
@@ -24,7 +25,7 @@ const inputStyle = {
 } as const;
 
 export default function ProfileScreen() {
-  const { identity, signOut } = useAuth();
+  const { identity, accessToken, signOut } = useAuth();
   const router = useRouter();
   const subject = identity?.subject ?? '';
 
@@ -33,6 +34,8 @@ export default function ProfileScreen() {
   const [pliers, setPliers] = useState('');
   const [signatureSvg, setSignatureSvg] = useState('');
   const [loaded, setLoaded] = useState(false);
+  const [technician, setTechnician] = useState<MyTechnician | null>(null);
+  const [registerEditable, setRegisterEditable] = useState(false);
 
   // Load the profile, and pick up a freshly-drawn signature on return.
   useFocusEffect(
@@ -58,6 +61,36 @@ export default function ProfileScreen() {
     }, [subject, identity?.name, loaded]),
   );
 
+  // The technician register is the source of truth for name/staff/manager
+  // (#62): prefill anything the local profile does not have. Offline just
+  // keeps the local values.
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      getMyTechnician(accessToken)
+        .then(({ technician: tech, editable }) => {
+          if (cancelled) return;
+          setTechnician(tech);
+          setRegisterEditable(editable);
+          const p = getProfile(subject);
+          if (!p.firstName && !p.lastName) {
+            if (tech.firstName) setFirstName(tech.firstName);
+            if (tech.lastName) setLastName(tech.lastName);
+            if (!tech.firstName && !tech.lastName && tech.name) {
+              const words = tech.name.split(/\s+/).filter(Boolean);
+              setFirstName(words.slice(0, -1).join(' '));
+              setLastName(words[words.length - 1] ?? '');
+            }
+          }
+          if (!p.pliersNumber && tech.pliersNumber) setPliers(tech.pliersNumber);
+        })
+        .catch(() => {});
+      return () => {
+        cancelled = true;
+      };
+    }, [accessToken, subject]),
+  );
+
   const onCertificate = certificateName(
     { firstName, lastName },
     identity?.name ?? '',
@@ -79,6 +112,15 @@ export default function ProfileScreen() {
       pliersNumber: pliers.trim(),
       signatureSvg: signatureSvg || undefined,
     });
+    // Persist to the technician register too (#62) — best-effort; demo alias
+    // accounts are read-only there and offline saves stay local.
+    if (registerEditable) {
+      patchMyTechnician(accessToken, {
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        ...(pliers.trim() ? { pliersNumber: pliers.trim() } : {}),
+      }).catch(() => {});
+    }
     Alert.alert('Profile saved', 'Your name, VO number and signature will be used on certificates you sign.');
     router.back();
   };
@@ -101,6 +143,14 @@ export default function ProfileScreen() {
         ) : null}
         <Text style={{ fontSize: 12, color: colors.muted, marginTop: 8 }}>VO Pliers No.</Text>
         <TextInput style={inputStyle} value={pliers} onChangeText={setPliers} />
+        {technician ? (
+          <Text style={{ fontSize: 12, color: colors.muted, marginTop: 6 }}>
+            OnKey record: {technician.staffCode}
+            {technician.manager ? ` · Manager: ${technician.manager}` : ''}
+            {technician.email ? `\n${technician.email}` : ''}
+            {!registerEditable ? '\nDemo account — register is read-only' : ''}
+          </Text>
+        ) : null}
       </SectionCard>
 
       <SectionCard title="My signature">

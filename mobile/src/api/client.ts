@@ -70,6 +70,33 @@ export async function submitForSigning(
   return signResponseSchema.parse(body);
 }
 
+/** The signed-in technician's record from the mined register (#62). */
+export interface MyTechnician {
+  staffCode: string;
+  name: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  email: string | null;
+  manager: string | null;
+  pliersNumber: string | null;
+}
+
+export async function getMyTechnician(
+  token: string | null,
+): Promise<{ technician: MyTechnician; editable: boolean }> {
+  return (await request('/v1/technicians/me', token)) as {
+    technician: MyTechnician;
+    editable: boolean;
+  };
+}
+
+export async function patchMyTechnician(
+  token: string | null,
+  body: { firstName?: string; lastName?: string; pliersNumber?: string },
+): Promise<void> {
+  await request('/v1/technicians/me', token, { method: 'PATCH', body: JSON.stringify(body) });
+}
+
 export async function enrollDevice(
   token: string | null,
   body: { deviceId: string; publicKeyPem: string; platform?: string; model?: string },

@@ -342,6 +342,16 @@ Rollout order matters: verify on-device FIRST, then set
 - [ ] Supabase: `onkey_woe001` row count matches the export volume;
       `select data from onkey_woe001 limit 1` shows a full WOE001 row
 
+### Profile from the technician register (#62)
+
+- [ ] Open My profile signed in as a demo alias → first/surname prefill from
+      the ridden technician's register record; "OnKey record: <staff code> ·
+      Manager: …" line shows; "Demo account — register is read-only" note
+- [ ] A real technician (direct OnKey email) saving name + pliers persists
+      to the register (check onkey_technicians row) and re-appears on a
+      fresh install
+- [ ] Offline: profile loads from the local store unchanged
+
 ### Production work orders from OnKey (#55, #57)
 
 - [ ] Sign in as stebinn@gmail.com or sashern@prowalco.co.za (demo aliases) →

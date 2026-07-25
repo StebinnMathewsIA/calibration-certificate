@@ -354,6 +354,22 @@ Rollout order matters: verify on-device FIRST, then set
 - [ ] Certificate still prints Initial & Surname from the register-sourced
       name; offline profile loads from the local store unchanged
 
+### Proving measures in the profile (#48)
+
+- [ ] Profile shows "My proving measures" with the 200L / 20L / 5L measures
+      prefilled (PRO-1148D / PRO-1103T / PRO-1181Z + certificate numbers and
+      cal/expiry dates) before any verification is started
+- [ ] Editing a serial/certificate/date and saving survives app restart
+- [ ] "Photograph measure" opens the camera (permission prompt first run);
+      the shot appears as a thumbnail with a "Photo ✓" badge and survives
+      restart; "Retake" replaces it
+- [ ] A real technician (direct OnKey email): saved measures persist to the
+      register (onkey_technicians.measures) and reload on a fresh install;
+      demo aliases keep them local-only
+- [ ] Start a NEW verification → the certificate's reference-measure /
+      traceability block prints the PROFILE values (edit a serial first and
+      confirm the edited value prints); photos never upload or print
+
 ### Production work orders from OnKey (#55, #57)
 
 - [ ] Sign in as stebinn@gmail.com or sashern@prowalco.co.za (demo aliases) →

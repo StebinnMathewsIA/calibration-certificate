@@ -79,6 +79,13 @@ export interface MyTechnician {
   email: string | null;
   manager: string | null;
   pliersNumber: string | null;
+  measures: {
+    size: string;
+    serialNumber: string;
+    certificateNumber: string;
+    calibrationDate: string;
+    expiryDate: string;
+  }[];
 }
 
 export async function getMyTechnician(
@@ -92,7 +99,7 @@ export async function getMyTechnician(
 
 export async function patchMyTechnician(
   token: string | null,
-  body: { firstName?: string; lastName?: string; pliersNumber?: string },
+  body: { pliersNumber?: string; measures?: MyTechnician['measures'] },
 ): Promise<void> {
   await request('/v1/technicians/me', token, { method: 'PATCH', body: JSON.stringify(body) });
 }

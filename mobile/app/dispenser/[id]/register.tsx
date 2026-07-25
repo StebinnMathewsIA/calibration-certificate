@@ -23,6 +23,7 @@ import { FormScrollView } from '../../../src/components/FormScrollView';
 import { config } from '../../../src/config';
 import { fetchThrough } from '../../../src/db/cache';
 import { DELIVERY_NOMINAL_ML, METHOD_REFERENCE, REFERENCE_MEASURES } from '../../../src/data/registers';
+import { getProfile } from '../../../src/profile/profileStore';
 import * as repo from '../../../src/db/certificateRepo';
 
 const COMPONENT_KEYS: (keyof HoseDetail['components'])[] = ['meter', 'pcBoard', 'pulsar', 'solenoid'];
@@ -200,7 +201,14 @@ export default function RegisterScreen() {
           saApprovalNumber: disp.saApprovalNumber,
           serialNumber: disp.serialNumber,
         },
-        referenceMeasures: REFERENCE_MEASURES,
+        // The VO's own proving measures from their profile (#48); the register
+        // constants remain the fallback until the profile is filled in.
+        referenceMeasures: (() => {
+          const stored = getProfile(identity.subject).measures;
+          return stored?.length
+            ? (stored.map(({ photoUri: _photo, ...m }) => m) as Verification['referenceMeasures'])
+            : REFERENCE_MEASURES;
+        })(),
         methodReference: METHOD_REFERENCE,
         hoses: hoseResults,
         signOff: {

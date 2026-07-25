@@ -4,6 +4,8 @@ GET resolves the sign-in email like everything else (demo aliases ride the
 busiest technician, read-only). PATCH requires a DIRECT email match — an
 alias account must never rename the real technician it rides.
 """
+import json
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import text
@@ -26,6 +28,7 @@ def _record(row) -> dict:
         "email": row.email,
         "manager": row.manager,
         "pliersNumber": row.pliers_number,
+        "measures": row.measures or [],
     }
 
 
@@ -60,11 +63,24 @@ def my_technician(
     }
 
 
+class MeasureBody(BaseModel):
+    """One proving measure (#48). Photos stay on-device; only the register
+    data syncs."""
+
+    size: str = Field(max_length=8)
+    serialNumber: str = Field(max_length=64)
+    certificateNumber: str = Field(default="", max_length=64)
+    calibrationDate: str = Field(default="", max_length=10)
+    expiryDate: str = Field(default="", max_length=10)
+
+
 class TechnicianPatch(BaseModel):
-    """Only the pliers number is self-service (#63): name and surname come
-    from the technician register and are corrected at source."""
+    """Self-service fields (#63): pliers number and proving measures. Name
+    and surname come from the technician register and are corrected at
+    source."""
 
     pliersNumber: str | None = Field(default=None, max_length=64)
+    measures: list[MeasureBody] | None = Field(default=None, max_length=6)
 
 
 @router.patch("/me")
@@ -79,14 +95,19 @@ def patch_my_technician(
             status_code=403,
             detail="Only the technician's own sign-in may edit their record",
         )
-    updates = {
+    updates: dict = {
         column: value.strip()
         for column, value in {"pliers_number": body.pliersNumber}.items()
         if value is not None and value.strip()
     }
+    if body.measures is not None:
+        updates["measures"] = json.dumps([m.model_dump() for m in body.measures])
     if not updates:
         raise HTTPException(status_code=422, detail="No fields to update")
-    set_clause = ", ".join(f"{column} = :{column}" for column in updates)
+    set_clause = ", ".join(
+        f"{column} = cast(:{column} as jsonb)" if column == "measures" else f"{column} = :{column}"
+        for column in updates
+    )
     db.execute(
         text(
             f"UPDATE onkey_technicians SET {set_clause}, updated_at = now() "  # noqa: S608

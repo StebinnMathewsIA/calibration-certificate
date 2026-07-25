@@ -34,12 +34,13 @@ jobs:
           fi
 
       - name: Post chunk ${{ inputs.part }}
-        env:
-          PAYLOAD_B64: ${{ inputs.payload_b64 }}
         run: |
-          # Env (not inline substitution) preserves the blob byte-for-byte.
-          printf '%s' "$PAYLOAD_B64" | sha256sum
-          printf '%s' "$PAYLOAD_B64" | base64 -d > /tmp/chunk.bin
+          # Read the payload from the event file: inline ${{ }} substitution
+          # corrupted the bytes, and step-level env values are echoed into
+          # the (public) log header — the event file avoids both.
+          jq -r '.inputs.payload_b64' "$GITHUB_EVENT_PATH" | tr -d '\n' > /tmp/payload.b64
+          sha256sum /tmp/payload.b64
+          base64 -d /tmp/payload.b64 > /tmp/chunk.bin
           # gzip is optional: fall back to plain base64(JSON).
           if gunzip -t /tmp/chunk.bin 2>/dev/null; then
             gunzip -c /tmp/chunk.bin > /tmp/chunk.json

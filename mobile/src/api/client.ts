@@ -8,6 +8,7 @@ import type {
 } from '@prowalco/schema';
 import { analysisResponseSchema, signResponseSchema } from '@prowalco/schema';
 import { config } from '../config';
+import { rpc } from './supabaseRpc';
 
 export class ApiError extends Error {
   constructor(
@@ -91,10 +92,12 @@ export interface MyTechnician {
 export async function getMyTechnician(
   token: string | null,
 ): Promise<{ technician: MyTechnician; editable: boolean }> {
-  return (await request('/v1/technicians/me', token)) as {
-    technician: MyTechnician;
-    editable: boolean;
-  };
+  const body = await rpc<{ technician: MyTechnician; editable: boolean } | null>(
+    'app_my_technician',
+    token,
+  );
+  if (!body) throw new ApiError(404, 'No technician record for this account');
+  return body;
 }
 
 export async function patchMyTechnician(
@@ -174,32 +177,28 @@ export interface WorkOrderBundle {
 }
 
 export async function listWorkOrders(token: string | null): Promise<WorkOrderSummary[]> {
-  const body = (await request('/v1/workorders', token)) as { workOrders: WorkOrderSummary[] };
-  return body.workOrders;
+  return await rpc<WorkOrderSummary[]>('app_my_work_orders', token);
 }
 
 export async function getWorkOrder(token: string | null, id: string): Promise<WorkOrderBundle> {
-  return (await request(`/v1/workorders/${encodeURIComponent(id)}`, token)) as WorkOrderBundle;
+  return await rpc<WorkOrderBundle>('app_work_order_bundle', token, { wo_code: id });
 }
 
 export async function listSites(token: string | null): Promise<SiteResolved[]> {
-  const body = (await request('/v1/sites', token)) as { sites: SiteResolved[] };
-  return body.sites;
+  return await rpc<SiteResolved[]>('app_my_sites', token);
 }
 
 export async function getSite(token: string | null, id: string): Promise<SiteResolved> {
-  return (await request(`/v1/sites/${encodeURIComponent(id)}`, token)) as SiteResolved;
+  const site = await rpc<SiteResolved | null>('app_site', token, { p_site_id: id });
+  if (!site) throw new ApiError(404, 'Unknown site');
+  return site;
 }
 
 export async function listSiteDispensers(
   token: string | null,
   siteId: string,
 ): Promise<DispenserResolved[]> {
-  const body = (await request(
-    `/v1/sites/${encodeURIComponent(siteId)}/dispensers`,
-    token,
-  )) as { dispensers: DispenserResolved[] };
-  return body.dispensers;
+  return await rpc<DispenserResolved[]>('app_site_dispensers', token, { p_site_id: siteId });
 }
 
 export async function upsertSite(
@@ -214,7 +213,11 @@ export async function upsertSite(
 }
 
 export async function getDispenser(token: string | null, id: string): Promise<DispenserResolved> {
-  return (await request(`/v1/dispensers/${encodeURIComponent(id)}`, token)) as DispenserResolved;
+  const disp = await rpc<DispenserResolved | null>('app_dispenser', token, {
+    p_dispenser_id: id,
+  });
+  if (!disp) throw new ApiError(404, 'Unknown dispenser');
+  return disp;
 }
 
 export async function addDispenser(
@@ -253,10 +256,7 @@ export async function retireDispenser(token: string | null, id: string): Promise
 }
 
 export async function getDispenserDetail(token: string | null, id: string): Promise<DispenserDetail> {
-  return (await request(
-    `/v1/dispensers/${encodeURIComponent(id)}/detail`,
-    token,
-  )) as DispenserDetail;
+  return await rpc<DispenserDetail>('app_dispenser_detail', token, { p_dispenser_id: id });
 }
 
 export async function saveDispenserDetail(

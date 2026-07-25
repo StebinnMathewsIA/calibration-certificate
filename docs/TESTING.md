@@ -370,6 +370,19 @@ Rollout order matters: verify on-device FIRST, then set
       traceability block prints the PROFILE values (edit a serial first and
       confirm the edited value prints); photos never upload or print
 
+### Direct Supabase reads (Arch v2 phase 1, #65)
+
+- [ ] Home, work-order, site, and dispenser screens load noticeably faster
+      (first open of a work order well under 1 s on signal — was ~3 s)
+- [ ] All read screens show the same data as before the switch (shapes are
+      identical; only the transport changed)
+- [ ] A technician cannot open another technician's work order (deep-link a
+      foreign WO id → "not assigned" error)
+- [ ] With the anon key alone (no sign-in), the Supabase REST API returns
+      permission errors for both tables and app_* functions
+- [ ] Writes (save site, dispensers, component register, profile) still work
+      — they still go via the backend
+
 ### Production work orders from OnKey (#55, #57)
 
 - [ ] Sign in as stebinn@gmail.com or sashern@prowalco.co.za (demo aliases) →

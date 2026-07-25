@@ -107,6 +107,37 @@ export async function confirmReceipt(token: string | null, certificateNumber: st
   await request(`/v1/certificates/${encodeURIComponent(certificateNumber)}/receipt`, token);
 }
 
+/** Insights scoped by the caller's JWT (#56): the technician's own numbers
+ * plus a PII-free company snapshot. */
+export interface Insights {
+  me: {
+    staffCode: string | null;
+    openByStatus: Record<string, number>;
+    openTotal: number;
+    completedLast30: number;
+    monthlyCompleted: { month: string; count: number }[];
+    openSites: number;
+  };
+  certificates: {
+    issuedByMe: number;
+    last30ByMe: number;
+    lastIssuedAt: string | null;
+    expiringSoon60: number;
+  };
+  company: {
+    openTotal: number;
+    techniciansWithOpen: number;
+    sitesWithOpen: number;
+    certificatesTotal: number;
+    certificatesLast30: number;
+  };
+  generatedAt: string;
+}
+
+export async function getInsights(token: string | null): Promise<Insights> {
+  return await rpc<Insights>('app_insights', token);
+}
+
 /** One row of the site/dispenser verification history (#68). */
 export interface CertHistoryEntry {
   certificateNumber: string;

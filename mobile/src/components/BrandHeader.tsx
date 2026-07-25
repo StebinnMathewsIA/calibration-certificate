@@ -46,6 +46,21 @@ export function WorkOrdersTabIcon({ color, focused }: { color: string; focused?:
   );
 }
 
+/** Rising bar chart — Insights tab (#56), same line style as the others. */
+export function InsightsTabIcon({ color, focused }: { color: string; focused?: boolean }) {
+  const sw = focused ? 2.2 : 1.8;
+  return (
+    <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
+      {/* Baseline */}
+      <Line x1={3.5} y1={20.5} x2={20.5} y2={20.5} stroke={color} strokeWidth={sw} strokeLinecap="round" />
+      {/* Bars */}
+      <Rect x={5.5} y={13} width={3.4} height={5.5} rx={0.8} stroke={color} strokeWidth={sw} />
+      <Rect x={10.5} y={9} width={3.4} height={9.5} rx={0.8} stroke={color} strokeWidth={sw} />
+      <Rect x={15.5} y={5} width={3.4} height={13.5} rx={0.8} stroke={color} strokeWidth={sw} />
+    </Svg>
+  );
+}
+
 /** Circular-arrow refresh glyph — header refresh action (#39). */
 export function RefreshIcon({ color, size = 22 }: { color: string; size?: number }) {
   const sw = 2;

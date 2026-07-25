@@ -123,6 +123,22 @@ def test_certificate_history(db):
         }
 
 
+def test_insights_shape(db):
+    """Insights (#56): full shape for a nobody (all zeros, company snapshot
+    still present); consistent totals for the demo alias."""
+    _as_email(db, "nobody@example.invalid")
+    ins = db.execute(text("SELECT app_insights()")).scalar()
+    assert set(ins) == {"me", "certificates", "company", "generatedAt"}
+    assert ins["me"]["openTotal"] == 0
+    assert ins["certificates"]["issuedByMe"] == 0
+    assert ins["company"]["openTotal"] >= 0
+
+    _as_email(db, "stebinn@gmail.com")
+    ins = db.execute(text("SELECT app_insights()")).scalar()
+    assert ins["me"]["openTotal"] == sum(ins["me"]["openByStatus"].values())
+    assert ins["me"]["openTotal"] <= ins["company"]["openTotal"]
+
+
 def test_api_roles_are_locked_down(db):
     """authenticated: no direct table reads, but RPC executes; anon: nothing."""
     _as_email(db, "nobody@example.invalid")

@@ -426,6 +426,19 @@ Rollout order matters: verify on-device FIRST, then set
 - [ ] Older certificates (issued before this phase) appear with their
       site/dispenser after the backfill migration
 
+### Insights tab (Arch v2 phase 5, #56)
+
+- [ ] Third tab "Insights" (bar-chart icon) in the pill nav; opens with the
+      in-content header like Home and Sites
+- [ ] "My workload" matches Home: open total, per-status breakdown, open
+      sites; "Completed, last 30 days" is plausible for the technician
+- [ ] "Completions per month" bar chart shows the last months' completions
+- [ ] "My certificates" counts only certificates signed by THIS account
+- [ ] "Across Prowalco" shows company aggregates with no names/emails
+- [ ] Works offline after first sync (mirror-cached); refresh icon updates
+- [ ] Demo alias sees the ridden technician's workload numbers but their
+      OWN certificate counts
+
 ### Production work orders from OnKey (#55, #57)
 
 - [ ] Sign in as stebinn@gmail.com or sashern@prowalco.co.za (demo aliases) →

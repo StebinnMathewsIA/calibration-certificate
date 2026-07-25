@@ -2,6 +2,7 @@ import { Tabs } from 'expo-router';
 import React from 'react';
 import {
   BrandWordmark,
+  InsightsTabIcon,
   SitesTabIcon,
   WorkOrdersTabIcon,
 } from '../../src/components/BrandHeader';
@@ -41,6 +42,15 @@ export default function TabsLayout() {
           // Sites shares the in-content header pattern with Home (#42).
           headerShown: false,
           tabBarIcon: ({ color, focused }) => <SitesTabIcon color={color} focused={focused} />,
+        }}
+      />
+      <Tabs.Screen
+        name="insights"
+        options={{
+          title: 'Insights',
+          // Same in-content header pattern as Home and Sites.
+          headerShown: false,
+          tabBarIcon: ({ color, focused }) => <InsightsTabIcon color={color} focused={focused} />,
         }}
       />
     </Tabs>

@@ -73,6 +73,15 @@ def test_sign_happy_path_produces_valid_pades_signature(client):
         assert row.recipient == "k.moja@example.co.za"
         assert row.status == "held"
         assert row.storage_ref.endswith(f"{cert_number}.pdf")
+
+        # Archive index (#68): the issued row is linked to its dispenser.
+        idx = db.execute(
+            sql_text(
+                "SELECT dispenser_id FROM certificates WHERE certificate_number = :cn"
+            ),
+            {"cn": cert_number},
+        ).first()
+        assert idx.dispenser_id == "DISP-001"
     finally:
         db.close()
 

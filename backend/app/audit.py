@@ -15,6 +15,7 @@ CERT_SIGN_REQUESTED = "certificate.sign_requested"
 CERT_ISSUED = "certificate.issued"
 CERT_SIGN_REJECTED = "certificate.sign_rejected"
 CERT_SYNC_CONFIRMED = "certificate.sync_confirmed"
+CERT_PDF_FETCHED = "certificate.pdf_fetched"
 ANALYSIS_COMPLETED = "analysis.completed"
 MANAGER_NOTIFIED = "analysis.manager_notified"
 

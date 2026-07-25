@@ -1,10 +1,20 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useFocusEffect } from 'expo-router';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
 import React, { useCallback, useState } from 'react';
 import { Alert, ScrollView, Text, View } from 'react-native';
-import { DispenserResolved, SiteResolved, getSite, listSiteDispensers } from '../../src/api/client';
+import {
+  CertHistoryEntry,
+  DispenserResolved,
+  SiteResolved,
+  fetchCertificatePdf,
+  getSite,
+  getSiteHistory,
+  listSiteDispensers,
+} from '../../src/api/client';
 import { useAuth } from '../../src/auth/AuthContext';
-import { Badge, SectionCard, colors, styles } from '../../src/components/ui';
+import { Badge, SectionCard, colors, styles, styles as ui } from '../../src/components/ui';
 import { fetchThrough } from '../../src/db/cache';
 import {
   CERT_LABEL,
@@ -20,6 +30,8 @@ export default function SiteDetailScreen() {
   const [site, setSite] = useState<SiteResolved | null>(null);
   const [dispensers, setDispensers] = useState<DispenserResolved[]>([]);
   const [certs, setCerts] = useState<Record<string, DispenserCert>>({});
+  const [history, setHistory] = useState<CertHistoryEntry[]>([]);
+  const [sharingCert, setSharingCert] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setCerts(certStatusByDispenser());
@@ -33,7 +45,34 @@ export default function SiteDetailScreen() {
     } catch (err) {
       Alert.alert('Could not load site', err instanceof Error ? err.message : String(err));
     }
+    // Archive history (#68) — every device's certificates, not just this one.
+    // Best-effort: offline shows the cached copy from the last view.
+    try {
+      setHistory(await fetchThrough(`site-history:${id}`, () => getSiteHistory(accessToken, id)));
+    } catch {
+      // no cache yet and offline — the section simply shows empty
+    }
   }, [accessToken, id]);
+
+  const sharePast = async (entry: CertHistoryEntry) => {
+    setSharingCert(entry.certificateNumber);
+    try {
+      const { signedPdfBase64 } = await fetchCertificatePdf(accessToken, entry.certificateNumber);
+      const path = `${FileSystem.cacheDirectory}${entry.certificateNumber}.pdf`;
+      await FileSystem.writeAsStringAsync(path, signedPdfBase64, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      await Sharing.shareAsync(path, { mimeType: 'application/pdf' });
+    } catch (err) {
+      Alert.alert(
+        'Could not fetch certificate',
+        'Downloading a past certificate needs a connection.\n\n' +
+          (err instanceof Error ? err.message : String(err)),
+      );
+    } finally {
+      setSharingCert(null);
+    }
+  };
 
   useFocusEffect(
     useCallback(() => {
@@ -109,6 +148,55 @@ export default function SiteDetailScreen() {
       {retired.length > 0 ? (
         <SectionCard title="Retired dispensers">{retired.map(row)}</SectionCard>
       ) : null}
+
+      <SectionCard title="Verification history">
+        <Text style={{ color: colors.muted, fontSize: 12, marginBottom: 2 }}>
+          Every certificate issued at this site, by any technician, per dispenser.
+        </Text>
+        {history.length === 0 ? (
+          <Text style={{ color: colors.muted, marginTop: 6 }}>
+            No certificates on record for this site yet.
+          </Text>
+        ) : (
+          history.map((h) => (
+            <View
+              key={h.certificateNumber}
+              style={{ borderTopWidth: 1, borderColor: colors.line, paddingVertical: 8 }}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[ui.mono, { fontWeight: '600', color: colors.ink, fontSize: 13 }]}>
+                    {h.certificateNumber}
+                  </Text>
+                  <Text style={{ color: colors.muted, fontSize: 12 }}>
+                    {h.dispenserId ? `${h.dispenserId} · ` : ''}
+                    {h.verificationDate ?? h.signedAt.slice(0, 10)}
+                    {h.voName ? ` · ${h.voName}` : ''}
+                    {h.expiryDate ? ` · expires ${h.expiryDate}` : ''}
+                  </Text>
+                </View>
+                <Badge
+                  text={h.status === 'issued' ? 'Issued' : h.status}
+                  tone={h.status === 'issued' ? 'ok' : 'warn'}
+                />
+              </View>
+              <Text
+                onPress={() => (sharingCert ? undefined : void sharePast(h))}
+                style={{
+                  color: colors.blueText,
+                  textDecorationLine: 'underline',
+                  fontSize: 12,
+                  marginTop: 4,
+                }}
+              >
+                {sharingCert === h.certificateNumber
+                  ? 'Fetching sealed PDF…'
+                  : 'Download & share sealed PDF →'}
+              </Text>
+            </View>
+          ))
+        )}
+      </SectionCard>
     </ScrollView>
   );
 }

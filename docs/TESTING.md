@@ -413,6 +413,19 @@ Rollout order matters: verify on-device FIRST, then set
 - [ ] No email is actually sent (EMAIL_ENABLED=false until the
       @prowalco.co.za domain is set up post-PoC)
 
+### Certificate archive + history (Arch v2 phase 4, #68)
+
+- [ ] Issue a certificate, open the site: "Verification history" lists it
+      (cert number, dispenser, date, VO, expiry) — including certificates
+      signed by OTHER technicians/devices at that site
+- [ ] "Download & share sealed PDF" on a history row fetches the archived
+      PDF and opens the share sheet; the shared file opens with a valid
+      signature in Adobe Reader
+- [ ] History still displays offline after it was viewed once (cache);
+      downloading a PDF offline shows a clear needs-connection message
+- [ ] Older certificates (issued before this phase) appear with their
+      site/dispenser after the backfill migration
+
 ### Production work orders from OnKey (#55, #57)
 
 - [ ] Sign in as stebinn@gmail.com or sashern@prowalco.co.za (demo aliases) →

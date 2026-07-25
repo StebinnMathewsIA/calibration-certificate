@@ -38,6 +38,9 @@ class Certificate(Base):
     signature_id: Mapped[str] = mapped_column(String(64))
     signed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     supersedes: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Archive index (Arch v2 phase 4, #68): history per site + dispenser.
+    site_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    dispenser_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 

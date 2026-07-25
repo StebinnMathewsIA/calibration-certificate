@@ -107,6 +107,47 @@ export async function confirmReceipt(token: string | null, certificateNumber: st
   await request(`/v1/certificates/${encodeURIComponent(certificateNumber)}/receipt`, token);
 }
 
+/** One row of the site/dispenser verification history (#68). */
+export interface CertHistoryEntry {
+  certificateNumber: string;
+  siteId: string | null;
+  dispenserId: string | null;
+  status: string;
+  reportType: string | null;
+  voName: string | null;
+  verificationDate: string | null;
+  expiryDate: string | null;
+  signedAt: string;
+  supersedes: string | null;
+}
+
+export async function getSiteHistory(
+  token: string | null,
+  siteId: string,
+): Promise<CertHistoryEntry[]> {
+  return await rpc<CertHistoryEntry[]>('app_site_history', token, { p_site_id: siteId });
+}
+
+export async function getDispenserHistory(
+  token: string | null,
+  dispenserId: string,
+): Promise<CertHistoryEntry[]> {
+  return await rpc<CertHistoryEntry[]>('app_dispenser_history', token, {
+    p_dispenser_id: dispenserId,
+  });
+}
+
+/** The sealed PDF from the write-once archive (#68). */
+export async function fetchCertificatePdf(
+  token: string | null,
+  certificateNumber: string,
+): Promise<{ certificateNumber: string; signedPdfBase64: string; signedPdfSha256: string }> {
+  return (await request(
+    `/v1/certificates/${encodeURIComponent(certificateNumber)}/pdf`,
+    token,
+  )) as { certificateNumber: string; signedPdfBase64: string; signedPdfSha256: string };
+}
+
 export async function analyzeVerification(
   token: string | null,
   verification: Verification,

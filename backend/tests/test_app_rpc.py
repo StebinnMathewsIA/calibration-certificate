@@ -105,6 +105,24 @@ def test_sync_pull_shape(db):
             assert wo["siteId"] in pull["siteDispensers"]
 
 
+def test_certificate_history(db):
+    """Archive history (#68): empty for unknown ids; when certificates are
+    indexed, the site rows carry the expected metadata shape."""
+    assert db.execute(text("SELECT app_site_history('___nope___')")).scalar() == []
+    assert db.execute(text("SELECT app_dispenser_history('___nope___')")).scalar() == []
+    indexed = db.execute(
+        text("SELECT site_id FROM certificates WHERE site_id IS NOT NULL LIMIT 1")
+    ).scalar()
+    if indexed:
+        rows = db.execute(
+            text("SELECT app_site_history(:s)"), {"s": indexed}
+        ).scalar()
+        assert rows
+        assert set(rows[0]) >= {
+            "certificateNumber", "dispenserId", "signedAt", "status", "voName",
+        }
+
+
 def test_api_roles_are_locked_down(db):
     """authenticated: no direct table reads, but RPC executes; anon: nothing."""
     _as_email(db, "nobody@example.invalid")

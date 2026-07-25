@@ -11,7 +11,7 @@ from ..auth import Identity, get_identity
 from ..config import Settings, get_settings
 from ..db import get_db
 from ..devices import STATUS_ACTIVE, check_device_binding
-from ..models import Certificate, Device, SequenceCounter
+from ..models import Certificate, Device, Dispenser, SequenceCounter
 from ..pdf_store import PdfStore, get_pdf_store
 from ..readiness import validate_ready_to_sign
 from ..schema_validation import validate_sign_submission
@@ -186,6 +186,19 @@ def sign_certificate(
     # issued-but-unretrievable certificate.
     storage_ref = pdf_store.put(cert_number, result.signed_pdf)
 
+    # Archive index (#68): dispenser from the form; site via the canonical
+    # dispenser record, else the work order's site.
+    dispenser_id = (verification.get("dispenser") or {}).get("dispenserId")
+    site_id = None
+    if dispenser_id:
+        stored_dispenser = db.get(Dispenser, dispenser_id)
+        site_id = stored_dispenser.site_id if stored_dispenser else None
+    if not site_id and verification.get("workOrderId"):
+        site_id = db.execute(
+            text("SELECT site_number FROM onkey_workorders WHERE code = :c"),
+            {"c": verification["workOrderId"]},
+        ).scalar()
+
     cert = Certificate(
         certificate_number=cert_number,
         idempotency_key=idempotency_key,
@@ -196,6 +209,8 @@ def sign_certificate(
         storage_ref=storage_ref,
         signature_id=result.signature_id,
         signed_at=result.signed_at,
+        site_id=site_id,
+        dispenser_id=dispenser_id,
     )
     db.add(cert)
     db.flush()
@@ -230,6 +245,31 @@ def sign_certificate(
     )
     db.commit()
     return _response_for(cert, pdf_store)
+
+
+@router.get("/{certificate_number}/pdf")
+def get_signed_pdf(
+    certificate_number: str,
+    db: Session = Depends(get_db),
+    identity: Identity = Depends(get_identity),
+    pdf_store: PdfStore = Depends(get_pdf_store),
+) -> dict:
+    """The sealed PDF from write-once Storage (#68) — archive access for the
+    site/dispenser history view (re-open, re-share a past certificate)."""
+    cert = db.scalar(
+        select(Certificate).where(Certificate.certificate_number == certificate_number)
+    )
+    if cert is None:
+        raise HTTPException(status_code=404, detail="Unknown certificate")
+    pdf = pdf_store.get(cert.storage_ref)
+    audit.record(db, certificate_number, audit.CERT_PDF_FETCHED, identity.subject, {})
+    db.commit()
+    return {
+        "certificateNumber": cert.certificate_number,
+        "signedPdfBase64": base64.b64encode(pdf).decode(),
+        "signedPdfSha256": cert.signed_pdf_sha256,
+        "signedAt": cert.signed_at.isoformat(),
+    }
 
 
 @router.get("/{certificate_number}/receipt")

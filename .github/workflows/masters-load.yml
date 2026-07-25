@@ -1,0 +1,50 @@
+name: masters-load
+
+# Loads master data (AllLocations / Technician masters, #69) into production
+# through the token-protected /v1/onkey/masters endpoint. The DATA arrives as
+# a gzip+base64 workflow input and is never committed to this public repo;
+# the printed response contains counts only (no PII).
+#
+# Required repository secret: ONKEY_SYNC_TOKEN (same as onkey-sync.yml).
+
+on:
+  workflow_dispatch:
+    inputs:
+      payload_b64:
+        description: "gzip+base64 JSON chunk: {locations:[...], technicians:[...], derive:bool}"
+        required: true
+        type: string
+      part:
+        description: "Human-readable chunk label, e.g. 3/6"
+        required: false
+        type: string
+
+env:
+  API_URL: https://prowalco-calibration-api.onrender.com
+
+jobs:
+  load:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check token is configured
+        run: |
+          if [ -z "${{ secrets.ONKEY_SYNC_TOKEN }}" ]; then
+            echo "::error::Missing repository secret ONKEY_SYNC_TOKEN"
+            exit 1
+          fi
+
+      - name: Post chunk ${{ inputs.part }}
+        run: |
+          printf '%s' '${{ inputs.payload_b64 }}' | base64 -d | gunzip > /tmp/chunk.json
+          echo "Chunk bytes: $(wc -c < /tmp/chunk.json)"
+          code=$(curl -sS -o /tmp/resp.json -w '%{http_code}' \
+            --max-time 280 --retry 3 --retry-delay 10 \
+            -X POST "$API_URL/v1/onkey/masters" \
+            -H "Authorization: Bearer ${{ secrets.ONKEY_SYNC_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            --data-binary @/tmp/chunk.json)
+          echo "HTTP $code"
+          # Counts only — safe for public logs.
+          cat /tmp/resp.json
+          echo
+          [ "$code" = "200" ]

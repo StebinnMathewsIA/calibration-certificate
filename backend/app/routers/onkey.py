@@ -19,7 +19,7 @@ from ..auth import Identity, get_identity
 from ..config import Settings, get_settings
 from ..db import SessionLocal, get_db
 from ..workorders.onkey_directory import busiest_open_technician
-from ..workorders.onkey_sync import run_sync
+from ..workorders.onkey_sync import derive_registers, run_sync
 
 router = APIRouter(prefix="/v1/onkey", tags=["onkey"])
 
@@ -149,6 +149,96 @@ def patch_site(
     )
     db.commit()
     return {"siteNumber": site_number, "updated": sorted(updates), "manual": True}
+
+
+class MasterLocation(BaseModel):
+    code: str = Field(max_length=120)
+    description: str | None = Field(default=None, max_length=300)
+    gps_location: str | None = Field(default=None, max_length=200)
+    branch: str | None = Field(default=None, max_length=16)
+    address: str | None = Field(default=None, max_length=400)
+    location_code: str | None = Field(default=None, max_length=64)
+    is_active: bool | None = None
+
+
+class MasterTechnician(BaseModel):
+    email: str = Field(max_length=320)
+    display_name: str | None = Field(default=None, max_length=200)
+    first_name: str | None = Field(default=None, max_length=100)
+    last_name: str | None = Field(default=None, max_length=100)
+    manager: str | None = Field(default=None, max_length=200)
+    latitude: float | None = None
+    longitude: float | None = None
+
+
+class MastersBody(BaseModel):
+    """One chunk of master data (#69). The caller sets derive=true on the
+    LAST chunk so the fill-blanks enrichment runs once."""
+
+    locations: list[MasterLocation] = Field(default_factory=list, max_length=2000)
+    technicians: list[MasterTechnician] = Field(default_factory=list, max_length=2000)
+    derive: bool = False
+
+
+@router.post("/masters")
+def load_masters(
+    body: MastersBody,
+    authorization: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> dict:
+    """Upserts AllLocations / Technician master rows (#59 data, #69 load).
+
+    The master DATA never enters the public repo — it arrives as an opaque
+    workflow-dispatch payload (masters-load.yml) and this response carries
+    counts only, so workflow logs stay PII-free."""
+    _require_sync_token(authorization, settings)
+    if body.locations:
+        db.execute(
+            text(
+                "INSERT INTO onkey_location_master "
+                "(code, description, gps_location, branch, address, location_code, is_active) "
+                "VALUES (:code, :description, :gps_location, :branch, :address, :location_code, :is_active) "
+                "ON CONFLICT (code) DO UPDATE SET description=EXCLUDED.description, "
+                "gps_location=EXCLUDED.gps_location, branch=EXCLUDED.branch, "
+                "address=EXCLUDED.address, location_code=EXCLUDED.location_code, "
+                "is_active=EXCLUDED.is_active, loaded_at=now()"
+            ),
+            [loc.model_dump() for loc in body.locations],
+        )
+    if body.technicians:
+        db.execute(
+            text(
+                "INSERT INTO onkey_technician_master "
+                "(email, display_name, first_name, last_name, manager, latitude, longitude) "
+                "VALUES (:email, :display_name, :first_name, :last_name, :manager, :latitude, :longitude) "
+                "ON CONFLICT (email) DO UPDATE SET display_name=EXCLUDED.display_name, "
+                "first_name=EXCLUDED.first_name, last_name=EXCLUDED.last_name, "
+                "manager=EXCLUDED.manager, latitude=EXCLUDED.latitude, "
+                "longitude=EXCLUDED.longitude, loaded_at=now()"
+            ),
+            [tech.model_dump() for tech in body.technicians],
+        )
+    db.commit()
+    registers = derive_registers(db) if body.derive else None
+    coverage = {
+        "locationMasterRows": db.execute(
+            text("SELECT count(*) FROM onkey_location_master")
+        ).scalar(),
+        "technicianMasterRows": db.execute(
+            text("SELECT count(*) FROM onkey_technician_master")
+        ).scalar(),
+        "sitesWithAddress": db.execute(
+            text("SELECT count(*) FROM onkey_sites WHERE coalesce(address, '') <> ''")
+        ).scalar(),
+        "sitesTotal": db.execute(text("SELECT count(*) FROM onkey_sites")).scalar(),
+    }
+    return {
+        "locationsUpserted": len(body.locations),
+        "techniciansUpserted": len(body.technicians),
+        "derived": registers,
+        "coverage": coverage,
+    }
 
 
 @router.get("/status")

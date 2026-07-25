@@ -8,7 +8,7 @@ import { REFERENCE_MEASURES } from '../src/data/registers';
 import type { StoredMeasure } from '../src/profile/profileStore';
 import { Badge, Button, SectionCard, colors } from '../src/components/ui';
 import { FormScrollView } from '../src/components/FormScrollView';
-import { readCache } from '../src/db/cache';
+import { fetchThrough, readCache } from '../src/db/cache';
 import {
   certificateName,
   getProfile,
@@ -80,7 +80,7 @@ export default function ProfileScreen() {
   useFocusEffect(
     useCallback(() => {
       let cancelled = false;
-      getMyTechnician(accessToken)
+      fetchThrough('technician:me', () => getMyTechnician(accessToken))
         .then(({ technician: tech, editable }) => {
           if (cancelled) return;
           setTechnician(tech);

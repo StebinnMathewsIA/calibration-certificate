@@ -383,6 +383,21 @@ Rollout order matters: verify on-device FIRST, then set
 - [ ] Writes (save site, dispensers, component register, profile) still work
       — they still go via the backend
 
+### Offline mirror + outbox (Arch v2 phase 2, #66)
+
+- [ ] Sign in on signal, wait a few seconds (first sync), then enable
+      airplane mode: Home, work orders, sites, dispensers, component
+      registers, and the profile all open instantly with full data
+- [ ] Screens that were synced open with NO spinner even on signal (cached
+      copy renders, refresh happens in background)
+- [ ] Airplane mode: complete a site identity, edit a dispenser, add a
+      dispenser, save a component register, save the profile — all succeed
+      locally
+- [ ] Return to signal (or foreground the app on wifi): the queued writes
+      replay — verify the records on the server (sites/dispensers tables)
+- [ ] A new work order assigned in OnKey appears on Home within ~15 min of
+      the app being open on signal (5-min WOE001 sync + sync interval)
+
 ### Production work orders from OnKey (#55, #57)
 
 - [ ] Sign in as stebinn@gmail.com or sashern@prowalco.co.za (demo aliases) →

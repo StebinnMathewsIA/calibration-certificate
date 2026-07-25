@@ -85,7 +85,9 @@ export default function RegisterScreen() {
   useEffect(() => {
     (async () => {
       try {
-        const detail = await getDispenserDetail(accessToken, id);
+        const detail = await fetchThrough(`dispenser-detail:${id}`, () =>
+          getDispenserDetail(accessToken, id),
+        );
         setHoses(detail.hoses.length ? (detail.hoses as HoseDetail[]) : [emptyHose(1)]);
         setQMin(detail.qMinLpm != null ? String(detail.qMinLpm) : '');
         setQMax(detail.qMaxLpm != null ? String(detail.qMaxLpm) : '');

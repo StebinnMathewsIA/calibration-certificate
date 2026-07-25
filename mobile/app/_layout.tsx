@@ -10,11 +10,13 @@ import React, { useEffect } from 'react';
 import { AuthProvider } from '../src/auth/AuthContext';
 import { migrate } from '../src/db/database';
 import { useSignQueue } from '../src/queue/useSignQueue';
+import { useSync } from '../src/sync/useSync';
 import { HeaderBackButton } from '../src/components/HeaderBackButton';
 import { colors, fonts } from '../src/components/ui';
 
 function QueueRunner() {
   useSignQueue();
+  useSync();
   return null;
 }
 

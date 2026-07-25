@@ -43,6 +43,16 @@ const MIGRATIONS: string[] = [
      value_json TEXT NOT NULL,
      updated_at TEXT NOT NULL
    );`,
+  // Offline write outbox (Arch v2 phase 2, #66): non-signing writes made at
+  // zero-signal forecourts, replayed in order when connectivity returns.
+  `CREATE TABLE IF NOT EXISTS outbox (
+     id INTEGER PRIMARY KEY AUTOINCREMENT,
+     kind TEXT NOT NULL,
+     payload_json TEXT NOT NULL,
+     attempts INTEGER NOT NULL DEFAULT 0,
+     last_error TEXT,
+     created_at TEXT NOT NULL
+   );`,
 ];
 
 /** SQLite has no ADD COLUMN IF NOT EXISTS — guard with the table info. */

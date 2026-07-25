@@ -7,31 +7,12 @@ import type {
   WorkOrderSeed,
 } from '@prowalco/schema';
 import { analysisResponseSchema, signResponseSchema } from '@prowalco/schema';
-import { config } from '../config';
+import { readCache, writeCache } from '../db/cache';
+import { enqueueWrite } from '../sync/outbox';
+import { ApiError, isNetworkError, request } from './http';
 import { rpc } from './supabaseRpc';
 
-export class ApiError extends Error {
-  constructor(
-    public status: number,
-    public detail: unknown,
-  ) {
-    super(`API error ${status}`);
-  }
-}
-
-async function request(path: string, token: string | null, init: RequestInit = {}): Promise<unknown> {
-  const res = await fetch(`${config.apiUrl}${path}`, {
-    ...init,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...init.headers,
-    },
-  });
-  const body = await res.json().catch(() => null);
-  if (!res.ok) throw new ApiError(res.status, body?.detail ?? body);
-  return body;
-}
+export { ApiError } from './http';
 
 // ---------------------------------------------------------------------------
 // Certificates / signing
@@ -104,7 +85,12 @@ export async function patchMyTechnician(
   token: string | null,
   body: { pliersNumber?: string; measures?: MyTechnician['measures'] },
 ): Promise<void> {
-  await request('/v1/technicians/me', token, { method: 'PATCH', body: JSON.stringify(body) });
+  try {
+    await request('/v1/technicians/me', token, { method: 'PATCH', body: JSON.stringify(body) });
+  } catch (err) {
+    if (!isNetworkError(err)) throw err;
+    enqueueWrite('patchMyTechnician', { body });
+  }
 }
 
 export async function enrollDevice(
@@ -206,10 +192,21 @@ export async function upsertSite(
   id: string,
   body: Omit<SiteResolved, 'source' | 'updatedAt' | 'inStore'>,
 ): Promise<SiteResolved> {
-  return (await request(`/v1/sites/${encodeURIComponent(id)}`, token, {
-    method: 'POST',
-    body: JSON.stringify(body),
-  })) as SiteResolved;
+  try {
+    const saved = (await request(`/v1/sites/${encodeURIComponent(id)}`, token, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })) as SiteResolved;
+    writeCache(`site:${id}`, saved);
+    return saved;
+  } catch (err) {
+    if (!isNetworkError(err)) throw err;
+    // Offline: queue for replay and continue with the optimistic record.
+    enqueueWrite('upsertSite', { id, body });
+    const optimistic: SiteResolved = { ...body, id, source: 'manual', inStore: true };
+    writeCache(`site:${id}`, optimistic);
+    return optimistic;
+  }
 }
 
 export async function getDispenser(token: string | null, id: string): Promise<DispenserResolved> {
@@ -231,10 +228,35 @@ export async function addDispenser(
     saApprovalNumber: string;
   },
 ): Promise<DispenserResolved> {
-  return (await request('/v1/dispensers', token, {
-    method: 'POST',
-    body: JSON.stringify(body),
-  })) as DispenserResolved;
+  try {
+    const saved = (await request('/v1/dispensers', token, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })) as DispenserResolved;
+    writeCache(`dispenser:${saved.id}`, saved);
+    return saved;
+  } catch (err) {
+    if (!isNetworkError(err)) throw err;
+    // Offline: fix the id client-side so replay is idempotent (server 409 =
+    // already applied).
+    const id = body.id || `DISP-M-${Date.now()}`;
+    enqueueWrite('addDispenser', { body: { ...body, id } });
+    const optimistic: DispenserResolved = {
+      id,
+      siteId: body.siteId,
+      make: body.make,
+      model: body.model,
+      serialNumber: body.serialNumber,
+      saApprovalNumber: body.saApprovalNumber,
+      status: 'active',
+      source: 'manual',
+      inStore: true,
+    };
+    writeCache(`dispenser:${id}`, optimistic);
+    const listKey = `site-dispensers:${body.siteId}`;
+    writeCache(listKey, [...(readCache<DispenserResolved[]>(listKey) ?? []), optimistic]);
+    return optimistic;
+  }
 }
 
 export async function editDispenser(
@@ -242,17 +264,44 @@ export async function editDispenser(
   id: string,
   body: { make: string; model: string; serialNumber: string; saApprovalNumber: string; siteId?: string },
 ): Promise<DispenserResolved> {
-  return (await request(`/v1/dispensers/${encodeURIComponent(id)}`, token, {
-    method: 'POST',
-    body: JSON.stringify(body),
-  })) as DispenserResolved;
+  try {
+    const saved = (await request(`/v1/dispensers/${encodeURIComponent(id)}`, token, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    })) as DispenserResolved;
+    writeCache(`dispenser:${id}`, saved);
+    return saved;
+  } catch (err) {
+    if (!isNetworkError(err)) throw err;
+    enqueueWrite('editDispenser', { id, body });
+    const prev = readCache<DispenserResolved>(`dispenser:${id}`);
+    const optimistic: DispenserResolved = {
+      ...(prev ?? { id, siteId: body.siteId ?? '', status: 'active', source: 'manual' }),
+      ...body,
+      id,
+      inStore: true,
+    } as DispenserResolved;
+    writeCache(`dispenser:${id}`, optimistic);
+    return optimistic;
+  }
 }
 
 export async function retireDispenser(token: string | null, id: string): Promise<DispenserResolved> {
-  return (await request(`/v1/dispensers/${encodeURIComponent(id)}/retire`, token, {
-    method: 'POST',
-    body: JSON.stringify({}),
-  })) as DispenserResolved;
+  try {
+    const saved = (await request(`/v1/dispensers/${encodeURIComponent(id)}/retire`, token, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    })) as DispenserResolved;
+    writeCache(`dispenser:${id}`, saved);
+    return saved;
+  } catch (err) {
+    if (!isNetworkError(err)) throw err;
+    enqueueWrite('retireDispenser', { id });
+    const prev = readCache<DispenserResolved>(`dispenser:${id}`);
+    const optimistic = { ...(prev as DispenserResolved), id, status: 'retired' as const };
+    writeCache(`dispenser:${id}`, optimistic);
+    return optimistic;
+  }
 }
 
 export async function getDispenserDetail(token: string | null, id: string): Promise<DispenserDetail> {
@@ -264,8 +313,18 @@ export async function saveDispenserDetail(
   id: string,
   detail: Omit<DispenserDetail, 'dispenserId' | 'updatedAt'>,
 ): Promise<DispenserDetail> {
-  return (await request(`/v1/dispensers/${encodeURIComponent(id)}/detail`, token, {
-    method: 'POST',
-    body: JSON.stringify(detail),
-  })) as DispenserDetail;
+  try {
+    const saved = (await request(`/v1/dispensers/${encodeURIComponent(id)}/detail`, token, {
+      method: 'POST',
+      body: JSON.stringify(detail),
+    })) as DispenserDetail;
+    writeCache(`dispenser-detail:${id}`, saved);
+    return saved;
+  } catch (err) {
+    if (!isNetworkError(err)) throw err;
+    enqueueWrite('saveDispenserDetail', { id, body: detail });
+    const optimistic = { ...detail, dispenserId: id } as DispenserDetail;
+    writeCache(`dispenser-detail:${id}`, optimistic);
+    return optimistic;
+  }
 }

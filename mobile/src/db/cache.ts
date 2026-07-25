@@ -20,16 +20,20 @@ export function writeCache<T>(key: string, value: T): void {
   );
 }
 
-/** Try the network; on success cache and return it; on failure return the
- * cached value if we have one, otherwise rethrow. */
+/** Stale-while-revalidate (Arch v2 phase 2, #66): a cached copy returns
+ * INSTANTLY — screens never wait on the network once the mirror is synced —
+ * while a background refresh updates the cache for the next open (the sync
+ * engine keeps the mirror fresh anyway). Only a cold key awaits the network,
+ * and network failure on a cold key surfaces to the caller. */
 export async function fetchThrough<T>(key: string, fetcher: () => Promise<T>): Promise<T> {
-  try {
-    const fresh = await fetcher();
-    writeCache(key, fresh);
-    return fresh;
-  } catch (err) {
-    const cached = readCache<T>(key);
-    if (cached !== null) return cached;
-    throw err;
+  const cached = readCache<T>(key);
+  if (cached !== null) {
+    fetcher()
+      .then((fresh) => writeCache(key, fresh))
+      .catch(() => {});
+    return cached;
   }
+  const fresh = await fetcher();
+  writeCache(key, fresh);
+  return fresh;
 }

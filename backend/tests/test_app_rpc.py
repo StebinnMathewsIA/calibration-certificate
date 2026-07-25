@@ -86,6 +86,25 @@ def test_bundle_rejects_unknown_and_unassigned(db):
             )
 
 
+def test_sync_pull_shape(db):
+    """One-round-trip mirror pull (#66): full shape for a nobody, and — when
+    the registers hold data — a consistent scope for the demo alias."""
+    _as_email(db, "nobody@example.invalid")
+    pull = db.execute(text("SELECT app_sync_pull()")).scalar()
+    assert set(pull) == {
+        "technician", "workOrders", "sites", "siteDispensers",
+        "dispenserDetails", "syncedAt",
+    }
+    assert pull["workOrders"] == [] and pull["sites"] == {}
+
+    _as_email(db, "stebinn@gmail.com")
+    pull = db.execute(text("SELECT app_sync_pull()")).scalar()
+    for wo in pull["workOrders"]:
+        if wo["siteId"]:
+            assert wo["siteId"] in pull["sites"]
+            assert wo["siteId"] in pull["siteDispensers"]
+
+
 def test_api_roles_are_locked_down(db):
     """authenticated: no direct table reads, but RPC executes; anon: nothing."""
     _as_email(db, "nobody@example.invalid")

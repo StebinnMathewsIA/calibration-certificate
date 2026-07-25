@@ -54,6 +54,28 @@ def test_sign_happy_path_produces_valid_pades_signature(client):
     assert status.intact
     assert status.valid
 
+    # Dormant email pipeline (#67): the client copy queued as 'held'
+    # (EMAIL_ENABLED is false in the PoC) against the sealed storage ref.
+    from sqlalchemy import text as sql_text
+
+    from app.db import SessionLocal
+
+    db = SessionLocal()
+    try:
+        row = db.execute(
+            sql_text(
+                "SELECT recipient, status, storage_ref FROM certificate_emails "
+                "WHERE certificate_number = :cn"
+            ),
+            {"cn": cert_number},
+        ).first()
+        assert row is not None
+        assert row.recipient == "k.moja@example.co.za"
+        assert row.status == "held"
+        assert row.storage_ref.endswith(f"{cert_number}.pdf")
+    finally:
+        db.close()
+
 
 def test_idempotent_replay_returns_same_certificate(client):
     sub = _fresh_submission()

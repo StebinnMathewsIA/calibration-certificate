@@ -463,10 +463,13 @@ export declare const signSubmissionSchema: z.ZodObject<{
             }>;
             client: z.ZodObject<{
                 name: z.ZodString;
+                email: z.ZodOptional<z.ZodString>;
             }, "strip", z.ZodTypeAny, {
                 name: string;
+                email?: string | undefined;
             }, {
                 name: string;
+                email?: string | undefined;
             }>;
             declarationAccepted: z.ZodBoolean;
             expiryDate: z.ZodOptional<z.ZodString>;
@@ -482,6 +485,7 @@ export declare const signSubmissionSchema: z.ZodObject<{
             };
             client: {
                 name: string;
+                email?: string | undefined;
             };
             declarationAccepted: boolean;
             expiryDate?: string | undefined;
@@ -497,6 +501,7 @@ export declare const signSubmissionSchema: z.ZodObject<{
             };
             client: {
                 name: string;
+                email?: string | undefined;
             };
             declarationAccepted: boolean;
             expiryDate?: string | undefined;
@@ -613,6 +618,7 @@ export declare const signSubmissionSchema: z.ZodObject<{
             };
             client: {
                 name: string;
+                email?: string | undefined;
             };
             declarationAccepted: boolean;
             expiryDate?: string | undefined;
@@ -724,6 +730,7 @@ export declare const signSubmissionSchema: z.ZodObject<{
             };
             client: {
                 name: string;
+                email?: string | undefined;
             };
             declarationAccepted: boolean;
             expiryDate?: string | undefined;
@@ -881,6 +888,7 @@ export declare const signSubmissionSchema: z.ZodObject<{
             };
             client: {
                 name: string;
+                email?: string | undefined;
             };
             declarationAccepted: boolean;
             expiryDate?: string | undefined;
@@ -1007,6 +1015,7 @@ export declare const signSubmissionSchema: z.ZodObject<{
             };
             client: {
                 name: string;
+                email?: string | undefined;
             };
             declarationAccepted: boolean;
             expiryDate?: string | undefined;

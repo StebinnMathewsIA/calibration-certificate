@@ -422,6 +422,11 @@
                   "type": "string",
                   "minLength": 1,
                   "maxLength": 200
+                },
+                "email": {
+                  "type": "string",
+                  "format": "email",
+                  "maxLength": 320
                 }
               },
               "required": [

@@ -258,7 +258,7 @@ def make_valid_verification(cert_number: str | None = None) -> dict:
                 },
                 "pliersNumber": "PRO 399",
             },
-            "client": {"name": "K. Moja"},
+            "client": {"name": "K. Moja", "email": "k.moja@example.co.za"},
             "declarationAccepted": True,
             "expiryDate": "2027-07-14",
         },

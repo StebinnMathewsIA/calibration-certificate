@@ -1,5 +1,5 @@
-import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Switch, Text, TextInput, View } from 'react-native';
 import { WebView } from 'react-native-webview';
 import type { AnalysisResponse, Verification } from '@prowalco/schema';
@@ -8,7 +8,6 @@ import { ApiError, analyzeVerification } from '../../../src/api/client';
 import { useAuth } from '../../../src/auth/AuthContext';
 import { Badge, Button, DateInput, SectionCard, colors, fonts, styles as ui } from '../../../src/components/ui';
 import { FormScrollView } from '../../../src/components/FormScrollView';
-import { readCache } from '../../../src/db/cache';
 import * as repo from '../../../src/db/certificateRepo';
 import { certificateHtml } from '../../../src/pdf/certificateHtml';
 import { certificateName, getProfile } from '../../../src/profile/profileStore';
@@ -51,19 +50,10 @@ export default function SignScreen() {
   );
   const [expiry, setExpiry] = useState(initial?.signOff?.expiryDate ?? plusOneYear());
   const [clientName, setClientName] = useState(initial?.signOff?.client?.name ?? '');
+  const [clientEmail, setClientEmail] = useState(initial?.signOff?.client?.email ?? '');
   const [rejectionCert, setRejectionCert] = useState(initial?.signOff?.rejectionCertNumber ?? '');
   const [declaration, setDeclaration] = useState(false);
-  const [signatureSvg, setSignatureSvg] = useState('');
   const [gpsConsent, setGpsConsent] = useState(true);
-
-  // The client signature is captured on a dedicated screen and stashed in the
-  // cache; pick it up whenever we return here.
-  useFocusEffect(
-    useCallback(() => {
-      const svg = readCache<string>(`signature:${id}`);
-      if (svg) setSignatureSvg(svg);
-    }, [id]),
-  );
   const [analysis, setAnalysis] = useState<AnalysisResponse | null>(() => {
     const stored = repo.getAnalysis(id);
     return stored ? analysisResponseSchema.parse(JSON.parse(stored)) : null;
@@ -105,7 +95,7 @@ export default function SignScreen() {
         },
         pliersNumber: pliers,
       },
-      client: { name: clientName },
+      client: { name: clientName, email: clientEmail.trim() || undefined },
       declarationAccepted: declaration,
       expiryDate: expiry || undefined,
       rejectionCertNumber: anyRejected ? rejectionCert || undefined : undefined,
@@ -118,7 +108,6 @@ export default function SignScreen() {
   // (~1123 CSS px wide) scaled to phone width; pinch to zoom into detail.
   const previewHtml = readiness.ready
     ? certificateHtml(buildVerification(), {
-        customerSignatureSvg: signatureSvg || undefined,
         voSignatureSvg: profile.signatureSvg,
       }).replace(
         '<head>',
@@ -185,15 +174,10 @@ export default function SignScreen() {
 
   const doSign = async () => {
     const verification = buildVerification();
-    if (!signatureSvg) {
-      Alert.alert('Client signature required', 'Ask the client to sign on the pad before you sign.');
-      return;
-    }
     repo.saveDraftForm(id, verification);
     setSigning(true);
     try {
       await enqueueForSigning(id, verification, gpsConsent, {
-        customerSignatureSvg: signatureSvg,
         voSignatureSvg: profile.signatureSvg,
       });
       router.replace({ pathname: '/verification/[id]/queued', params: { id } });
@@ -364,31 +348,22 @@ export default function SignScreen() {
         )}
       </SectionCard>
 
-      <SectionCard title="Client acknowledgement">
+      <SectionCard title="Client (electronic copy)">
         <Text style={{ fontSize: 12, color: colors.muted }}>Client (Initial &amp; Surname)</Text>
         <TextInput style={inputStyle} value={clientName} onChangeText={setClientName} />
-        <Text style={{ fontSize: 12, color: colors.muted, marginBottom: 8 }}>
-          The client draws their signature on a separate screen; it is embedded in the certificate
-          before your signature seals it.
+        <Text style={{ fontSize: 12, color: colors.muted }}>Client email (for their copy)</Text>
+        <TextInput
+          style={inputStyle}
+          value={clientEmail}
+          onChangeText={setClientEmail}
+          keyboardType="email-address"
+          autoCapitalize="none"
+          placeholder="site.manager@example.co.za"
+        />
+        <Text style={{ fontSize: 12, color: colors.muted }}>
+          The client no longer signs on-screen — your sealed digital certificate is their copy, and
+          it is emailed to this address once the email service is activated.
         </Text>
-        <Badge
-          text={signatureSvg ? 'Signature captured ✓' : 'No signature yet'}
-          tone={signatureSvg ? 'ok' : 'warn'}
-        />
-        <Button
-          title={signatureSvg ? 'Re-capture client signature' : 'Capture client signature'}
-          kind="secondary"
-          onPress={() =>
-            router.push({
-              pathname: '/signature',
-              params: {
-                cacheKey: `signature:${id}`,
-                title: 'Client signature',
-                hint: 'Hand the device to the client and ask them to sign in the box below.',
-              },
-            })
-          }
-        />
       </SectionCard>
 
       {previewHtml ? (

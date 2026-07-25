@@ -149,9 +149,12 @@ exports.signOffSchema = zod_1.z.object({
         /** VO Pliers No. — the technician's controlled sealing-plier identifier. */
         pliersNumber: zod_1.z.string().min(1).max(64),
     }),
-    /** Client acknowledgement — a captured handwritten signature (no credentials). */
+    /** Client acknowledgement (Arch v2 phase 3, #67): the client no longer
+     * signs — the sealed certificate is emailed to them, so we record who
+     * received it and (optionally) where to send it. */
     client: zod_1.z.object({
         name: zod_1.z.string().min(1).max(200),
+        email: zod_1.z.string().email().max(320).optional(),
     }),
     /** "I certify the instrument was tested per the Legal Metrology Act …" */
     declarationAccepted: zod_1.z.boolean(),

@@ -28,10 +28,11 @@ services:
       # instead; production milestone is a KMS-held key.
       - key: SIGNING_AUTOGENERATE_DEV_KEY
         value: "true"
-      # Device binding (#51): flip to "true" once TESTING.md confirms devices
-      # enroll and sign correctly. ADMIN_EMAILS approves/revokes enrollments.
+      # Device binding is the second factor (Arch v2 phase 3, #67): sign-in
+      # (knowledge) + this device key (possession). TOFU enrollment happens
+      # at first sign; ADMIN_EMAILS approves/revokes enrollments.
       - key: DEVICE_BINDING_ENFORCE
-        value: "false"
+        value: "true"
       - key: ADMIN_EMAILS
         sync: false
       # OnKey (#47): credentials live ONLY here (Render Environment). Flip

@@ -3,7 +3,7 @@ import binascii
 import hashlib
 
 from fastapi import APIRouter, Body, Depends, Header, HTTPException
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from .. import audit
@@ -199,6 +199,24 @@ def sign_certificate(
     )
     db.add(cert)
     db.flush()
+    # Dormant customer-email pipeline (#67): queue the sealed copy for the
+    # client. 'held' until EMAIL_ENABLED — the sender activates post-PoC.
+    client = verification["signOff"].get("client") or {}
+    if client.get("email"):
+        db.execute(
+            text(
+                "INSERT INTO certificate_emails "
+                "(certificate_number, recipient, client_name, storage_ref, status) "
+                "VALUES (:cn, :rcpt, :name, :ref, :status)"
+            ),
+            {
+                "cn": cert_number,
+                "rcpt": client["email"],
+                "name": client.get("name"),
+                "ref": storage_ref,
+                "status": "queued" if settings.email_enabled else "held",
+            },
+        )
     audit.record(
         db,
         cert_number,

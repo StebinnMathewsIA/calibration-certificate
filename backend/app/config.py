@@ -86,6 +86,12 @@ class Settings(BaseSettings):
     # Comma-separated emails allowed to approve/revoke device enrollments.
     admin_emails: str = ""
 
+    # Customer certificate email (Arch v2 phase 3, #67). False (PoC): rows in
+    # certificate_emails are written as 'held' — no send is attempted until
+    # the @prowalco.co.za sending domain exists. True: rows queue for
+    # dispatch (the sender itself ships with activation, post-PoC).
+    email_enabled: bool = False
+
     @property
     def admin_email_list(self) -> list[str]:
         return [e.strip().lower() for e in self.admin_emails.split(",") if e.strip()]

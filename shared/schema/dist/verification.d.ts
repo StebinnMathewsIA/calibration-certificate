@@ -540,13 +540,18 @@ export declare const signOffSchema: z.ZodObject<{
         };
         pliersNumber: string;
     }>;
-    /** Client acknowledgement — a captured handwritten signature (no credentials). */
+    /** Client acknowledgement (Arch v2 phase 3, #67): the client no longer
+     * signs — the sealed certificate is emailed to them, so we record who
+     * received it and (optionally) where to send it. */
     client: z.ZodObject<{
         name: z.ZodString;
+        email: z.ZodOptional<z.ZodString>;
     }, "strip", z.ZodTypeAny, {
         name: string;
+        email?: string | undefined;
     }, {
         name: string;
+        email?: string | undefined;
     }>;
     /** "I certify the instrument was tested per the Legal Metrology Act …" */
     declarationAccepted: z.ZodBoolean;
@@ -565,6 +570,7 @@ export declare const signOffSchema: z.ZodObject<{
     };
     client: {
         name: string;
+        email?: string | undefined;
     };
     declarationAccepted: boolean;
     expiryDate?: string | undefined;
@@ -580,6 +586,7 @@ export declare const signOffSchema: z.ZodObject<{
     };
     client: {
         name: string;
+        email?: string | undefined;
     };
     declarationAccepted: boolean;
     expiryDate?: string | undefined;
@@ -1008,13 +1015,18 @@ export declare const verificationSchema: z.ZodObject<{
             };
             pliersNumber: string;
         }>;
-        /** Client acknowledgement — a captured handwritten signature (no credentials). */
+        /** Client acknowledgement (Arch v2 phase 3, #67): the client no longer
+         * signs — the sealed certificate is emailed to them, so we record who
+         * received it and (optionally) where to send it. */
         client: z.ZodObject<{
             name: z.ZodString;
+            email: z.ZodOptional<z.ZodString>;
         }, "strip", z.ZodTypeAny, {
             name: string;
+            email?: string | undefined;
         }, {
             name: string;
+            email?: string | undefined;
         }>;
         /** "I certify the instrument was tested per the Legal Metrology Act …" */
         declarationAccepted: z.ZodBoolean;
@@ -1033,6 +1045,7 @@ export declare const verificationSchema: z.ZodObject<{
         };
         client: {
             name: string;
+            email?: string | undefined;
         };
         declarationAccepted: boolean;
         expiryDate?: string | undefined;
@@ -1048,6 +1061,7 @@ export declare const verificationSchema: z.ZodObject<{
         };
         client: {
             name: string;
+            email?: string | undefined;
         };
         declarationAccepted: boolean;
         expiryDate?: string | undefined;
@@ -1168,6 +1182,7 @@ export declare const verificationSchema: z.ZodObject<{
         };
         client: {
             name: string;
+            email?: string | undefined;
         };
         declarationAccepted: boolean;
         expiryDate?: string | undefined;
@@ -1279,6 +1294,7 @@ export declare const verificationSchema: z.ZodObject<{
         };
         client: {
             name: string;
+            email?: string | undefined;
         };
         declarationAccepted: boolean;
         expiryDate?: string | undefined;

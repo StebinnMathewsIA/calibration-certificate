@@ -398,6 +398,21 @@ Rollout order matters: verify on-device FIRST, then set
 - [ ] A new work order assigned in OnKey appears on Home within ~15 min of
       the app being open on signal (5-min WOE001 sync + sync interval)
 
+### Signing v2 (Arch v2 phase 3, #67)
+
+- [ ] The sign screen has NO client-signature capture; the client block asks
+      for name + email; the printed certificate shows "Electronic copy
+      issued to the client" in the client signature cell
+- [ ] Signing end-to-end works on a tablet with no biometrics (device key +
+      session are the two factors; the local biometric/PIN prompt appears
+      only where hardware exists)
+- [ ] First sign from a fresh install enrolls the device transparently
+      (TOFU) and succeeds; an admin-revoked device gets a clear rejection
+- [ ] After signing with a client email captured, a `certificate_emails`
+      row exists with status `held` and the sealed PDF's storage ref
+- [ ] No email is actually sent (EMAIL_ENABLED=false until the
+      @prowalco.co.za domain is set up post-PoC)
+
 ### Production work orders from OnKey (#55, #57)
 
 - [ ] Sign in as stebinn@gmail.com or sashern@prowalco.co.za (demo aliases) →

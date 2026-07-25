@@ -346,7 +346,7 @@ ${certificateGrid(hoses)}
   </tr>
   <tr>
     <td class="val">${cell(signOff.client.name)}</td>
-    <td class="val">${opts.customerSignatureSvg ? `<div class="sig-img">${opts.customerSignatureSvg}</div>` : '&nbsp;'}</td>
+    <td class="val">${opts.customerSignatureSvg ? `<div class="sig-img">${opts.customerSignatureSvg}</div>` : '<div class="digital-note">Electronic copy issued to the client</div>'}</td>
     <td class="val">End of Verification Certificate</td>
     <td class="val">${cell(v.verificationDate)}</td>
     <td class="val">${cell(signOff.rejectionCertNumber)}</td>

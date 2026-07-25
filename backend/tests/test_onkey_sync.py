@@ -33,8 +33,9 @@ def test_row_hash_stable_and_order_independent():
 
 
 def test_parse_start_date():
-    assert parse_start_date({"StartDate": "2026-07-01T08:00:00.000+02:00"}) is not None
-    assert parse_start_date({"StartDate": "not a date"}) is None
+    col = "WorkOrderQueueStatusChangedOn"
+    assert parse_start_date({col: "2026-07-01T08:00:00.000+02:00"}) is not None
+    assert parse_start_date({col: "not a date"}) is None
     assert parse_start_date({}) is None
 
 

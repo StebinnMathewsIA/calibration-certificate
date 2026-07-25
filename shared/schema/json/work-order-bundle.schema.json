@@ -44,6 +44,14 @@
               ],
               "default": "open"
             },
+            "statusDetail": {
+              "type": "string",
+              "maxLength": 100
+            },
+            "staffCode": {
+              "type": "string",
+              "maxLength": 64
+            },
             "scheduledDate": {
               "type": "string",
               "pattern": "^\\d{4}-\\d{2}-\\d{2}$"

@@ -18,7 +18,7 @@ import { syncAll } from '../src/sync/syncEngine';
 import { CameraCaptureModal } from '../src/components/CameraCaptureModal';
 import { Badge, Button, DateInput, SectionCard, colors } from '../src/components/ui';
 import { FormScrollView } from '../src/components/FormScrollView';
-import { fetchThrough, readCache } from '../src/db/cache';
+import { fetchThrough, readCache, writeCache } from '../src/db/cache';
 import {
   certificateName,
   getProfile,
@@ -73,12 +73,14 @@ export default function ProfileScreen() {
   useFocusEffect(
     useCallback(() => {
       let cancelled = false;
-      getWhoami(accessToken)
+      // Through the cache (#84): a transient network failure must not hide
+      // the whole roles section from a role holder.
+      fetchThrough('whoami:me', () => getWhoami(accessToken))
         .then((w) => {
           if (cancelled) return;
           setWhoami(w);
           if (w.role) {
-            listTechnicians(accessToken)
+            fetchThrough('technicians:list', () => listTechnicians(accessToken))
               .then((l) => !cancelled && setTechList(l ?? []))
               .catch(() => {});
           }
@@ -134,6 +136,7 @@ export default function ProfileScreen() {
     try {
       const w = await setViewAs(accessToken, staffCode);
       setWhoami(w);
+      writeCache('whoami:me', w);
       if (!w.viewAsName && identity?.name) {
         const words = identity.name.split(/\s+/).filter((t) => t && !t.includes('@'));
         const f = words.slice(0, -1).join(' ');

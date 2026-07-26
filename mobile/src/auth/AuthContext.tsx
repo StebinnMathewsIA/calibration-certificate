@@ -10,8 +10,16 @@ import * as Crypto from 'expo-crypto';
 import * as Linking from 'expo-linking';
 import * as SecureStore from 'expo-secure-store';
 import * as WebBrowser from 'expo-web-browser';
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { Platform } from 'react-native';
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import { AppState, Platform } from 'react-native';
 import type { TechnicianIdentity } from '@prowalco/schema';
 import { config } from '../config';
 import { signatoryDisplayName } from '../lib/signatoryName';
@@ -138,6 +146,46 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     else await SecureStore.deleteItemAsync(SESSION_KEY);
     setSession(s);
   }, []);
+
+  // Proactive refresh (#84): tokens expire after an hour, and a launch-only
+  // refresh leaves a foregrounded (or resumed) app making failing calls that
+  // the offline mirror masks. Renew whenever under five minutes remain,
+  // checked every minute and on every return to the foreground. Failure
+  // keeps the current session; the next tick retries.
+  const sessionRef = useRef<StoredSession | null>(null);
+  useEffect(() => {
+    sessionRef.current = session;
+  }, [session]);
+
+  const refreshIfNeeded = useCallback(async () => {
+    const cur = sessionRef.current;
+    if (!cur || cur.expiresAt > Date.now() / 1000 + 300) return;
+    try {
+      const tokens = await tokenRequest('refresh_token', { refresh_token: cur.refreshToken });
+      const next = toSession(tokens, cur.identity.authMethod);
+      // Keep the richer name captured at first sign-in (Apple only shares
+      // it once; the refresh response may carry less).
+      if (cur.identity.name && !cur.identity.name.includes('@')) {
+        next.identity.name = cur.identity.name;
+      }
+      await persist(next);
+    } catch {
+      // Offline or transient: keep the stored session and retry later.
+    }
+  }, [persist]);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      void refreshIfNeeded();
+    }, 60_000);
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') void refreshIfNeeded();
+    });
+    return () => {
+      clearInterval(timer);
+      sub.remove();
+    };
+  }, [refreshIfNeeded]);
 
   // Restore on launch; refresh the access token if it is (nearly) expired.
   useEffect(() => {

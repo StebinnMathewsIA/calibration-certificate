@@ -2,7 +2,7 @@ import { Redirect, useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useMemo, useState } from 'react';
 import { Alert, FlatList, Pressable, Text, View } from 'react-native';
 import type { CertificateState, Verification } from '@prowalco/schema';
-import { listWorkOrders, WorkOrderSummary } from '../../src/api/client';
+import { TeamGroup, getTeamWorkOrders, listWorkOrders, WorkOrderSummary } from '../../src/api/client';
 import { useAuth } from '../../src/auth/AuthContext';
 import { TrashIcon } from '../../src/components/BrandHeader';
 import { GreetingHeader } from '../../src/components/GreetingHeader';
@@ -114,6 +114,22 @@ export default function HomeScreen() {
     useCallback(() => {
       load();
     }, [load]),
+  );
+
+  // Team view (#76): role holders see every technician's open work orders,
+  // collapsible per technician with status groups nested under each.
+  const [team, setTeam] = useState<TeamGroup[] | null>(null);
+  const [teamOpen, setTeamOpen] = useState<Record<string, boolean>>({});
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      fetchThrough('team-workorders', () => getTeamWorkOrders(accessToken))
+        .then((t) => !cancelled && setTeam(t))
+        .catch(() => {});
+      return () => {
+        cancelled = true;
+      };
+    }, [accessToken]),
   );
 
   // Certified-measures status (#70): missing/expired blocks verifications,
@@ -313,6 +329,84 @@ export default function HomeScreen() {
         </Pressable>
       ) : null}
       <FlatList
+        ListFooterComponent={
+          <View>
+          {archivedCount > 0 ? (
+            <Text
+              style={{ marginHorizontal: 12, marginTop: 16, fontSize: 12, color: colors.muted }}
+            >
+              {archivedCount} archived draft{archivedCount === 1 ? '' : 's'} from closed work orders
+            </Text>
+          ) : null}
+          {team && team.length > 0 ? (
+            <View style={{ marginHorizontal: 12, marginTop: 16, marginBottom: 8 }}>
+              <Text style={{ fontWeight: '700', color: colors.ink, fontSize: 15, marginBottom: 4 }}>
+                Team work orders
+              </Text>
+              {team.map((g) => {
+                const open = teamOpen[g.staffCode] ?? false;
+                const byStatus = new Map<string, WorkOrderSummary[]>();
+                for (const wo of g.workOrders) {
+                  const k = wo.statusDetail ?? 'Open';
+                  const l = byStatus.get(k);
+                  if (l) l.push(wo);
+                  else byStatus.set(k, [wo]);
+                }
+                return (
+                  <View key={g.staffCode}>
+                    <Text
+                      onPress={() => setTeamOpen((e) => ({ ...e, [g.staffCode]: !open }))}
+                      accessibilityRole="button"
+                      style={{
+                        paddingVertical: 8,
+                        borderTopWidth: 1,
+                        borderColor: colors.line,
+                        fontWeight: '700',
+                        color: colors.ink,
+                        fontSize: 14,
+                      }}
+                    >
+                      {open ? '\u25be ' : '\u25b8 '}
+                      {g.name ?? g.staffCode}
+                      <Text style={{ color: colors.muted, fontWeight: '400', fontSize: 12 }}>
+                        {'  '}{g.workOrders.length} open
+                      </Text>
+                    </Text>
+                    {open
+                      ? [...byStatus.entries()].map(([status, wos]) => (
+                          <View key={status} style={{ marginLeft: 10 }}>
+                            <Text
+                              style={{
+                                color: colors.muted,
+                                fontSize: 11,
+                                marginTop: 6,
+                                textTransform: 'uppercase',
+                              }}
+                            >
+                              {status} ({wos.length})
+                            </Text>
+                            {wos.map((wo) => (
+                              <Text
+                                key={wo.id}
+                                onPress={() =>
+                                  router.push({ pathname: '/workorder/[id]', params: { id: wo.id } })
+                                }
+                                style={{ color: colors.blueText, fontSize: 13, paddingVertical: 4 }}
+                              >
+                                {wo.reference} · {wo.site.customerName} {wo.site.siteName}
+                                {wo.scheduledDate ? ` · due ${wo.scheduledDate}` : ''}
+                              </Text>
+                            ))}
+                          </View>
+                        ))
+                      : null}
+                  </View>
+                );
+              })}
+            </View>
+          ) : null}
+          </View>
+        }
         data={sectionedItems}
         keyExtractor={(x) => (x.kind === 'header' ? `h:${x.title}` : x.wo.id)}
         // The in-flow tab bar reserves its own space now (#45) — only a
@@ -382,15 +476,6 @@ export default function HomeScreen() {
           <Text style={{ textAlign: 'center', color: colors.muted, marginTop: 20 }}>
             No open work orders. Pull refresh when online.
           </Text>
-        }
-        ListFooterComponent={
-          archivedCount > 0 ? (
-            <Text
-              style={{ marginHorizontal: 12, marginTop: 16, fontSize: 12, color: colors.muted }}
-            >
-              {archivedCount} archived draft{archivedCount === 1 ? '' : 's'} from closed work orders
-            </Text>
-          ) : null
         }
       />
     </View>

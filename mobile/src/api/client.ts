@@ -149,6 +149,17 @@ export async function searchCertificates(
   );
 }
 
+/** Open work orders grouped per technician (#76) — role holders only. */
+export interface TeamGroup {
+  staffCode: string;
+  name: string | null;
+  workOrders: WorkOrderSummary[];
+}
+
+export async function getTeamWorkOrders(token: string | null): Promise<TeamGroup[] | null> {
+  return await rpc<TeamGroup[] | null>('app_team_work_orders', token);
+}
+
 /** One certified proving measure from the register (#70). */
 export interface MeasureRecord {
   id?: number;

@@ -141,6 +141,18 @@ def _provision_technician() -> tuple[str, str, str]:
 
 ACCESS_TOKEN, TECHNICIAN_SUBJECT, TECHNICIAN_NAME = _provision_technician()
 
+# Register the E2E subject so its certificates are excluded from every
+# user-facing archive surface (migration 020).
+_raw = _engine.raw_connection()
+try:
+    _raw.cursor().execute(
+        "INSERT INTO app_test_subjects (subject) VALUES (%s) ON CONFLICT DO NOTHING",
+        (TECHNICIAN_SUBJECT,),
+    )
+    _raw.commit()
+finally:
+    _raw.close()
+
 from fastapi.testclient import TestClient  # noqa: E402
 from reportlab.lib.pagesizes import A4  # noqa: E402
 from reportlab.pdfgen import canvas  # noqa: E402

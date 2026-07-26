@@ -5,7 +5,7 @@
  */
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, ScrollView, Text, TextInput, View } from 'react-native';
 import {
   CertHistoryEntry,
@@ -22,6 +22,20 @@ export default function ArchiveScreen() {
   const [query, setQuery] = useState('');
   const [rows, setRows] = useState<Row[] | null>(null);
   const [sharing, setSharing] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+
+  // Grouped by issuer (VO), newest certificate first inside AND across
+  // groups (rows arrive date-descending from the server).
+  const groups = useMemo(() => {
+    const by = new Map<string, Row[]>();
+    for (const r of rows ?? []) {
+      const key = r.voName ?? 'Unknown issuer';
+      const list = by.get(key);
+      if (list) list.push(r);
+      else by.set(key, [r]);
+    }
+    return [...by.entries()];
+  }, [rows]);
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const search = useCallback(
@@ -96,7 +110,32 @@ export default function ArchiveScreen() {
         {rows.length === 0 ? (
           <Text style={{ color: colors.muted, marginTop: 6 }}>No certificates match.</Text>
         ) : (
-          rows.map((h) => (
+          groups.map(([issuer, list]) => {
+            const open = expanded[issuer] ?? query.trim().length > 0;
+            return (
+              <View key={issuer}>
+                <Text
+                  onPress={() => setExpanded((e) => ({ ...e, [issuer]: !open }))}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${open ? 'Collapse' : 'Expand'} certificates issued by ${issuer}`}
+                  style={{
+                    marginTop: 10,
+                    paddingVertical: 6,
+                    borderTopWidth: 1,
+                    borderColor: colors.line,
+                    fontWeight: '700',
+                    color: colors.ink,
+                    fontSize: 14,
+                  }}
+                >
+                  {open ? '▾ ' : '▸ '}
+                  {issuer}
+                  <Text style={{ color: colors.muted, fontWeight: '400', fontSize: 12 }}>
+                    {'  '}{list.length} certificate{list.length === 1 ? '' : 's'} · latest{' '}
+                    {list[0].signedAt.slice(0, 10)}
+                  </Text>
+                </Text>
+                {open ? list.map((h) => (
             <View
               key={h.certificateNumber}
               style={{ borderTopWidth: 1, borderColor: colors.line, paddingVertical: 8 }}
@@ -135,7 +174,10 @@ export default function ArchiveScreen() {
                   : 'Download & share sealed PDF →'}
               </Text>
             </View>
-          ))
+                )) : null}
+              </View>
+            );
+          })
         )}
       </SectionCard>
     </ScrollView>

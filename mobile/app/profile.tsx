@@ -95,6 +95,20 @@ export default function ProfileScreen() {
     try {
       const w = await setViewAs(accessToken, staffCode);
       setWhoami(w);
+      if (!w.viewAsName && identity?.name) {
+        const words = identity.name.split(/\s+/).filter((t) => t && !t.includes('@'));
+        const f = words.slice(0, -1).join(' ');
+        const l = words.length > 0 ? words[words.length - 1] : '';
+        setFirstName(f);
+        setLastName(l);
+        const p = getProfile(subject);
+        saveProfile(subject, {
+          ...p,
+          firstName: f || undefined,
+          lastName: l || undefined,
+          displayName: identity.name,
+        });
+      }
       setPickerOpen(false);
       setPickerFilter('');
       // Refresh the whole device mirror so every screen shows the new scope.
@@ -200,13 +214,15 @@ export default function ProfileScreen() {
           if (first || last) {
             setFirstName(first);
             setLastName(last);
-            const p = getProfile(subject);
-            saveProfile(subject, {
-              ...p,
-              firstName: first || undefined,
-              lastName: last || undefined,
-              displayName: `${first} ${last}`.trim() || p.displayName,
-            });
+            if (editable) {
+              const p = getProfile(subject);
+              saveProfile(subject, {
+                ...p,
+                firstName: first || undefined,
+                lastName: last || undefined,
+                displayName: `${first} ${last}`.trim() || p.displayName,
+              });
+            }
           }
           const p = getProfile(subject);
           if (!p.pliersNumber && tech.pliersNumber) setPliers(tech.pliersNumber);

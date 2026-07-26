@@ -1,0 +1,55 @@
+name: eas-submit
+
+# Submits the newest FINISHED iOS build to TestFlight (#81), using the
+# Apple credentials stored with EAS and the ascAppId in eas.json. Run this
+# after an eas-build run finishes, or use eas-build's submit option to
+# queue both in one go.
+#
+# Required repository secret:
+#   EXPO_TOKEN   Expo access token (expo.dev -> Account Settings -> Access tokens)
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  eas-submit:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check EXPO_TOKEN is configured
+        run: |
+          if [ -z "${{ secrets.EXPO_TOKEN }}" ]; then
+            echo "::error::Missing repository secret EXPO_TOKEN - create one at expo.dev -> Account Settings -> Access tokens"
+            exit 1
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Setup EAS CLI
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Submit latest finished iOS build to TestFlight
+        run: |
+          eas submit --platform ios --latest --non-interactive 2>&1 | tee submit-output.txt
+          url=$(grep -Eo 'https://expo\.dev/[^ ]*submissions/[a-z0-9-]+' submit-output.txt | head -1 || true)
+          {
+            echo "## TestFlight submission queued"
+            echo ""
+            if [ -n "$url" ]; then
+              echo "Submission page: $url"
+            else
+              echo "Submission page: https://expo.dev - open the project's Submissions tab"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

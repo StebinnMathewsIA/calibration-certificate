@@ -16,7 +16,7 @@ import {
 } from '../src/api/client';
 import { syncAll } from '../src/sync/syncEngine';
 import { CameraCaptureModal } from '../src/components/CameraCaptureModal';
-import { Badge, Button, SectionCard, colors } from '../src/components/ui';
+import { Badge, Button, DateInput, SectionCard, colors } from '../src/components/ui';
 import { FormScrollView } from '../src/components/FormScrollView';
 import { fetchThrough, readCache } from '../src/db/cache';
 import {
@@ -302,7 +302,7 @@ export default function ProfileScreen() {
     ) {
       Alert.alert(
         'Measure incomplete',
-        'A certified measure needs its serial number, calibration certificate number, calibration date and expiry date (YYYY-MM-DD).',
+        'A certified measure needs its serial number, calibration certificate number, calibration date and expiry date.',
       );
       return;
     }
@@ -534,22 +534,12 @@ export default function ProfileScreen() {
                 />
                 <View style={{ flexDirection: 'row', gap: 8 }}>
                   <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 12, color: colors.muted }}>Cal. date (YYYY-MM-DD)</Text>
-                    <TextInput
-                      style={inputStyle}
-                      value={addCalDate}
-                      onChangeText={setAddCalDate}
-                      placeholder="2026-03-19"
-                    />
+                    <Text style={{ fontSize: 12, color: colors.muted }}>Calibration date</Text>
+                    <DateInput value={addCalDate} onChange={setAddCalDate} />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 12, color: colors.muted }}>Expiry (YYYY-MM-DD)</Text>
-                    <TextInput
-                      style={inputStyle}
-                      value={addExpiry}
-                      onChangeText={setAddExpiry}
-                      placeholder="2027-03-19"
-                    />
+                    <Text style={{ fontSize: 12, color: colors.muted }}>Expiry date</Text>
+                    <DateInput value={addExpiry} onChange={setAddExpiry} />
                   </View>
                 </View>
                 <Button

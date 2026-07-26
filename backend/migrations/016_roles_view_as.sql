@@ -7,10 +7,12 @@ CREATE TABLE IF NOT EXISTS app_roles (
     created_at timestamptz  NOT NULL DEFAULT now(),
     created_by varchar(320)
 );
--- First admins: the owner's sign-ins (owner decision, 2026-07-26).
+-- First admins: the owner's sign-ins + the internal tester (owner
+-- decisions, 2026-07-26).
 INSERT INTO app_roles (email, role, created_by) VALUES
     ('stebinn@insightsanon.com', 'admin', 'seed'),
-    ('stebinn@gmail.com', 'admin', 'seed')
+    ('stebinn@gmail.com', 'admin', 'seed'),
+    ('sashern@prowalco.co.za', 'admin', 'seed')
 ON CONFLICT (email) DO NOTHING;
 
 -- Technician allocation per manager (admin-managed; empty until assigned).

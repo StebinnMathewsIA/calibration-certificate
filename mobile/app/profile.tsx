@@ -5,11 +5,16 @@ import { useAuth } from '../src/auth/AuthContext';
 import {
   MeasureRecord,
   MyTechnician,
+  Whoami,
   addMeasure,
   getMyMeasures,
   getMyTechnician,
+  getWhoami,
+  listTechnicians,
   patchMyTechnician,
+  setViewAs,
 } from '../src/api/client';
+import { syncAll } from '../src/sync/syncEngine';
 import { CameraCaptureModal } from '../src/components/CameraCaptureModal';
 import { Badge, Button, SectionCard, colors } from '../src/components/ui';
 import { FormScrollView } from '../src/components/FormScrollView';
@@ -58,6 +63,54 @@ export default function ProfileScreen() {
   const [addCalDate, setAddCalDate] = useState('');
   const [addExpiry, setAddExpiry] = useState('');
   const [addBusy, setAddBusy] = useState(false);
+  // Role + view-as (#71).
+  const [whoami, setWhoami] = useState<Whoami | null>(null);
+  const [techList, setTechList] = useState<{ staffCode: string; name: string | null }[]>([]);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerFilter, setPickerFilter] = useState('');
+  const [switching, setSwitching] = useState(false);
+
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      getWhoami(accessToken)
+        .then((w) => {
+          if (cancelled) return;
+          setWhoami(w);
+          if (w.role) {
+            listTechnicians(accessToken)
+              .then((l) => !cancelled && setTechList(l ?? []))
+              .catch(() => {});
+          }
+        })
+        .catch(() => {});
+      return () => {
+        cancelled = true;
+      };
+    }, [accessToken]),
+  );
+
+  const switchViewAs = async (staffCode: string | null) => {
+    setSwitching(true);
+    try {
+      const w = await setViewAs(accessToken, staffCode);
+      setWhoami(w);
+      setPickerOpen(false);
+      setPickerFilter('');
+      // Refresh the whole device mirror so every screen shows the new scope.
+      await syncAll(accessToken);
+      Alert.alert(
+        'View updated',
+        w.viewAsName
+          ? `You are now viewing the app as ${w.viewAsName}.`
+          : 'You are back to your own view.',
+      );
+    } catch (err) {
+      Alert.alert('Could not switch view', err instanceof Error ? err.message : String(err));
+    } finally {
+      setSwitching(false);
+    }
+  };
 
   /** Mirror the active measures into the local store — the offline
    * verification gate reads it. */
@@ -262,6 +315,68 @@ export default function ProfileScreen() {
           </Text>
         ) : null}
       </SectionCard>
+
+      {whoami?.role ? (
+        <SectionCard title={`View as (${whoami.role})`}>
+          <Text style={{ color: colors.muted, fontSize: 12, marginBottom: 8 }}>
+            See the app exactly as a technician does — their work orders, sites and insights.
+            Read-only: you can never sign or edit records as them.
+          </Text>
+          <Badge
+            text={whoami.viewAsName ? `Viewing as ${whoami.viewAsName}` : 'Viewing as yourself'}
+            tone={whoami.viewAsName ? 'warn' : 'ok'}
+          />
+          {whoami.viewAsName ? (
+            <Button
+              title="Stop viewing as"
+              kind="secondary"
+              busy={switching}
+              onPress={() => void switchViewAs(null)}
+            />
+          ) : null}
+          <Button
+            title={pickerOpen ? 'Close technician list' : 'Choose a technician…'}
+            kind="secondary"
+            onPress={() => setPickerOpen(!pickerOpen)}
+          />
+          {pickerOpen ? (
+            <View>
+              <TextInput
+                style={inputStyle}
+                value={pickerFilter}
+                onChangeText={setPickerFilter}
+                placeholder="Search by name or staff code"
+              />
+              {techList
+                .filter((t) => {
+                  const q = pickerFilter.trim().toLowerCase();
+                  if (!q) return true;
+                  return (
+                    (t.name ?? '').toLowerCase().includes(q) ||
+                    t.staffCode.toLowerCase().includes(q)
+                  );
+                })
+                .slice(0, 12)
+                .map((t) => (
+                  <Text
+                    key={t.staffCode}
+                    onPress={() => (switching ? undefined : void switchViewAs(t.staffCode))}
+                    style={{
+                      paddingVertical: 8,
+                      borderTopWidth: 1,
+                      borderColor: colors.line,
+                      color: colors.blueText,
+                      fontSize: 14,
+                    }}
+                  >
+                    {t.name ?? t.staffCode}{' '}
+                    <Text style={{ color: colors.muted, fontSize: 12 }}>({t.staffCode})</Text>
+                  </Text>
+                ))}
+            </View>
+          ) : null}
+        </SectionCard>
+      ) : null}
 
       <SectionCard title="My certified proving measures">
         <Text style={{ color: colors.muted, fontSize: 12, marginBottom: 8 }}>

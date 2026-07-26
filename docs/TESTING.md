@@ -445,6 +445,24 @@ Rollout order matters: verify on-device FIRST, then set
 - [ ] Demo alias sees the ridden technician's workload numbers but their
       OWN certificate counts
 
+### Roles + view-as (Phase 6 in-app, #71)
+
+- [ ] Sign in as an admin (owner sign-ins are seeded): Profile shows a
+      "View as (admin)" section; Home is EMPTY until a technician is chosen
+      (no more busiest-technician riding)
+- [ ] Choose a technician from the searchable picker → after the sync,
+      Home/sites/insights/history all show THAT technician's real world
+- [ ] "Stop viewing as" returns to the empty own scope
+- [ ] While viewing-as: profile register edits and measure registration are
+      refused (read-only riding); signing would sign as YOURSELF, never as
+      the viewed technician
+- [ ] A technician sign-in sees no view-as section and no compliance data
+- [ ] Insights (role holders only): "Measures compliance" lists every
+      technician with missing/expired/expiring measures by name; counts of
+      total vs fully-certified match
+- [ ] sashern@prowalco.co.za no longer resolves to any workload (alias
+      mechanism removed) until given a role or matched by register email
+
 ### Production work orders from OnKey (#55, #57)
 
 - [ ] Sign in as stebinn@gmail.com or sashern@prowalco.co.za (demo aliases) →

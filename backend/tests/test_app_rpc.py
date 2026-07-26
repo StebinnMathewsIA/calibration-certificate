@@ -37,25 +37,39 @@ def test_unknown_email_sees_nothing(db):
     assert db.execute(text("SELECT app_my_technician()")).scalar() is None
 
 
-def test_alias_resolves_to_busiest_technician(db):
+def test_admin_view_as(db):
+    """Roles + view-as (#71): the seeded admin has no scope until a view-as
+    is set; setting one makes the whole read surface resolve to that
+    technician; clearing returns to none. Non-role users are refused."""
     _as_email(db, "stebinn@gmail.com")
-    code = db.execute(text("SELECT app_staff_code()")).scalar()
-    has_open = db.execute(
-        text(
-            "SELECT EXISTS (SELECT 1 FROM onkey_workorders "
-            "WHERE status_description = ANY (app_open_statuses()) "
-            "AND staff_code IS NOT NULL)"
-        )
+    assert db.execute(text("SELECT app_role()")).scalar() == "admin"
+    db.execute(text("SELECT app_set_view_as(NULL)"))
+    db.commit()
+    assert db.execute(text("SELECT app_staff_code()")).scalar() is None
+
+    some_tech = db.execute(
+        text("SELECT staff_code FROM onkey_technicians LIMIT 1")
     ).scalar()
-    if has_open:
-        assert code is not None
+    if some_tech:
+        db.execute(text("SELECT app_set_view_as(:sc)"), {"sc": some_tech})
+        db.commit()
+        assert db.execute(text("SELECT app_staff_code()")).scalar() == some_tech
         wos = db.execute(text("SELECT app_my_work_orders()")).scalar()
-        assert isinstance(wos, list)
         for wo in wos:
             assert wo["status"] == "open"
-            assert set(wo) >= {"id", "siteId", "site", "statusDetail", "staffCode"}
-    else:
-        assert code is None
+            assert wo["staffCode"] == some_tech
+        db.execute(text("SELECT app_set_view_as(NULL)"))
+        db.commit()
+
+    compliance = db.execute(text("SELECT app_measures_compliance()")).scalar()
+    assert compliance is not None
+    assert set(compliance) == {"total", "compliant", "issues"}
+
+    _as_email(db, "nobody@example.invalid")
+    assert db.execute(text("SELECT app_measures_compliance()")).scalar() is None
+    with pytest.raises(Exception, match="requires a manager or admin role"):
+        db.execute(text("SELECT app_set_view_as('X')"))
+    db.rollback()
 
 
 def test_dispenser_detail_defaults_when_never_saved(db):

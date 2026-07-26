@@ -52,6 +52,53 @@ export async function submitForSigning(
   return signResponseSchema.parse(body);
 }
 
+/** Role + view-as state for the signed-in user (#71). */
+export interface Whoami {
+  role: 'manager' | 'admin' | null;
+  viewAsStaffCode: string | null;
+  viewAsName: string | null;
+}
+
+export async function getWhoami(token: string | null): Promise<Whoami> {
+  return await rpc<Whoami>('app_whoami', token);
+}
+
+/** Technician picker for role holders; null for everyone else. */
+export async function listTechnicians(
+  token: string | null,
+): Promise<{ staffCode: string; name: string | null }[] | null> {
+  return await rpc<{ staffCode: string; name: string | null }[] | null>(
+    'app_list_technicians',
+    token,
+  );
+}
+
+/** Select (or clear, with null) the technician whose world the role holder
+ * sees. Server-side, so every screen follows. */
+export async function setViewAs(token: string | null, staffCode: string | null): Promise<Whoami> {
+  return await rpc<Whoami>('app_set_view_as', token, { p_staff_code: staffCode });
+}
+
+/** Measures compliance across all technicians (#71); null unless the caller
+ * holds a role. */
+export interface MeasuresCompliance {
+  total: number;
+  compliant: number;
+  issues: {
+    staffCode: string;
+    name: string | null;
+    missing: string[];
+    expired: { size: string; expiryDate: string }[];
+    expiring: { size: string; expiryDate: string }[];
+  }[];
+}
+
+export async function getMeasuresCompliance(
+  token: string | null,
+): Promise<MeasuresCompliance | null> {
+  return await rpc<MeasuresCompliance | null>('app_measures_compliance', token);
+}
+
 /** One certified proving measure from the register (#70). */
 export interface MeasureRecord {
   id?: number;

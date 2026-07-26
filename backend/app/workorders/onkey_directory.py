@@ -48,10 +48,19 @@ def resolve_staff_code_for_email(db: Session, settings: Settings, email: str) ->
     normalized = (email or "").strip().lower()
     if not normalized:
         return None
-    if normalized in settings.onkey_demo_alias_email_list:
-        busiest = busiest_open_technician(db)
-        return busiest["staffCode"] if busiest else None
-    return db.execute(
+    direct = db.execute(
         text("SELECT staff_code FROM onkey_technicians WHERE lower(email) = :email LIMIT 1"),
         {"email": normalized},
     ).scalar()
+    # Role holders (#71): an active view-as selection wins over their own
+    # (usually absent) technician record. No more busiest-technician riding.
+    has_role = db.execute(
+        text("SELECT 1 FROM app_roles WHERE email = :email"), {"email": normalized}
+    ).scalar()
+    if has_role:
+        view_as = db.execute(
+            text("SELECT staff_code FROM app_view_as WHERE email = :email"),
+            {"email": normalized},
+        ).scalar()
+        return view_as or direct
+    return direct

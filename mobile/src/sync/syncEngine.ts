@@ -59,10 +59,16 @@ export async function syncAll(token: string | null): Promise<void> {
   }
   writeCache('sync:last', pull.syncedAt);
 
-  // Insights (#56) ride the same sync so the tab works offline. Best-effort:
-  // a failure here must not fail the mirror sync.
+  // Insights (#56) and the measures register (#70) ride the same sync so
+  // both work offline — and both follow a view-as switch (#71).
+  // Best-effort: a failure here must not fail the mirror sync.
   try {
     writeCache('insights', await rpc('app_insights', token));
+  } catch {
+    // keep the previous cached copy
+  }
+  try {
+    writeCache('measures:my', await rpc('app_my_measures', token));
   } catch {
     // keep the previous cached copy
   }

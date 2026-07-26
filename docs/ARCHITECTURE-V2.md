@@ -129,7 +129,11 @@ the device mirror like other reads.
 4. **Archive & history** — certificate index + per-site/dispenser history
    views in-app.
 5. **Insights tab** — all users, RLS-scoped (with #56).
-6. **Web app** — manager analytics + certificate search; admin setup.
+6. **Roles in-app** (amended 2026-07-26): manager/admin roles, view-as
+   (replaces the demo-alias mechanism), measures-compliance reporting —
+   built into the existing app. The dedicated web app is DEFERRED until a
+   desk-based need is proven; the same screens export to web via Expo when
+   it is.
 7. **Relocation flow** — equipment transfer event + identity reset.
 
 ## 8. Deferred (post-PoC approval)

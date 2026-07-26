@@ -6,7 +6,12 @@
 import { Redirect, useFocusEffect } from 'expo-router';
 import React, { useCallback, useState } from 'react';
 import { ScrollView, Text, View } from 'react-native';
-import { Insights, getInsights } from '../../src/api/client';
+import {
+  Insights,
+  MeasuresCompliance,
+  getInsights,
+  getMeasuresCompliance,
+} from '../../src/api/client';
 import { useAuth } from '../../src/auth/AuthContext';
 import { fetchThrough } from '../../src/db/cache';
 import { GreetingHeader } from '../../src/components/GreetingHeader';
@@ -60,6 +65,7 @@ function Bars({ data }: { data: { month: string; count: number }[] }) {
 export default function InsightsScreen() {
   const { identity, accessToken, loading } = useAuth();
   const [insights, setInsights] = useState<Insights | null>(null);
+  const [compliance, setCompliance] = useState<MeasuresCompliance | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
@@ -68,6 +74,14 @@ export default function InsightsScreen() {
       setInsights(await fetchThrough('insights', () => getInsights(accessToken)));
     } catch {
       // offline with no cache yet
+    }
+    // Manager/admin only (#71): null for technicians.
+    try {
+      setCompliance(
+        await fetchThrough('measures-compliance', () => getMeasuresCompliance(accessToken)),
+      );
+    } catch {
+      // no cache yet
     } finally {
       setRefreshing(false);
     }
@@ -147,6 +161,45 @@ export default function InsightsScreen() {
               </Text>
             ) : null}
           </SectionCard>
+
+          {compliance ? (
+            <SectionCard title="Measures compliance (all technicians)">
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                <Stat label="Technicians" value={compliance.total} />
+                <Stat label="Fully certified & in date" value={compliance.compliant} />
+              </View>
+              {compliance.issues.length === 0 ? (
+                <Text style={{ color: colors.muted, fontSize: 13, marginTop: 8 }}>
+                  Every technician's measures are certified and in date.
+                </Text>
+              ) : (
+                compliance.issues.map((t) => (
+                  <View
+                    key={t.staffCode}
+                    style={{
+                      borderTopWidth: 1,
+                      borderColor: colors.line,
+                      paddingVertical: 6,
+                      marginTop: 6,
+                    }}
+                  >
+                    <Text style={{ color: colors.ink, fontWeight: '600', fontSize: 13 }}>
+                      {t.name ?? t.staffCode}
+                    </Text>
+                    <Text style={{ color: colors.muted, fontSize: 12, marginTop: 2 }}>
+                      {[
+                        t.missing.length > 0 ? `missing: ${t.missing.join(', ')}` : null,
+                        ...t.expired.map((e) => `${e.size} expired ${e.expiryDate}`),
+                        ...t.expiring.map((e) => `${e.size} expires ${e.expiryDate}`),
+                      ]
+                        .filter(Boolean)
+                        .join(' · ')}
+                    </Text>
+                  </View>
+                ))
+              )}
+            </SectionCard>
+          ) : null}
 
           <SectionCard title="Across Prowalco">
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>

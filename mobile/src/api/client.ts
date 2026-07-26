@@ -99,6 +99,56 @@ export async function getMeasuresCompliance(
   return await rpc<MeasuresCompliance | null>('app_measures_compliance', token);
 }
 
+/** Role administration (#72) — admin only; the SQL guards enforce it. */
+export interface RoleEntry {
+  email: string;
+  role: 'manager' | 'admin';
+  createdAt: string;
+}
+
+export async function listRoles(token: string | null): Promise<RoleEntry[] | null> {
+  return await rpc<RoleEntry[] | null>('app_list_roles', token);
+}
+
+export async function setRole(
+  token: string | null,
+  email: string,
+  role: 'manager' | 'admin' | null,
+): Promise<RoleEntry[]> {
+  return await rpc<RoleEntry[]>('app_set_role', token, { p_email: email, p_role: role });
+}
+
+export async function listAllocations(
+  token: string | null,
+): Promise<Record<string, string[]> | null> {
+  return await rpc<Record<string, string[]> | null>('app_list_allocations', token);
+}
+
+export async function setAllocation(
+  token: string | null,
+  managerEmail: string,
+  staffCode: string,
+  allocated: boolean,
+): Promise<Record<string, string[]>> {
+  return await rpc<Record<string, string[]>>('app_set_allocation', token, {
+    p_manager: managerEmail,
+    p_staff_code: staffCode,
+    p_allocated: allocated,
+  });
+}
+
+/** Cross-company certificate search (#72) — role holders only. */
+export async function searchCertificates(
+  token: string | null,
+  query: string,
+): Promise<(CertHistoryEntry & { siteName: string; customerName: string })[] | null> {
+  return await rpc<(CertHistoryEntry & { siteName: string; customerName: string })[] | null>(
+    'app_cert_search',
+    token,
+    { p_query: query, p_limit: 50 },
+  );
+}
+
 /** One certified proving measure from the register (#70). */
 export interface MeasureRecord {
   id?: number;

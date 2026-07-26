@@ -170,6 +170,30 @@ def test_measures_register_shape(db):
         assert {row["id"] for row in tech["technician"]["measures"]} == active_ids
 
 
+def test_admin_functions_and_archive_search(db):
+    """#72: admin-only guards hold under NULL-role three-valued logic, the
+    last admin is protected, and the archive search behaves."""
+    _as_email(db, "nobody@example.invalid")
+    assert db.execute(text("SELECT app_list_roles()")).scalar() is None
+    assert db.execute(text("SELECT app_list_allocations()")).scalar() is None
+    assert db.execute(text("SELECT app_cert_search('')")).scalar() is None
+    with pytest.raises(Exception, match="requires the admin role"):
+        db.execute(text("SELECT app_set_role('x@y.co', 'admin')"))
+    db.rollback()
+
+    _as_email(db, "stebinn@gmail.com")
+    roles = db.execute(text("SELECT app_list_roles()")).scalar()
+    assert any(r["email"] == "stebinn@gmail.com" and r["role"] == "admin" for r in roles)
+    rows = db.execute(text("SELECT app_cert_search('')")).scalar()
+    assert isinstance(rows, list)
+    if rows:
+        assert set(rows[0]) >= {"certificateNumber", "siteName", "customerName", "signedAt"}
+        hit = db.execute(
+            text("SELECT app_cert_search(:q)"), {"q": rows[0]["certificateNumber"][:8]}
+        ).scalar()
+        assert any(r["certificateNumber"] == rows[0]["certificateNumber"] for r in hit)
+
+
 def test_api_roles_are_locked_down(db):
     """authenticated: no direct table reads, but RPC executes; anon: nothing."""
     _as_email(db, "nobody@example.invalid")

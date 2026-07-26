@@ -463,6 +463,19 @@ Rollout order matters: verify on-device FIRST, then set
 - [ ] sashern@prowalco.co.za no longer resolves to any workload (alias
       mechanism removed) until given a role or matched by register email
 
+### Admin UI + certificate archive search (#72)
+
+- [ ] Admin: Profile → "Roles & team allocations" — grant a manager role by
+      email; it appears in the list; revoke works; revoking the LAST admin
+      is refused with a clear message
+- [ ] Allocate technicians to a manager (search + tap toggles ✓); that
+      manager's view-as picker is then limited to their allocation
+- [ ] Manager: sees "Certificate archive search" but NOT the admin screen;
+      technician sees neither
+- [ ] Archive search: empty query lists newest certificates; searching by
+      cert number fragment, site, customer, dispenser or VO name filters;
+      each row downloads + shares the sealed PDF
+
 ### Production work orders from OnKey (#55, #57)
 
 - [ ] Sign in as stebinn@gmail.com or sashern@prowalco.co.za (demo aliases) →

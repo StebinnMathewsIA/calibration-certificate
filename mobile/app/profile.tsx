@@ -339,6 +339,18 @@ export default function ProfileScreen() {
             kind="secondary"
             onPress={() => setPickerOpen(!pickerOpen)}
           />
+          <Button
+            title="Certificate archive search"
+            kind="secondary"
+            onPress={() => router.push('/archive')}
+          />
+          {whoami.role === 'admin' ? (
+            <Button
+              title="Roles & team allocations"
+              kind="secondary"
+              onPress={() => router.push('/admin')}
+            />
+          ) : null}
           {pickerOpen ? (
             <View>
               <TextInput

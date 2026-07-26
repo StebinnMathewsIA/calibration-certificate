@@ -104,6 +104,22 @@ Store: certificate number, technician identity (IdP subject + name), auth method
 
 ---
 
+## Writing & UI style rules (owner-mandated, 2026-07-26)
+
+These apply to EVERYTHING produced for this project: app UI copy, the
+certificate, documents, GitHub issues and comments, commit messages, and
+chat replies.
+
+- NEVER use em dashes. Use commas, colons, parentheses, or separate
+  sentences instead.
+- NEVER use emojis. Anywhere.
+- Prefer iconography over text labels or symbols where possible in the app
+  UI, drawn in the brand's hand-made SVG line style (see
+  mobile/src/components/BrandHeader.tsx). Icon-only controls must carry an
+  accessibilityLabel. Plain typographic marks in status chips (check mark,
+  warning triangle, cross) remain allowed per the brand kit; emoji
+  characters do not.
+
 ## Branding
 
 - Prowalco logo (green/blue "prowalco" + red "TATSUNO") top-left of certificate; asset provided by client (`assets/prowalco-logo.png`)

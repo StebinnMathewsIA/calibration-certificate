@@ -7,9 +7,24 @@
  * renders nothing.
  */
 import React from 'react';
-import { Linking, View } from 'react-native';
+import { Linking, Pressable, View } from 'react-native';
+import Svg, { Path } from 'react-native-svg';
 import { WebView } from 'react-native-webview';
-import { Button, colors } from './ui';
+import { colors } from './ui';
+
+/** Navigation-arrow glyph in the brand line style (no emoji, per owner). */
+function DirectionsIcon({ color, size = 22 }: { color: string; size?: number }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M12 3.5 L20.5 20 L12 16 L3.5 20 Z"
+        stroke={color}
+        strokeWidth={2}
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
 
 export function parseWktPoint(wkt?: string | null): { lat: number; lon: number } | null {
   const m = /POINT\s*\(\s*(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s*\)/i.exec(wkt ?? '');
@@ -43,6 +58,27 @@ export function MiniMap({
     ? `https://www.openstreetmap.org/export/embed.html?bbox=${point.lon - d},${point.lat - d},${point.lon + d},${point.lat + d}&layer=mapnik&marker=${point.lat},${point.lon}`
     : null;
 
+  const iconButton = (
+    <Pressable
+      onPress={openMaps}
+      accessibilityRole="button"
+      accessibilityLabel="Open directions in Google Maps"
+      hitSlop={8}
+      style={{
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        backgroundColor: '#fff',
+        borderWidth: 1,
+        borderColor: colors.line,
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      <DirectionsIcon color={colors.navy} />
+    </Pressable>
+  );
+
   return (
     <View style={{ marginTop: 8 }}>
       {embedUrl ? (
@@ -53,19 +89,21 @@ export function MiniMap({
             overflow: 'hidden',
             borderWidth: 1,
             borderColor: colors.line,
-            marginBottom: 8,
           }}
-          pointerEvents="none"
         >
-          <WebView
-            source={{ uri: embedUrl }}
-            originWhitelist={['*']}
-            setSupportMultipleWindows={false}
-            scrollEnabled={false}
-          />
+          <View style={{ flex: 1 }} pointerEvents="none">
+            <WebView
+              source={{ uri: embedUrl }}
+              originWhitelist={['*']}
+              setSupportMultipleWindows={false}
+              scrollEnabled={false}
+            />
+          </View>
+          <View style={{ position: 'absolute', bottom: 10, right: 10 }}>{iconButton}</View>
         </View>
-      ) : null}
-      <Button title="Open in Google Maps" kind="secondary" onPress={openMaps} />
+      ) : (
+        <View style={{ alignItems: 'flex-start' }}>{iconButton}</View>
+      )}
     </View>
   );
 }

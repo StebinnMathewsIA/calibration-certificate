@@ -134,7 +134,11 @@ the device mirror like other reads.
    built into the existing app. The dedicated web app is DEFERRED until a
    desk-based need is proven; the same screens export to web via Expo when
    it is.
-7. **Relocation flow** — equipment transfer event + identity reset.
+7. **Relocation** (resolved 2026-07-26, owner decision): no transfer-event
+   machinery. Retire at the old site + add at the new site IS the flow.
+   Invariants enforced (#74): archived dispensers and their certificates
+   stay at the site they were archived at; a re-linked equipment number
+   appears at the new site as a blank-identity seed only.
 
 ## 8. Deferred (post-PoC approval)
 Paid hosting near South Africa (Supabase `af-south-1` + signing service in

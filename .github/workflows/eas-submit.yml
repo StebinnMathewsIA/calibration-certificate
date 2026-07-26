@@ -9,7 +9,13 @@ name: eas-submit
 #   EXPO_TOKEN   Expo access token (expo.dev -> Account Settings -> Access tokens)
 
 on:
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      build_id:
+        description: "EAS build ID to submit (blank = newest finished iOS build)"
+        type: string
+        required: false
+        default: ""
 
 jobs:
   eas-submit:
@@ -40,9 +46,17 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Submit latest finished iOS build to TestFlight
+      - name: Submit iOS build to TestFlight
         run: |
-          eas submit --platform ios --latest --non-interactive 2>&1 | tee submit-output.txt
+          # Input read via the event payload file, not inline expression
+          # substitution (see masters-load history).
+          build_id=$(jq -r '.inputs.build_id // ""' "$GITHUB_EVENT_PATH")
+          if [ -n "$build_id" ]; then
+            selector="--id $build_id"
+          else
+            selector="--latest"
+          fi
+          eas submit --platform ios $selector --non-interactive 2>&1 | tee submit-output.txt
           url=$(grep -Eo 'https://expo\.dev/[^ ]*submissions/[a-z0-9-]+' submit-output.txt | head -1 || true)
           {
             echo "## TestFlight submission queued"

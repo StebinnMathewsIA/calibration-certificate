@@ -16,6 +16,7 @@ import {
 import { useAuth } from '../../src/auth/AuthContext';
 import { Badge, SectionCard, colors, styles, styles as ui } from '../../src/components/ui';
 import { fetchThrough } from '../../src/db/cache';
+import { MiniMap } from '../../src/components/MiniMap';
 import {
   CERT_LABEL,
   CERT_TONE,
@@ -132,6 +133,7 @@ export default function SiteDetailScreen() {
         {site.telephone ? (
           <Text style={{ color: colors.muted, fontSize: 13 }}>Tel: {site.telephone}</Text>
         ) : null}
+        <MiniMap gpsWkt={site.gpsLocation} address={site.address} />
       </SectionCard>
 
       <SectionCard title="Dispensers & certificates">

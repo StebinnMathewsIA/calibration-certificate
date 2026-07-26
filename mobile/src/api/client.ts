@@ -335,6 +335,8 @@ export interface SiteResolved {
   siteName: string;
   address: string;
   telephone?: string | null;
+  /** WKT "POINT (lon lat)" from the register / manual gap edits (#73). */
+  gpsLocation?: string | null;
   source: 'onkey' | 'manual';
   updatedAt?: string | null;
   inStore?: boolean;

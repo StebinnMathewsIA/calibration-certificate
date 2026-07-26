@@ -12,6 +12,7 @@ import {
 import { useAuth } from '../../src/auth/AuthContext';
 import { BarcodeScannerModal } from '../../src/components/BarcodeScanner';
 import { fetchThrough, writeCache } from '../../src/db/cache';
+import { MiniMap } from '../../src/components/MiniMap';
 import { Badge, Button, SectionCard, colors } from '../../src/components/ui';
 import { FormScrollView } from '../../src/components/FormScrollView';
 
@@ -109,6 +110,7 @@ export default function WorkOrderScreen() {
             Site details are incomplete — you can complete them when verifying a dispenser.
           </Text>
         ) : null}
+        <MiniMap gpsWkt={site?.gpsLocation} address={site?.address} />
       </SectionCard>
 
       <SectionCard title="Dispensers to verify">

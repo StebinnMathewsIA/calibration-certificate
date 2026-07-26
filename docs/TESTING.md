@@ -476,6 +476,16 @@ Rollout order matters: verify on-device FIRST, then set
       cert number fragment, site, customer, dispenser or VO name filters;
       each row downloads + shares the sealed PDF
 
+### Mini map + Google Maps handoff (#73)
+
+- [ ] Work order screen: sites with GPS show a small map with a marker at
+      the site; "Open in Google Maps" opens the Maps APP at that exact point
+- [ ] Site screen shows the same map + button
+- [ ] A site with an address but no GPS shows only the button (address
+      search); a site with neither shows no map block
+- [ ] Offline: the map preview may be blank, but the button still opens
+      Google Maps (which handles its own offline behavior)
+
 ### Production work orders from OnKey (#55, #57)
 
 - [ ] Sign in as stebinn@gmail.com or sashern@prowalco.co.za (demo aliases) →

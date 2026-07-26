@@ -52,6 +52,19 @@ export async function submitForSigning(
   return signResponseSchema.parse(body);
 }
 
+/** One certified proving measure from the register (#70). */
+export interface MeasureRecord {
+  id?: number;
+  size: string; // '200L' | '20L' | '5L'
+  serialNumber: string;
+  certificateNumber: string;
+  calibrationDate: string | null;
+  expiryDate: string;
+  status?: string; // 'active' | 'superseded'
+  addedAt?: string | null;
+  supersededAt?: string | null;
+}
+
 /** The signed-in technician's record from the mined register (#62). */
 export interface MyTechnician {
   staffCode: string;
@@ -61,13 +74,9 @@ export interface MyTechnician {
   email: string | null;
   manager: string | null;
   pliersNumber: string | null;
-  measures: {
-    size: string;
-    serialNumber: string;
-    certificateNumber: string;
-    calibrationDate: string;
-    expiryDate: string;
-  }[];
+  /** ACTIVE certified measures from the register (#70) — blank until the
+   * technician registers their own. */
+  measures: MeasureRecord[];
 }
 
 export async function getMyTechnician(
@@ -83,7 +92,7 @@ export async function getMyTechnician(
 
 export async function patchMyTechnician(
   token: string | null,
-  body: { pliersNumber?: string; measures?: MyTechnician['measures'] },
+  body: { pliersNumber?: string },
 ): Promise<void> {
   try {
     await request('/v1/technicians/me', token, { method: 'PATCH', body: JSON.stringify(body) });
@@ -91,6 +100,33 @@ export async function patchMyTechnician(
     if (!isNetworkError(err)) throw err;
     enqueueWrite('patchMyTechnician', { body });
   }
+}
+
+/** Register a newly certified proving measure (#70). Supersedes the old
+ * measure of that size server-side; queues offline. */
+export async function addMeasure(
+  token: string | null,
+  body: Omit<MeasureRecord, 'id' | 'status' | 'addedAt' | 'supersededAt'>,
+): Promise<void> {
+  try {
+    await request('/v1/technicians/me/measures', token, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  } catch (err) {
+    if (!isNetworkError(err)) throw err;
+    enqueueWrite('addMeasure', { body });
+  }
+}
+
+/** Active + historic measures for the signed-in technician (#70). */
+export async function getMyMeasures(
+  token: string | null,
+): Promise<{ active: MeasureRecord[]; history: MeasureRecord[] }> {
+  return await rpc<{ active: MeasureRecord[]; history: MeasureRecord[] }>(
+    'app_my_measures',
+    token,
+  );
 }
 
 export async function enrollDevice(

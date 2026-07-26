@@ -354,21 +354,27 @@ Rollout order matters: verify on-device FIRST, then set
 - [ ] Certificate still prints Initial & Surname from the register-sourced
       name; offline profile loads from the local store unchanged
 
-### Proving measures in the profile (#48)
+### Certified measures register (#70 — supersedes the #48 prefill flow)
 
-- [ ] Profile shows "My proving measures" with the 200L / 20L / 5L measures
-      prefilled (PRO-1148D / PRO-1103T / PRO-1181Z + certificate numbers and
-      cal/expiry dates) before any verification is started
-- [ ] Editing a serial/certificate/date and saving survives app restart
-- [ ] "Photograph measure" opens the camera (permission prompt first run);
-      the shot appears as a thumbnail with a "Photo ✓" badge and survives
-      restart; "Retake" replaces it
-- [ ] A real technician (direct OnKey email): saved measures persist to the
-      register (onkey_technicians.measures) and reload on a fresh install;
-      demo aliases keep them local-only
-- [ ] Start a NEW verification → the certificate's reference-measure /
-      traceability block prints the PROFILE values (edit a serial first and
-      confirm the edited value prints); photos never upload or print
+- [ ] Fresh sign-in: profile shows NO measures ("No certified measures
+      registered yet") — there are no defaults anywhere
+- [ ] Home shows a RED "verifications blocked" banner while measures are
+      missing/expired; tapping it opens the profile
+- [ ] Starting a verification with missing/expired measures is blocked with
+      a per-measure reason list (works offline too)
+- [ ] Register a measure per size (serial, cert no., cal date, expiry all
+      required): it appears active with an in-date badge; the Home banner
+      clears once all three are registered and in date
+- [ ] Register a replacement for a size: the old one moves to "Measure
+      history" (superseded, kept forever); the new one is active
+- [ ] Home shows an AMBER "expiring soon" banner when a measure's expiry is
+      within 30 days
+- [ ] Photos per size still capture/retake and stay on-device
+- [ ] Demo alias: measures visible (ridden technician's), register is
+      read-only
+- [ ] A new verification snapshots the ACTIVE measures into the certificate;
+      an issued certificate keeps printing the measures that were active at
+      its verification date even after a replacement is registered
 
 ### Direct Supabase reads (Arch v2 phase 1, #65)
 

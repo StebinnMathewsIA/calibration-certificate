@@ -4,7 +4,6 @@ GET resolves the sign-in email like everything else (demo aliases ride the
 busiest technician, read-only). PATCH requires a DIRECT email match — an
 alias account must never rename the real technician it rides.
 """
-import json
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -19,7 +18,29 @@ from ..workorders.onkey_directory import resolve_staff_code_for_email
 router = APIRouter(prefix="/v1/technicians", tags=["technicians"])
 
 
-def _record(row) -> dict:
+def _active_measures(db: Session, staff_code: str) -> list[dict]:
+    rows = db.execute(
+        text(
+            "SELECT * FROM technician_measures "
+            "WHERE staff_code = :sc AND status = 'active' ORDER BY size"
+        ),
+        {"sc": staff_code},
+    ).all()
+    return [
+        {
+            "id": m.id,
+            "size": m.size,
+            "serialNumber": m.serial_number,
+            "certificateNumber": m.certificate_number,
+            "calibrationDate": m.calibration_date.isoformat() if m.calibration_date else None,
+            "expiryDate": m.expiry_date.isoformat(),
+            "status": m.status,
+        }
+        for m in rows
+    ]
+
+
+def _record(db: Session, row) -> dict:
     return {
         "staffCode": row.staff_code,
         "name": row.name,
@@ -28,7 +49,9 @@ def _record(row) -> dict:
         "email": row.email,
         "manager": row.manager,
         "pliersNumber": row.pliers_number,
-        "measures": row.measures or [],
+        # Measures come from the certified register (#70), not the
+        # deprecated jsonb column.
+        "measures": _active_measures(db, row.staff_code),
     }
 
 
@@ -57,30 +80,32 @@ def my_technician(
         raise HTTPException(status_code=404, detail="No technician record for this account")
     direct = _direct_row(db, identity.email)
     return {
-        "technician": _record(row),
+        "technician": _record(db, row),
         # Aliases ride someone else's record and may not edit it.
         "editable": bool(direct is not None and direct.staff_code == staff_code),
     }
 
 
+MEASURE_SIZES = ("200L", "20L", "5L")
+
+
 class MeasureBody(BaseModel):
-    """One proving measure (#48). Photos stay on-device; only the register
-    data syncs."""
+    """A newly certified proving measure (#70). Adding one supersedes the
+    previous measure of that size — history is never deleted. Photos stay
+    on-device."""
 
     size: str = Field(max_length=8)
-    serialNumber: str = Field(max_length=64)
-    certificateNumber: str = Field(default="", max_length=64)
-    calibrationDate: str = Field(default="", max_length=10)
-    expiryDate: str = Field(default="", max_length=10)
+    serialNumber: str = Field(min_length=1, max_length=64)
+    certificateNumber: str = Field(min_length=1, max_length=64)
+    calibrationDate: str = Field(min_length=10, max_length=10)
+    expiryDate: str = Field(min_length=10, max_length=10)
 
 
 class TechnicianPatch(BaseModel):
-    """Self-service fields (#63): pliers number and proving measures. Name
-    and surname come from the technician register and are corrected at
-    source."""
+    """Self-service fields (#63): pliers number. Names come from the
+    register; measures go through POST /me/measures (#70)."""
 
     pliersNumber: str | None = Field(default=None, max_length=64)
-    measures: list[MeasureBody] | None = Field(default=None, max_length=6)
 
 
 @router.patch("/me")
@@ -95,28 +120,62 @@ def patch_my_technician(
             status_code=403,
             detail="Only the technician's own sign-in may edit their record",
         )
-    updates: dict = {
-        column: value.strip()
-        for column, value in {"pliers_number": body.pliersNumber}.items()
-        if value is not None and value.strip()
-    }
-    if body.measures is not None:
-        updates["measures"] = json.dumps([m.model_dump() for m in body.measures])
-    if not updates:
+    if body.pliersNumber is None or not body.pliersNumber.strip():
         raise HTTPException(status_code=422, detail="No fields to update")
-    set_clause = ", ".join(
-        f"{column} = cast(:{column} as jsonb)" if column == "measures" else f"{column} = :{column}"
-        for column in updates
-    )
     db.execute(
         text(
-            f"UPDATE onkey_technicians SET {set_clause}, updated_at = now() "  # noqa: S608
+            "UPDATE onkey_technicians SET pliers_number = :pn, updated_at = now() "
             "WHERE staff_code = :sc"
         ),
-        {**updates, "sc": row.staff_code},
+        {"pn": body.pliersNumber.strip(), "sc": row.staff_code},
     )
     db.commit()
     fresh = db.execute(
         text("SELECT * FROM onkey_technicians WHERE staff_code = :sc"), {"sc": row.staff_code}
     ).first()
-    return {"technician": _record(fresh), "editable": True}
+    return {"technician": _record(db, fresh), "editable": True}
+
+
+@router.post("/me/measures")
+def add_measure(
+    body: MeasureBody,
+    db: Session = Depends(get_db),
+    identity: Identity = Depends(get_identity),
+) -> dict:
+    """Registers a newly certified proving measure (#70): the previous
+    active measure of that size is superseded (kept as history), never
+    deleted. Direct email match only — aliases cannot write."""
+    row = _direct_row(db, identity.email)
+    if row is None:
+        raise HTTPException(
+            status_code=403,
+            detail="Only the technician's own sign-in may register measures",
+        )
+    if body.size not in MEASURE_SIZES:
+        raise HTTPException(status_code=422, detail=f"size must be one of {MEASURE_SIZES}")
+    db.execute(
+        text(
+            "UPDATE technician_measures SET status = 'superseded', superseded_at = now() "
+            "WHERE staff_code = :sc AND size = :size AND status = 'active'"
+        ),
+        {"sc": row.staff_code, "size": body.size},
+    )
+    db.execute(
+        text(
+            "INSERT INTO technician_measures "
+            "(staff_code, size, serial_number, certificate_number, calibration_date, "
+            " expiry_date, added_by) "
+            "VALUES (:sc, :size, :serial, :cert, cast(:cal as date), cast(:exp as date), :by)"
+        ),
+        {
+            "sc": row.staff_code,
+            "size": body.size,
+            "serial": body.serialNumber.strip(),
+            "cert": body.certificateNumber.strip(),
+            "cal": body.calibrationDate,
+            "exp": body.expiryDate,
+            "by": identity.email,
+        },
+    )
+    db.commit()
+    return {"measures": _active_measures(db, row.staff_code)}

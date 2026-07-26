@@ -1,34 +1,10 @@
 /**
- * PoC stand-ins for controlled internal registers. Production syncs these from
- * the backend so serials, certificate numbers and expiry dates cannot be typed
- * in. Reference measures are Prowalco's own proving measures (200/20/5 L).
+ * Controlled internal constants. Proving measures are NO LONGER constants:
+ * each technician registers their own certified measures (technician_measures
+ * register, #70) — there are no defaults.
  */
-import type { DeliveryPoint, ReferenceMeasure } from '@prowalco/schema';
+import type { DeliveryPoint } from '@prowalco/schema';
 import { DEFAULT_METHOD_REFERENCE } from '@prowalco/schema';
-
-export const REFERENCE_MEASURES: ReferenceMeasure[] = [
-  {
-    size: '200L',
-    serialNumber: 'PRO-1148D',
-    certificateNumber: 'D83126',
-    calibrationDate: '2026-03-19',
-    expiryDate: '2027-03-19',
-  },
-  {
-    size: '20L',
-    serialNumber: 'PRO-1103T',
-    certificateNumber: 'D83126',
-    calibrationDate: '2026-03-19',
-    expiryDate: '2027-03-19',
-  },
-  {
-    size: '5L',
-    serialNumber: 'PRO-1181Z',
-    certificateNumber: 'D88126',
-    calibrationDate: '2026-03-19',
-    expiryDate: '2027-03-19',
-  },
-];
 
 export const METHOD_REFERENCE = DEFAULT_METHOD_REFERENCE;
 

@@ -18,7 +18,8 @@ export type OutboxKind =
   | 'editDispenser'
   | 'retireDispenser'
   | 'saveDispenserDetail'
-  | 'patchMyTechnician';
+  | 'patchMyTechnician'
+  | 'addMeasure';
 
 interface OutboxRow {
   id: number;
@@ -71,6 +72,12 @@ async function perform(token: string | null, kind: OutboxKind, p: any): Promise<
     case 'patchMyTechnician':
       await request('/v1/technicians/me', token, {
         method: 'PATCH',
+        body: JSON.stringify(p.body),
+      });
+      return;
+    case 'addMeasure':
+      await request('/v1/technicians/me/measures', token, {
+        method: 'POST',
         body: JSON.stringify(p.body),
       });
       return;

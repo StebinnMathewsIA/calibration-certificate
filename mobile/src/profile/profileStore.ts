@@ -6,13 +6,14 @@
  */
 import { readCache, writeCache } from '../db/cache';
 
-/** One proving measure the VO owns (#48). The register data syncs to the
- * technician table; the photo stays on this device. */
+/** Offline mirror of one ACTIVE certified measure (#70). Source of truth is
+ * the server's technician_measures register; this copy powers the offline
+ * verification gate. Photos live in `measurePhotos`, keyed by size. */
 export interface StoredMeasure {
   size: string; // '200L' | '20L' | '5L'
   serialNumber: string;
   certificateNumber: string;
-  calibrationDate: string; // YYYY-MM-DD
+  calibrationDate?: string | null; // YYYY-MM-DD
   expiryDate: string; // YYYY-MM-DD
   photoUri?: string;
 }
@@ -28,8 +29,10 @@ export interface TechProfile {
   pliersNumber?: string;
   /** The VO's drawn signature as a standalone SVG string. */
   signatureSvg?: string;
-  /** The VO's own 200L/20L/5L proving measures (#48). */
+  /** Offline mirror of the VO's ACTIVE certified measures (#70). */
   measures?: StoredMeasure[];
+  /** Device-local photos of the measures, keyed by size (#48/#70). */
+  measurePhotos?: Record<string, string>;
 }
 
 /** The VO name as printed on the certificate — the document's field is

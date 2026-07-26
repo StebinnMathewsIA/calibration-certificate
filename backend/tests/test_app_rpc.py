@@ -139,6 +139,23 @@ def test_insights_shape(db):
     assert ins["me"]["openTotal"] <= ins["company"]["openTotal"]
 
 
+def test_measures_register_shape(db):
+    """Certified measures register (#70): blank for a nobody; active is a
+    subset of history; the technician record's measures mirror the table."""
+    _as_email(db, "nobody@example.invalid")
+    m = db.execute(text("SELECT app_my_measures()")).scalar()
+    assert m == {"active": [], "history": []}
+
+    _as_email(db, "stebinn@gmail.com")
+    m = db.execute(text("SELECT app_my_measures()")).scalar()
+    active_ids = {row["id"] for row in m["active"]}
+    history_ids = {row["id"] for row in m["history"]}
+    assert active_ids <= history_ids
+    tech = db.execute(text("SELECT app_my_technician()")).scalar()
+    if tech is not None:
+        assert {row["id"] for row in tech["technician"]["measures"]} == active_ids
+
+
 def test_api_roles_are_locked_down(db):
     """authenticated: no direct table reads, but RPC executes; anon: nothing."""
     _as_email(db, "nobody@example.invalid")

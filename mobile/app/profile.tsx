@@ -2,10 +2,15 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useState } from 'react';
 import { Alert, Image, Text, TextInput, View } from 'react-native';
 import { useAuth } from '../src/auth/AuthContext';
-import { getMyTechnician, MyTechnician, patchMyTechnician } from '../src/api/client';
+import {
+  MeasureRecord,
+  MyTechnician,
+  addMeasure,
+  getMyMeasures,
+  getMyTechnician,
+  patchMyTechnician,
+} from '../src/api/client';
 import { CameraCaptureModal } from '../src/components/CameraCaptureModal';
-import { REFERENCE_MEASURES } from '../src/data/registers';
-import type { StoredMeasure } from '../src/profile/profileStore';
 import { Badge, Button, SectionCard, colors } from '../src/components/ui';
 import { FormScrollView } from '../src/components/FormScrollView';
 import { fetchThrough, readCache } from '../src/db/cache';
@@ -39,15 +44,39 @@ export default function ProfileScreen() {
   const [loaded, setLoaded] = useState(false);
   const [technician, setTechnician] = useState<MyTechnician | null>(null);
   const [registerEditable, setRegisterEditable] = useState(false);
-  // Proving measures (#48): default from the known register constants so the
-  // serials are prefilled; the VO confirms/edits and photographs each one.
-  const [measures, setMeasures] = useState<StoredMeasure[]>(
-    REFERENCE_MEASURES.map((m) => ({ ...m })),
-  );
+  // Certified measures register (#70): NO defaults — blank until the VO
+  // registers their own certified measures. Adding one supersedes the old
+  // measure of that size; history is kept forever.
+  const [measures, setMeasures] = useState<MeasureRecord[]>([]);
+  const [history, setHistory] = useState<MeasureRecord[]>([]);
+  const [measurePhotos, setMeasurePhotos] = useState<Record<string, string>>({});
   const [photoTarget, setPhotoTarget] = useState<string | null>(null);
+  // "Add certified measure" form.
+  const [addSize, setAddSize] = useState<string | null>(null);
+  const [addSerial, setAddSerial] = useState('');
+  const [addCert, setAddCert] = useState('');
+  const [addCalDate, setAddCalDate] = useState('');
+  const [addExpiry, setAddExpiry] = useState('');
+  const [addBusy, setAddBusy] = useState(false);
 
-  const setMeasureField = (size: string, field: keyof StoredMeasure, value: string) =>
-    setMeasures((prev) => prev.map((m) => (m.size === size ? { ...m, [field]: value } : m)));
+  /** Mirror the active measures into the local store — the offline
+   * verification gate reads it. */
+  const mirrorMeasures = useCallback(
+    (active: MeasureRecord[]) => {
+      const p = getProfile(subject);
+      saveProfile(subject, {
+        ...p,
+        measures: active.map((m) => ({
+          size: m.size,
+          serialNumber: m.serialNumber,
+          certificateNumber: m.certificateNumber,
+          calibrationDate: m.calibrationDate,
+          expiryDate: m.expiryDate,
+        })),
+      });
+    },
+    [subject],
+  );
 
   // Load the profile, and pick up a freshly-drawn signature on return.
   useFocusEffect(
@@ -66,12 +95,35 @@ export default function ProfileScreen() {
           setLastName(words.length > 0 ? words[words.length - 1] : '');
         }
         setPliers(p.pliersNumber ?? '');
-        if (p.measures?.length) setMeasures(p.measures);
+        // Offline: last mirrored active measures + device photos.
+        if (p.measures?.length) {
+          setMeasures(p.measures.map((m) => ({ ...m, calibrationDate: m.calibrationDate ?? null })));
+        }
+        setMeasurePhotos(p.measurePhotos ?? {});
         setLoaded(true);
       }
       const fresh = readCache<string>(voSignatureCacheKey(subject));
       setSignatureSvg(fresh ?? p.signatureSvg ?? '');
     }, [subject, identity?.name, loaded]),
+  );
+
+  // The measures register (#70): server is the source of truth; the local
+  // mirror updates whenever it loads.
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      fetchThrough('measures:my', () => getMyMeasures(accessToken))
+        .then(({ active, history: past }) => {
+          if (cancelled) return;
+          setMeasures(active);
+          setHistory(past.filter((m) => m.status !== 'active'));
+          mirrorMeasures(active);
+        })
+        .catch(() => {});
+      return () => {
+        cancelled = true;
+      };
+    }, [accessToken, mirrorMeasures]),
   );
 
   // The technician register is the SOURCE OF TRUTH for the name (#63): it is
@@ -105,11 +157,6 @@ export default function ProfileScreen() {
           }
           const p = getProfile(subject);
           if (!p.pliersNumber && tech.pliersNumber) setPliers(tech.pliersNumber);
-          // Server-held measures win over the constants; local photos are
-          // re-attached by size.
-          if (!p.measures?.length && tech.measures?.length) {
-            setMeasures(tech.measures.map((m) => ({ ...m })));
-          }
         })
         .catch(() => {});
       return () => {
@@ -124,8 +171,8 @@ export default function ProfileScreen() {
   );
 
   const save = () => {
-    // Name comes from the technician register (#63) — only pliers and the
-    // signature are self-service. Keep whatever name is cached locally.
+    // Name comes from the technician register (#63); measures go through
+    // the add-measure flow (#70) — only pliers and the signature save here.
     const p = getProfile(subject);
     saveProfile(subject, {
       ...p,
@@ -134,19 +181,57 @@ export default function ProfileScreen() {
       displayName: `${firstName.trim()} ${lastName.trim()}`.trim() || p.displayName,
       pliersNumber: pliers.trim(),
       signatureSvg: signatureSvg || undefined,
-      measures,
     });
-    // Persist pliers + measures to the technician register too (photos stay
-    // on-device) — best-effort; demo alias accounts are read-only there and
-    // offline saves stay local.
-    if (registerEditable) {
-      patchMyTechnician(accessToken, {
-        ...(pliers.trim() ? { pliersNumber: pliers.trim() } : {}),
-        measures: measures.map(({ photoUri, ...m }) => m),
-      }).catch(() => {});
+    if (registerEditable && pliers.trim()) {
+      patchMyTechnician(accessToken, { pliersNumber: pliers.trim() }).catch(() => {});
     }
     Alert.alert('Profile saved', 'Your name, VO number and signature will be used on certificates you sign.');
     router.back();
+  };
+
+  const submitMeasure = async () => {
+    if (!addSize) return;
+    if (
+      !addSerial.trim() ||
+      !addCert.trim() ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(addCalDate) ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(addExpiry)
+    ) {
+      Alert.alert(
+        'Measure incomplete',
+        'A certified measure needs its serial number, calibration certificate number, calibration date and expiry date (YYYY-MM-DD).',
+      );
+      return;
+    }
+    setAddBusy(true);
+    try {
+      const body = {
+        size: addSize,
+        serialNumber: addSerial.trim(),
+        certificateNumber: addCert.trim(),
+        calibrationDate: addCalDate,
+        expiryDate: addExpiry,
+      };
+      await addMeasure(accessToken, body);
+      // Optimistic local supersede — the next sync confirms from the server.
+      const replaced = measures.find((m) => m.size === addSize);
+      const active = [
+        ...measures.filter((m) => m.size !== addSize),
+        { ...body, status: 'active' },
+      ].sort((a, b) => a.size.localeCompare(b.size));
+      setMeasures(active);
+      if (replaced) setHistory((h) => [{ ...replaced, status: 'superseded' }, ...h]);
+      mirrorMeasures(active);
+      setAddSize(null);
+      setAddSerial('');
+      setAddCert('');
+      setAddCalDate('');
+      setAddExpiry('');
+    } catch (err) {
+      Alert.alert('Could not register measure', err instanceof Error ? err.message : String(err));
+    } finally {
+      setAddBusy(false);
+    }
   };
 
   return (
@@ -178,70 +263,136 @@ export default function ProfileScreen() {
         ) : null}
       </SectionCard>
 
-      <SectionCard title="My proving measures">
+      <SectionCard title="My certified proving measures">
         <Text style={{ color: colors.muted, fontSize: 12, marginBottom: 8 }}>
-          Only own equipment is used. These serials and certificate numbers print in the
-          certificate's traceability block — confirm them once and photograph each measure.
+          Only certified equipment may be used. A verification cannot start until your 200L, 20L
+          and 5L measures are registered and in date. Registering a new measure supersedes the old
+          one — history is kept.
         </Text>
-        {measures.map((m) => (
-          <View
-            key={m.size}
-            style={{ borderTopWidth: 1, borderTopColor: colors.line, paddingTop: 8, marginTop: 8 }}
-          >
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
-              <Text style={{ fontWeight: '700', color: colors.ink, flex: 1 }}>
-                {m.size} proving measure
+        {measures.length === 0 ? (
+          <Badge text="No certified measures registered yet" tone="bad" />
+        ) : null}
+        {measures.map((m) => {
+          const today = new Date().toISOString().slice(0, 10);
+          const soon = new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+          const expired = m.expiryDate < today;
+          const dueSoon = !expired && m.expiryDate <= soon;
+          const photo = measurePhotos[m.size];
+          return (
+            <View
+              key={m.size}
+              style={{ borderTopWidth: 1, borderTopColor: colors.line, paddingTop: 8, marginTop: 8 }}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+                <Text style={{ fontWeight: '700', color: colors.ink, flex: 1 }}>
+                  {m.size} · {m.serialNumber}
+                </Text>
+                <Badge
+                  text={expired ? '✗ Expired' : dueSoon ? '⚠ Due soon' : '✓ In date'}
+                  tone={expired ? 'bad' : dueSoon ? 'warn' : 'ok'}
+                />
+              </View>
+              <Text style={{ fontSize: 12, color: colors.muted }}>
+                Cert {m.certificateNumber}
+                {m.calibrationDate ? ` · calibrated ${m.calibrationDate}` : ''} · expires{' '}
+                {m.expiryDate}
               </Text>
-              <Badge text={m.photoUri ? 'Photo ✓' : 'No photo'} tone={m.photoUri ? 'ok' : 'warn'} />
-            </View>
-            <Text style={{ fontSize: 12, color: colors.muted }}>Serial number</Text>
-            <TextInput
-              style={inputStyle}
-              value={m.serialNumber}
-              onChangeText={(v) => setMeasureField(m.size, 'serialNumber', v)}
-              autoCapitalize="characters"
-            />
-            <Text style={{ fontSize: 12, color: colors.muted }}>Calibration certificate no.</Text>
-            <TextInput
-              style={inputStyle}
-              value={m.certificateNumber}
-              onChangeText={(v) => setMeasureField(m.size, 'certificateNumber', v)}
-              autoCapitalize="characters"
-            />
-            <View style={{ flexDirection: 'row', gap: 8 }}>
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 12, color: colors.muted }}>Cal. date (YYYY-MM-DD)</Text>
-                <TextInput
-                  style={inputStyle}
-                  value={m.calibrationDate}
-                  onChangeText={(v) => setMeasureField(m.size, 'calibrationDate', v)}
-                  placeholder="2026-03-19"
+              {photo ? (
+                <Image
+                  source={{ uri: photo }}
+                  style={{ width: '100%', height: 120, borderRadius: 8, marginVertical: 8 }}
+                  resizeMode="cover"
                 />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 12, color: colors.muted }}>Expiry (YYYY-MM-DD)</Text>
-                <TextInput
-                  style={inputStyle}
-                  value={m.expiryDate}
-                  onChangeText={(v) => setMeasureField(m.size, 'expiryDate', v)}
-                  placeholder="2027-03-19"
-                />
-              </View>
-            </View>
-            {m.photoUri ? (
-              <Image
-                source={{ uri: m.photoUri }}
-                style={{ width: '100%', height: 120, borderRadius: 8, marginBottom: 8 }}
-                resizeMode="cover"
+              ) : null}
+              <Button
+                title={photo ? `Retake ${m.size} photo` : `Photograph ${m.size} measure`}
+                kind="secondary"
+                onPress={() => setPhotoTarget(m.size)}
               />
+            </View>
+          );
+        })}
+
+        {registerEditable ? (
+          <View style={{ borderTopWidth: 1, borderTopColor: colors.line, paddingTop: 10, marginTop: 10 }}>
+            <Text style={{ fontWeight: '700', color: colors.ink, marginBottom: 6 }}>
+              Register a newly certified measure
+            </Text>
+            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
+              {['200L', '20L', '5L'].map((s) => (
+                <View key={s} style={{ flex: 1 }}>
+                  <Button
+                    title={s}
+                    kind={addSize === s ? 'primary' : 'secondary'}
+                    onPress={() => setAddSize(addSize === s ? null : s)}
+                  />
+                </View>
+              ))}
+            </View>
+            {addSize ? (
+              <>
+                <Text style={{ fontSize: 12, color: colors.muted }}>Serial number</Text>
+                <TextInput
+                  style={inputStyle}
+                  value={addSerial}
+                  onChangeText={setAddSerial}
+                  autoCapitalize="characters"
+                  placeholder="PRO-…"
+                />
+                <Text style={{ fontSize: 12, color: colors.muted }}>Calibration certificate no.</Text>
+                <TextInput
+                  style={inputStyle}
+                  value={addCert}
+                  onChangeText={setAddCert}
+                  autoCapitalize="characters"
+                />
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 12, color: colors.muted }}>Cal. date (YYYY-MM-DD)</Text>
+                    <TextInput
+                      style={inputStyle}
+                      value={addCalDate}
+                      onChangeText={setAddCalDate}
+                      placeholder="2026-03-19"
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 12, color: colors.muted }}>Expiry (YYYY-MM-DD)</Text>
+                    <TextInput
+                      style={inputStyle}
+                      value={addExpiry}
+                      onChangeText={setAddExpiry}
+                      placeholder="2027-03-19"
+                    />
+                  </View>
+                </View>
+                <Button
+                  title={`Register ${addSize} measure${measures.some((m) => m.size === addSize) ? ' (supersedes current)' : ''}`}
+                  onPress={() => void submitMeasure()}
+                  busy={addBusy}
+                />
+              </>
             ) : null}
-            <Button
-              title={m.photoUri ? `Retake ${m.size} photo` : `Photograph ${m.size} measure`}
-              kind="secondary"
-              onPress={() => setPhotoTarget(m.size)}
-            />
           </View>
-        ))}
+        ) : (
+          <Text style={{ fontSize: 12, color: colors.muted, marginTop: 8 }}>
+            Demo account — the measures register is read-only.
+          </Text>
+        )}
+
+        {history.length > 0 ? (
+          <View style={{ borderTopWidth: 1, borderTopColor: colors.line, paddingTop: 10, marginTop: 10 }}>
+            <Text style={{ fontWeight: '700', color: colors.ink, marginBottom: 4 }}>
+              Measure history
+            </Text>
+            {history.map((m, i) => (
+              <Text key={`${m.id ?? i}`} style={{ fontSize: 12, color: colors.muted, marginTop: 3 }}>
+                {m.size} · {m.serialNumber} · cert {m.certificateNumber} · expired {m.expiryDate}
+                {m.supersededAt ? ` · superseded ${m.supersededAt.slice(0, 10)}` : ''}
+              </Text>
+            ))}
+          </View>
+        ) : null}
       </SectionCard>
 
       <CameraCaptureModal
@@ -250,7 +401,11 @@ export default function ProfileScreen() {
         fileStem={`measure-${photoTarget ?? 'x'}-${subject.slice(0, 8)}`}
         onClose={() => setPhotoTarget(null)}
         onCaptured={(uri) => {
-          if (photoTarget) setMeasureField(photoTarget, 'photoUri', `${uri}?t=${Date.now()}`);
+          if (!photoTarget) return;
+          const next = { ...measurePhotos, [photoTarget]: `${uri}?t=${Date.now()}` };
+          setMeasurePhotos(next);
+          const p = getProfile(subject);
+          saveProfile(subject, { ...p, measurePhotos: next });
         }}
       />
 

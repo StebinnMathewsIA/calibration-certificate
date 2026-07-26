@@ -8,6 +8,7 @@ import { TrashIcon } from '../../src/components/BrandHeader';
 import { GreetingHeader } from '../../src/components/GreetingHeader';
 import { SyncBanner } from '../../src/components/SyncBanner';
 import { fetchThrough } from '../../src/db/cache';
+import { getProfile } from '../../src/profile/profileStore';
 import * as repo from '../../src/db/certificateRepo';
 import { processQueue } from '../../src/queue/signQueue';
 import { Badge, colors, styles } from '../../src/components/ui';
@@ -114,6 +115,26 @@ export default function HomeScreen() {
       load();
     }, [load]),
   );
+
+  // Certified-measures status (#70): missing/expired blocks verifications,
+  // expiring within 30 days warns — surfaced right on Home.
+  const measureAlert = useMemo(() => {
+    if (!identity) return null;
+    const active = getProfile(identity.subject).measures ?? [];
+    const today = new Date().toISOString().slice(0, 10);
+    const soon = new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+    const missing = ['200L', '20L', '5L'].filter((s) => !active.some((m) => m.size === s));
+    const expired = active.filter((m) => m.expiryDate < today);
+    const expiring = active.filter((m) => m.expiryDate >= today && m.expiryDate <= soon);
+    if (missing.length + expired.length + expiring.length === 0) return null;
+    const blocking = missing.length > 0 || expired.length > 0;
+    const parts = [
+      ...missing.map((s) => `${s} not registered`),
+      ...expired.map((m) => `${m.size} expired ${m.expiryDate}`),
+      ...expiring.map((m) => `${m.size} expires ${m.expiryDate}`),
+    ];
+    return { blocking, text: parts.join(' · ') };
+  }, [identity, workOrders]);
 
   const retryItem = async (itemId: string) => {
     repo.clearRetryBackoff(itemId);
@@ -268,6 +289,29 @@ export default function HomeScreen() {
         refreshing={refreshing}
       />
       <SyncBanner onQueueDrained={loadLocal} />
+      {measureAlert ? (
+        <Pressable
+          onPress={() => router.push('/profile')}
+          style={{
+            marginHorizontal: 12,
+            marginBottom: 8,
+            borderRadius: 12,
+            borderWidth: 1.5,
+            padding: 10,
+            borderColor: measureAlert.blocking ? colors.red : colors.amberFill,
+            backgroundColor: measureAlert.blocking ? colors.redTint : colors.amberTint,
+          }}
+        >
+          <Text style={{ fontWeight: '700', color: measureAlert.blocking ? colors.red : colors.amber, fontSize: 13 }}>
+            {measureAlert.blocking
+              ? 'Proving measures — verifications blocked'
+              : 'Proving measures expiring soon'}
+          </Text>
+          <Text style={{ color: colors.ink, fontSize: 12, marginTop: 2 }}>
+            {measureAlert.text} — tap to manage your certified measures.
+          </Text>
+        </Pressable>
+      ) : null}
       <FlatList
         data={sectionedItems}
         keyExtractor={(x) => (x.kind === 'header' ? `h:${x.title}` : x.wo.id)}

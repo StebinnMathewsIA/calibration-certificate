@@ -22,7 +22,7 @@ import { Button, SectionCard, colors } from '../../../src/components/ui';
 import { FormScrollView } from '../../../src/components/FormScrollView';
 import { config } from '../../../src/config';
 import { fetchThrough } from '../../../src/db/cache';
-import { DELIVERY_NOMINAL_ML, METHOD_REFERENCE, REFERENCE_MEASURES } from '../../../src/data/registers';
+import { DELIVERY_NOMINAL_ML, METHOD_REFERENCE } from '../../../src/data/registers';
 import { getProfile } from '../../../src/profile/profileStore';
 import * as repo from '../../../src/db/certificateRepo';
 
@@ -133,6 +133,28 @@ export default function RegisterScreen() {
       }
     }
     if (!identity) return;
+
+    // Certified-measures gate (#70): no verification starts without all
+    // three measures registered and in date. Mirrored locally, so the gate
+    // works offline.
+    const activeMeasures = getProfile(identity.subject).measures ?? [];
+    const today = new Date().toISOString().slice(0, 10);
+    const missing = ['200L', '20L', '5L'].filter(
+      (s) => !activeMeasures.some((m) => m.size === s),
+    );
+    const expired = activeMeasures.filter((m) => m.expiryDate < today);
+    if (missing.length > 0 || expired.length > 0) {
+      const problems = [
+        ...missing.map((s) => `• ${s} measure not registered`),
+        ...expired.map((m) => `• ${m.size} measure ${m.serialNumber} expired ${m.expiryDate}`),
+      ].join('\n');
+      Alert.alert(
+        'Certified measures required',
+        `A verification cannot start until your proving measures are certified and in date:\n\n${problems}\n\nRegister them in your profile.`,
+      );
+      return;
+    }
+
     setBusy(true);
     try {
       const detail: Omit<DispenserDetail, 'dispenserId' | 'updatedAt'> = {
@@ -203,14 +225,15 @@ export default function RegisterScreen() {
           saApprovalNumber: disp.saApprovalNumber,
           serialNumber: disp.serialNumber,
         },
-        // The VO's own proving measures from their profile (#48); the register
-        // constants remain the fallback until the profile is filled in.
-        referenceMeasures: (() => {
-          const stored = getProfile(identity.subject).measures;
-          return stored?.length
-            ? (stored.map(({ photoUri: _photo, ...m }) => m) as Verification['referenceMeasures'])
-            : REFERENCE_MEASURES;
-        })(),
+        // The VO's ACTIVE certified measures (#70) — the gate above
+        // guarantees all three sizes exist and are in date.
+        referenceMeasures: activeMeasures.map((m) => ({
+          size: m.size,
+          serialNumber: m.serialNumber,
+          certificateNumber: m.certificateNumber,
+          calibrationDate: m.calibrationDate,
+          expiryDate: m.expiryDate,
+        })) as unknown as Verification['referenceMeasures'],
         methodReference: METHOD_REFERENCE,
         hoses: hoseResults,
         signOff: {

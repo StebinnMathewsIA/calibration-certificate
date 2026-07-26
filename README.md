@@ -102,6 +102,15 @@ federates Microsoft/Google/Apple — enable the providers per
 docs/supabase-setup.md), `EXPO_PUBLIC_BRANCH_CODE`. Replace the placeholder
 logo in `mobile/assets/logo-base64.ts` with the client asset.
 
+### Run on an Android tablet emulator (Windows)
+
+Step-by-step (boot a Pixel Tablet AVD, install the EAS dev-client `.apk`, hot
+reload over Metro), including how to exercise the biometric sign gate, GPS, and
+offline sign queue on the emulator:
+[docs/android-tablet-testing.md](docs/android-tablet-testing.md). Helper to
+create the tablet AVD from the command line:
+`scripts/create-android-tablet-avd.ps1`.
+
 ## Signing flow (one paragraph)
 
 App renders the certificate PDF → technician passes biometric → intent-to-

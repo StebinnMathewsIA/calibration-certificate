@@ -46,8 +46,12 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      - name: Link the EAS project
+        run: eas init --non-interactive --force
+
       - name: Submit iOS build to TestFlight
         run: |
+          set -o pipefail
           # Input read via the event payload file, not inline expression
           # substitution (see masters-load history).
           build_id=$(jq -r '.inputs.build_id // ""' "$GITHUB_EVENT_PATH")

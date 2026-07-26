@@ -417,6 +417,23 @@ def derive_registers(db: Session) -> dict:
             """
         )
     )
+    # Allocation upkeep (#82): a technician whose manager name resolves,
+    # via the master, to an email holding the manager role is allocated to
+    # that manager. Additive only; removals stay an admin decision.
+    db.execute(
+        text(
+            """
+            INSERT INTO manager_technicians (manager_email, staff_code)
+            SELECT mm.email, t.staff_code
+            FROM onkey_technicians t
+            JOIN onkey_technician_master mm
+              ON lower(mm.display_name) = lower(t.manager)
+            JOIN app_roles r ON r.email = mm.email AND r.role = 'manager'
+            WHERE upper(t.staff_code) <> 'UNKNOWN'
+            ON CONFLICT DO NOTHING
+            """
+        )
+    )
     db.commit()
 
     counts = {}

@@ -35,9 +35,9 @@ jobs:
 
       - name: Post chunk ${{ inputs.part }}
         run: |
-          # Read the payload from the event file: inline ${{ }} substitution
-          # corrupted the bytes, and step-level env values are echoed into
-          # the (public) log header — the event file avoids both.
+          # Read the payload from the event file: inline expression
+          # substitution corrupted the bytes, and step-level env values are
+          # echoed into the (public) log header — the event file avoids both.
           jq -r '.inputs.payload_b64' "$GITHUB_EVENT_PATH" | tr -d '\n' > /tmp/payload.b64
           sha256sum /tmp/payload.b64
           base64 -d /tmp/payload.b64 > /tmp/chunk.bin

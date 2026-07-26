@@ -37,39 +37,70 @@ def test_unknown_email_sees_nothing(db):
     assert db.execute(text("SELECT app_my_technician()")).scalar() is None
 
 
-def test_admin_view_as(db):
-    """Roles + view-as (#71): the seeded admin has no scope until a view-as
-    is set; setting one makes the whole read surface resolve to that
-    technician; clearing returns to none. Non-role users are refused."""
-    _as_email(db, "stebinn@gmail.com")
-    assert db.execute(text("SELECT app_role()")).scalar() == "admin"
-    db.execute(text("SELECT app_set_view_as(NULL)"))
-    db.commit()
-    assert db.execute(text("SELECT app_staff_code()")).scalar() is None
+TEST_ADMIN = "rpc-viewas-test@example.invalid"
 
-    some_tech = db.execute(
-        text("SELECT staff_code FROM onkey_technicians LIMIT 1")
-    ).scalar()
-    if some_tech:
-        db.execute(text("SELECT app_set_view_as(:sc)"), {"sc": some_tech})
-        db.commit()
-        assert db.execute(text("SELECT app_staff_code()")).scalar() == some_tech
-        wos = db.execute(text("SELECT app_my_work_orders()")).scalar()
-        for wo in wos:
-            assert wo["status"] == "open"
-            assert wo["staffCode"] == some_tech
+
+def test_admin_view_as(db):
+    """Roles + view-as (#71): an admin has no scope until a view-as is set;
+    setting one makes the whole read surface resolve to that technician;
+    clearing returns to none. Non-role users are refused. Runs as a
+    DISPOSABLE admin identity: the suite must never touch a real role
+    holder's live view-as selection (#77)."""
+    db.execute(
+        text(
+            "INSERT INTO app_roles (email, role) VALUES (:em, 'admin') "
+            "ON CONFLICT (email) DO UPDATE SET role = 'admin'"
+        ),
+        {"em": TEST_ADMIN},
+    )
+    db.commit()
+    try:
+        _as_email(db, TEST_ADMIN)
+        assert db.execute(text("SELECT app_role()")).scalar() == "admin"
         db.execute(text("SELECT app_set_view_as(NULL)"))
         db.commit()
+        assert db.execute(text("SELECT app_staff_code()")).scalar() is None
 
-    compliance = db.execute(text("SELECT app_measures_compliance()")).scalar()
-    assert compliance is not None
-    assert set(compliance) == {"total", "compliant", "issues"}
+        some_tech = db.execute(
+            text(
+                "SELECT staff_code FROM onkey_technicians "
+                "WHERE upper(staff_code) <> 'UNKNOWN' ORDER BY staff_code LIMIT 1"
+            )
+        ).scalar()
+        if some_tech:
+            db.execute(text("SELECT app_set_view_as(:sc)"), {"sc": some_tech})
+            db.commit()
+            assert db.execute(text("SELECT app_staff_code()")).scalar() == some_tech
+            wos = db.execute(text("SELECT app_my_work_orders()")).scalar()
+            for wo in wos:
+                assert wo["status"] == "open"
+                assert wo["staffCode"] == some_tech
+            db.execute(text("SELECT app_set_view_as(NULL)"))
+            db.commit()
 
-    _as_email(db, "nobody@example.invalid")
-    assert db.execute(text("SELECT app_measures_compliance()")).scalar() is None
-    with pytest.raises(Exception, match="requires a manager or admin role"):
-        db.execute(text("SELECT app_set_view_as('X')"))
-    db.rollback()
+        # View-as hygiene (#77): the WOE001 unassigned-work placeholder is
+        # neither listed nor selectable.
+        listed = db.execute(text("SELECT app_list_technicians()")).scalar()
+        assert all(t["staffCode"].upper() != "UNKNOWN" for t in listed)
+        with pytest.raises(Exception, match="Unknown technician"):
+            db.execute(text("SELECT app_set_view_as('UNKNOWN')"))
+        db.rollback()
+        _as_email(db, TEST_ADMIN)
+
+        compliance = db.execute(text("SELECT app_measures_compliance()")).scalar()
+        assert compliance is not None
+        assert set(compliance) == {"total", "compliant", "issues"}
+
+        _as_email(db, "nobody@example.invalid")
+        assert db.execute(text("SELECT app_measures_compliance()")).scalar() is None
+        with pytest.raises(Exception, match="requires a manager or admin role"):
+            db.execute(text("SELECT app_set_view_as('X')"))
+        db.rollback()
+    finally:
+        db.rollback()
+        db.execute(text("DELETE FROM app_view_as WHERE email = :em"), {"em": TEST_ADMIN})
+        db.execute(text("DELETE FROM app_roles WHERE email = :em"), {"em": TEST_ADMIN})
+        db.commit()
 
 
 def test_dispenser_detail_defaults_when_never_saved(db):

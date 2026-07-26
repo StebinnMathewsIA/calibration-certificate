@@ -90,6 +90,45 @@ export default function ProfileScreen() {
     }, [accessToken]),
   );
 
+  /** Apply a technician-register response to the screen state. Names only
+   * persist to the local store for an editable (own) record, so viewing as
+   * someone never overwrites the role holder's own identity. */
+  const applyTech = useCallback(
+    (res: { technician: MyTechnician; editable: boolean } | null) => {
+      if (!res?.technician) {
+        setTechnician(null);
+        setRegisterEditable(false);
+        return;
+      }
+      const { technician: tech, editable } = res;
+      setTechnician(tech);
+      setRegisterEditable(editable);
+      let first = tech.firstName ?? '';
+      let last = tech.lastName ?? '';
+      if (!first && !last && tech.name) {
+        const words = tech.name.split(/\s+/).filter(Boolean);
+        first = words.slice(0, -1).join(' ');
+        last = words[words.length - 1] ?? '';
+      }
+      if (first || last) {
+        setFirstName(first);
+        setLastName(last);
+        if (editable) {
+          const p = getProfile(subject);
+          saveProfile(subject, {
+            ...p,
+            firstName: first || undefined,
+            lastName: last || undefined,
+            displayName: `${first} ${last}`.trim() || p.displayName,
+          });
+        }
+      }
+      const p = getProfile(subject);
+      if (!p.pliersNumber && tech.pliersNumber) setPliers(tech.pliersNumber);
+    },
+    [subject],
+  );
+
   const switchViewAs = async (staffCode: string | null) => {
     setSwitching(true);
     try {
@@ -113,6 +152,16 @@ export default function ProfileScreen() {
       setPickerFilter('');
       // Refresh the whole device mirror so every screen shows the new scope.
       await syncAll(accessToken);
+      // The mirror is fresh now: re-apply the technician record and measures
+      // ON SCREEN too (#77) instead of leaving the pre-switch values up.
+      applyTech(
+        readCache<{ technician: MyTechnician; editable: boolean } | null>('technician:me'),
+      );
+      const mm = readCache<{ active: MeasureRecord[]; history: MeasureRecord[] }>('measures:my');
+      if (mm) {
+        setMeasures(mm.active);
+        setHistory(mm.history.filter((m) => m.status !== 'active'));
+      }
       Alert.alert(
         'View updated',
         w.viewAsName
@@ -200,38 +249,14 @@ export default function ProfileScreen() {
     useCallback(() => {
       let cancelled = false;
       fetchThrough('technician:me', () => getMyTechnician(accessToken))
-        .then(({ technician: tech, editable }) => {
-          if (cancelled) return;
-          setTechnician(tech);
-          setRegisterEditable(editable);
-          let first = tech.firstName ?? '';
-          let last = tech.lastName ?? '';
-          if (!first && !last && tech.name) {
-            const words = tech.name.split(/\s+/).filter(Boolean);
-            first = words.slice(0, -1).join(' ');
-            last = words[words.length - 1] ?? '';
-          }
-          if (first || last) {
-            setFirstName(first);
-            setLastName(last);
-            if (editable) {
-              const p = getProfile(subject);
-              saveProfile(subject, {
-                ...p,
-                firstName: first || undefined,
-                lastName: last || undefined,
-                displayName: `${first} ${last}`.trim() || p.displayName,
-              });
-            }
-          }
-          const p = getProfile(subject);
-          if (!p.pliersNumber && tech.pliersNumber) setPliers(tech.pliersNumber);
+        .then((res) => {
+          if (!cancelled) applyTech(res);
         })
         .catch(() => {});
       return () => {
         cancelled = true;
       };
-    }, [accessToken, subject]),
+    }, [accessToken, applyTech]),
   );
 
   const onCertificate = certificateName(
@@ -239,15 +264,24 @@ export default function ProfileScreen() {
     identity?.name ?? '',
   );
 
+  // An admin actively viewing as a technician registers measures FOR that
+  // technician (#79); managers and demo accounts stay read-only.
+  const riding = Boolean(whoami?.viewAsStaffCode);
+  const canRegisterMeasures = registerEditable || (whoami?.role === 'admin' && riding);
+
   const save = () => {
     // Name comes from the technician register (#63); measures go through
-    // the add-measure flow (#70) — only pliers and the signature save here.
+    // the add-measure flow (#70): only pliers and the signature save here.
+    // While viewing as someone the on-screen name is theirs, so it must
+    // never persist into the role holder's own local profile (#77).
     const p = getProfile(subject);
     saveProfile(subject, {
       ...p,
-      firstName: firstName.trim() || p.firstName,
-      lastName: lastName.trim() || p.lastName,
-      displayName: `${firstName.trim()} ${lastName.trim()}`.trim() || p.displayName,
+      firstName: riding ? p.firstName : firstName.trim() || p.firstName,
+      lastName: riding ? p.lastName : lastName.trim() || p.lastName,
+      displayName: riding
+        ? p.displayName
+        : `${firstName.trim()} ${lastName.trim()}`.trim() || p.displayName,
       pliersNumber: pliers.trim(),
       signatureSvg: signatureSvg || undefined,
     });
@@ -313,7 +347,7 @@ export default function ProfileScreen() {
         <Text style={{ fontSize: 12, color: colors.muted }}>Name (from the technician register)</Text>
         <Text style={{ fontSize: 16, color: colors.ink, fontWeight: '600', marginBottom: 8 }}>
           {`${firstName} ${lastName}`.trim() ||
-            'No name on record yet — it comes from the technician register'}
+            'No name on record yet: it comes from the technician register'}
         </Text>
         {firstName.trim() || lastName.trim() ? (
           <Text style={{ fontSize: 13, color: colors.ink }}>
@@ -327,7 +361,11 @@ export default function ProfileScreen() {
             OnKey record: {technician.staffCode}
             {technician.manager ? ` · Manager: ${technician.manager}` : ''}
             {technician.email ? `\n${technician.email}` : ''}
-            {!registerEditable ? '\nDemo account — register is read-only' : ''}
+            {!registerEditable
+              ? riding
+                ? '\nRead-only: you are viewing this technician'
+                : '\nRead-only for this account'
+              : ''}
           </Text>
         ) : null}
       </SectionCard>
@@ -408,9 +446,9 @@ export default function ProfileScreen() {
 
       <SectionCard title="My certified proving measures">
         <Text style={{ color: colors.muted, fontSize: 12, marginBottom: 8 }}>
-          Only certified equipment may be used. A verification cannot start until your 200L, 20L
-          and 5L measures are registered and in date. Registering a new measure supersedes the old
-          one — history is kept.
+          Only certified equipment may be used. A verification cannot start until the 200L, 20L
+          and 5L measures are registered and in date. Registering a new measure supersedes the
+          old one; history is kept.
         </Text>
         {measures.length === 0 ? (
           <Badge text="No certified measures registered yet" tone="bad" />
@@ -456,11 +494,16 @@ export default function ProfileScreen() {
           );
         })}
 
-        {registerEditable ? (
+        {canRegisterMeasures ? (
           <View style={{ borderTopWidth: 1, borderTopColor: colors.line, paddingTop: 10, marginTop: 10 }}>
             <Text style={{ fontWeight: '700', color: colors.ink, marginBottom: 6 }}>
               Register a newly certified measure
             </Text>
+            {!registerEditable && whoami?.viewAsName ? (
+              <Text style={{ fontSize: 12, color: colors.muted, marginBottom: 6 }}>
+                As admin, this registers the measure for {whoami.viewAsName}.
+              </Text>
+            ) : null}
             <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
               {['200L', '20L', '5L'].map((s) => (
                 <View key={s} style={{ flex: 1 }}>
@@ -519,7 +562,9 @@ export default function ProfileScreen() {
           </View>
         ) : (
           <Text style={{ fontSize: 12, color: colors.muted, marginTop: 8 }}>
-            Demo account — the measures register is read-only.
+            {riding
+              ? 'The measures register is read-only while viewing as a technician (admins can register on their behalf).'
+              : 'The measures register is read-only for this account.'}
           </Text>
         )}
 

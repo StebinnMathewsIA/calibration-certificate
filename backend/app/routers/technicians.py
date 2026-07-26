@@ -64,6 +64,22 @@ def _direct_row(db: Session, email: str):
     ).first()
 
 
+def _admin_view_as_target(db: Session, email: str) -> str | None:
+    """Staff code an ADMIN is actively viewing as (#79); None for everyone
+    else. Managers stay read-only: measure setup is an admin duty."""
+    em = (email or "").strip().lower()
+    if not em:
+        return None
+    role = db.execute(
+        text("SELECT role FROM app_roles WHERE email = :em"), {"em": em}
+    ).scalar()
+    if role != "admin":
+        return None
+    return db.execute(
+        text("SELECT staff_code FROM app_view_as WHERE email = :em"), {"em": em}
+    ).scalar()
+
+
 @router.get("/me")
 def my_technician(
     db: Session = Depends(get_db),
@@ -144,13 +160,22 @@ def add_measure(
 ) -> dict:
     """Registers a newly certified proving measure (#70): the previous
     active measure of that size is superseded (kept as history), never
-    deleted. Direct email match only — aliases cannot write."""
+    deleted. Technicians register their own (direct email match); an admin
+    with an active view-as selection registers for the viewed technician
+    (#79), with added_by recording the admin for the audit trail."""
     row = _direct_row(db, identity.email)
-    if row is None:
-        raise HTTPException(
-            status_code=403,
-            detail="Only the technician's own sign-in may register measures",
-        )
+    if row is not None:
+        staff_code = row.staff_code
+    else:
+        staff_code = _admin_view_as_target(db, identity.email)
+        if staff_code is None:
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    "Only the technician's own sign-in, or an admin viewing "
+                    "as them, may register measures"
+                ),
+            )
     if body.size not in MEASURE_SIZES:
         raise HTTPException(status_code=422, detail=f"size must be one of {MEASURE_SIZES}")
     db.execute(
@@ -158,7 +183,7 @@ def add_measure(
             "UPDATE technician_measures SET status = 'superseded', superseded_at = now() "
             "WHERE staff_code = :sc AND size = :size AND status = 'active'"
         ),
-        {"sc": row.staff_code, "size": body.size},
+        {"sc": staff_code, "size": body.size},
     )
     db.execute(
         text(
@@ -168,7 +193,7 @@ def add_measure(
             "VALUES (:sc, :size, :serial, :cert, cast(:cal as date), cast(:exp as date), :by)"
         ),
         {
-            "sc": row.staff_code,
+            "sc": staff_code,
             "size": body.size,
             "serial": body.serialNumber.strip(),
             "cert": body.certificateNumber.strip(),
@@ -178,4 +203,4 @@ def add_measure(
         },
     )
     db.commit()
-    return {"measures": _active_measures(db, row.staff_code)}
+    return {"measures": _active_measures(db, staff_code)}

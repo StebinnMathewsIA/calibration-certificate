@@ -33,7 +33,10 @@ export async function syncAll(token: string | null): Promise<void> {
   const pull = await rpc<SyncPull>('app_sync_pull', token);
 
   writeCache('workorders', pull.workOrders);
-  if (pull.technician) writeCache('technician:me', pull.technician);
+  // Always write, including null (#77): the technician record follows a
+  // view-as switch, and clearing the view must also clear the mirror,
+  // otherwise the previously viewed technician lingers on screen.
+  writeCache('technician:me', pull.technician);
 
   const sites = Object.entries(pull.sites)
     .flatMap(([, s]) => (s ? [s] : []))

@@ -7,15 +7,24 @@
 import React from 'react';
 import { ActivityIndicator, Pressable, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import type { MyTechnician } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
+import { readCache } from '../db/cache';
 import { getProfile, TechProfile } from '../profile/profileStore';
 import { RefreshIcon } from './BrandHeader';
 import { colors, fonts } from './ui';
 import { HeaderProfileButton } from './HeaderProfileButton';
 
-/** The name we greet with: profile first name, else the first real word of
+/** The name we greet with: the synced technician record first (it follows a
+ * view-as switch, #77), else profile first name, else the first real word of
  * the display/sign-in name (skipping initials like "S."), else "there". */
 function greetingName(profile: TechProfile, identityName: string): string {
+  const reg = readCache<{ technician: MyTechnician } | null>('technician:me');
+  const regName = reg?.technician?.firstName?.trim() || reg?.technician?.name?.trim();
+  if (regName) {
+    const words = regName.split(/\s+/).filter(Boolean);
+    return words.find((w) => w.length > 1 && !w.endsWith('.')) ?? words[0];
+  }
   if (profile.firstName?.trim()) return profile.firstName.trim().split(/\s+/)[0];
   const words = (profile.displayName || identityName || '')
     .split(/\s+/)

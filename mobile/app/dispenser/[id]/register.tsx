@@ -44,9 +44,11 @@ const FIELD_LABELS: Record<(typeof FIELD_KEYS)[number], string> = {
 };
 
 const emptyComponent = (): Component => ({ make: '', model: '', serial: '', saApproval: '' });
+// A new hose carries NO assumptions (#78): the VO records the product that
+// is actually on the forecourt. Saved hoses prefill from the register.
 const emptyHose = (n: number): HoseDetail => ({
   hoseNumber: String(n),
-  product: 'ULP 95',
+  product: '',
   securitySeal: '',
   components: {
     meter: emptyComponent(),
@@ -276,7 +278,12 @@ export default function RegisterScreen() {
           <Text style={{ fontSize: 12, color: colors.muted }}>Hose / Pump No.</Text>
           <TextInput style={inputStyle} value={h.hoseNumber} onChangeText={(t) => updateHose(i, { hoseNumber: t })} />
           <Text style={{ fontSize: 12, color: colors.muted }}>Product</Text>
-          <TextInput style={inputStyle} value={h.product} onChangeText={(t) => updateHose(i, { product: t })} />
+          <TextInput
+            style={inputStyle}
+            value={h.product}
+            onChangeText={(t) => updateHose(i, { product: t })}
+            placeholder="e.g. ULP 95, Diesel 50ppm"
+          />
           <Text style={{ fontSize: 12, color: colors.muted }}>Security seal</Text>
           <TextInput style={inputStyle} value={h.securitySeal ?? ''} onChangeText={(t) => updateHose(i, { securitySeal: t })} />
           {COMPONENT_KEYS.map((key) => (

@@ -22,7 +22,7 @@ import { Button, SectionCard, colors } from '../../../src/components/ui';
 import { FormScrollView } from '../../../src/components/FormScrollView';
 import { config } from '../../../src/config';
 import { fetchThrough } from '../../../src/db/cache';
-import { DELIVERY_NOMINAL_ML, METHOD_REFERENCE } from '../../../src/data/registers';
+import { DELIVERY_NOMINAL_ML, METHOD_REFERENCE, PRODUCT_OPTIONS } from '../../../src/data/registers';
 import { getProfile } from '../../../src/profile/profileStore';
 import * as repo from '../../../src/db/certificateRepo';
 
@@ -316,13 +316,37 @@ export default function RegisterScreen() {
         >
           <Text style={{ fontSize: 12, color: colors.muted }}>Hose / Pump No.</Text>
           <TextInput style={inputStyle} value={h.hoseNumber} onChangeText={(t) => updateHose(i, { hoseNumber: t })} />
-          <Text style={{ fontSize: 12, color: colors.muted }}>Product</Text>
-          <TextInput
-            style={inputStyle}
-            value={h.product}
-            onChangeText={(t) => updateHose(i, { product: t })}
-            placeholder="e.g. ULP 95, Diesel 50ppm"
-          />
+          <Text style={{ fontSize: 12, color: colors.muted, marginBottom: 4 }}>Product</Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 6 }}>
+            {/* Legacy register values outside the standard list stay
+                selectable so nothing already captured is orphaned (#86). */}
+            {[...PRODUCT_OPTIONS, ...(h.product && !PRODUCT_OPTIONS.includes(h.product) ? [h.product] : [])].map(
+              (p) => {
+                const on = h.product === p;
+                return (
+                  <Text
+                    key={p}
+                    onPress={() => updateHose(i, { product: on ? '' : p })}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${on ? 'Clear product' : `Set product to ${p}`} for hose ${h.hoseNumber || i + 1}`}
+                    style={{
+                      borderWidth: 1,
+                      borderColor: on ? colors.blueText : colors.line,
+                      backgroundColor: on ? colors.blueTint : '#fff',
+                      color: on ? colors.blueText : colors.ink,
+                      paddingHorizontal: 10,
+                      paddingVertical: 5,
+                      borderRadius: 999,
+                      overflow: 'hidden',
+                      fontSize: 12,
+                    }}
+                  >
+                    {p}
+                  </Text>
+                );
+              },
+            )}
+          </View>
           <Text style={{ fontSize: 12, color: colors.muted }}>Security seal</Text>
           <TextInput style={inputStyle} value={h.securitySeal ?? ''} onChangeText={(t) => updateHose(i, { securitySeal: t })} />
           {COMPONENT_KEYS.map((key) => (

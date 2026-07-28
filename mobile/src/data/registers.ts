@@ -8,12 +8,14 @@ import { DEFAULT_METHOD_REFERENCE } from '@prowalco/schema';
 
 export const METHOD_REFERENCE = DEFAULT_METHOD_REFERENCE;
 
+/** Standard product list (#86), owner-supplied from the DoE price table. */
 export const PRODUCT_OPTIONS = [
-  { value: 'ULP 93', label: 'ULP 93' },
-  { value: 'ULP 95', label: 'ULP 95' },
-  { value: 'Diesel 50ppm', label: 'Diesel 50ppm' },
-  { value: 'Diesel 500ppm', label: 'Diesel 500ppm' },
-  { value: 'Paraffin', label: 'Paraffin' },
+  '95 LRP',
+  '95 ULP',
+  'Diesel 0.05%',
+  'Diesel 0.005%',
+  'Illuminating Paraffin',
+  'Liquefied Petroleum Gas',
 ];
 
 /**

@@ -81,6 +81,9 @@ export default function RegisterScreen() {
   const [hoses, setHoses] = useState<HoseDetail[]>([]);
   const [qMin, setQMin] = useState('');
   const [qMax, setQMax] = useState('');
+  // Which hoses THIS verification covers (#85): all by default, tap to
+  // unselect the ones not being verified today.
+  const [selected, setSelected] = useState<boolean[]>([]);
   const [busy, setBusy] = useState(false);
   const [loaded, setLoaded] = useState(false);
 
@@ -90,11 +93,14 @@ export default function RegisterScreen() {
         const detail = await fetchThrough(`dispenser-detail:${id}`, () =>
           getDispenserDetail(accessToken, id),
         );
-        setHoses(detail.hoses.length ? (detail.hoses as HoseDetail[]) : [emptyHose(1)]);
+        const hs = detail.hoses.length ? (detail.hoses as HoseDetail[]) : [emptyHose(1)];
+        setHoses(hs);
+        setSelected(hs.map(() => true));
         setQMin(detail.qMinLpm != null ? String(detail.qMinLpm) : '');
         setQMax(detail.qMaxLpm != null ? String(detail.qMaxLpm) : '');
       } catch {
         setHoses([emptyHose(1)]);
+        setSelected([true]);
       } finally {
         setLoaded(true);
       }
@@ -128,9 +134,17 @@ export default function RegisterScreen() {
     );
 
   const saveAndStart = async () => {
-    for (const h of hoses) {
+    const verifying = hoses.filter((_, i) => selected[i]);
+    if (verifying.length === 0) {
+      Alert.alert('No hoses selected', 'Select at least one hose to verify.');
+      return;
+    }
+    for (const h of verifying) {
       if (!h.hoseNumber || !h.product) {
-        Alert.alert('Hose incomplete', 'Each hose needs a hose/pump number and a product.');
+        Alert.alert(
+          'Hose incomplete',
+          `Hose ${h.hoseNumber || '?'}: every hose being verified needs a hose/pump number and a product.`,
+        );
         return;
       }
     }
@@ -195,7 +209,8 @@ export default function RegisterScreen() {
       // Identity/components carry over (known data); everything the VO
       // determines on-site starts UNSET so nothing reads as a result until
       // they enter it: status, hot/cold, the checklist, and the deliveries.
-      const hoseResults = hoses.map((h) => ({
+      // Only the SELECTED hoses are verified and appear on the certificate.
+      const hoseResults = verifying.map((h) => ({
         hoseNumber: h.hoseNumber,
         product: h.product,
         status: undefined,
@@ -257,24 +272,48 @@ export default function RegisterScreen() {
 
   return (
     <FormScrollView>
-      <SectionCard title="Data plate">
+      <SectionCard title="Hoses to verify">
         <Text style={{ color: colors.muted, fontSize: 12, marginBottom: 6 }}>
-          Saved against this dispenser and prefilled next verification.
+          All hoses are selected. Tap a hose to leave it out of this verification, e.g. when a
+          hose is in use. Only selected hoses appear on the certificate. The data plate and the
+          number of hoses are set on the dispenser identity screen.
         </Text>
-        <View style={{ flexDirection: 'row', gap: 8 }}>
-          <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 12, color: colors.muted }}>Qmin (L/min)</Text>
-            <TextInput style={inputStyle} keyboardType="decimal-pad" value={qMin} onChangeText={setQMin} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 12, color: colors.muted }}>Qmax (L/min)</Text>
-            <TextInput style={inputStyle} keyboardType="decimal-pad" value={qMax} onChangeText={setQMax} />
-          </View>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+          {hoses.map((h, i) => {
+            const on = selected[i] ?? true;
+            return (
+              <Text
+                key={i}
+                onPress={() =>
+                  setSelected((prev) => prev.map((s, j) => (j === i ? !s : s)))
+                }
+                accessibilityRole="button"
+                accessibilityLabel={`${on ? 'Exclude' : 'Include'} hose ${h.hoseNumber || i + 1}`}
+                style={{
+                  borderWidth: 1,
+                  borderColor: on ? colors.greenText : colors.line,
+                  backgroundColor: on ? colors.greenTint : '#fff',
+                  color: on ? colors.greenText : colors.muted,
+                  paddingHorizontal: 12,
+                  paddingVertical: 6,
+                  borderRadius: 999,
+                  overflow: 'hidden',
+                  fontSize: 13,
+                  fontWeight: '600',
+                }}
+              >
+                Hose {h.hoseNumber || i + 1}{on ? ' ✓' : ''}
+              </Text>
+            );
+          })}
         </View>
       </SectionCard>
 
       {hoses.map((h, i) => (
-        <SectionCard key={i} title={`Hose / Pump ${h.hoseNumber || i + 1}`}>
+        <SectionCard
+          key={i}
+          title={`Hose / Pump ${h.hoseNumber || i + 1}${selected[i] ?? true ? '' : ' · not in this verification'}`}
+        >
           <Text style={{ fontSize: 12, color: colors.muted }}>Hose / Pump No.</Text>
           <TextInput style={inputStyle} value={h.hoseNumber} onChangeText={(t) => updateHose(i, { hoseNumber: t })} />
           <Text style={{ fontSize: 12, color: colors.muted }}>Product</Text>
@@ -304,14 +343,10 @@ export default function RegisterScreen() {
               ))}
             </View>
           ))}
-          {hoses.length > 1 ? (
-            <Button title="Remove hose" kind="danger" onPress={() => setHoses((prev) => prev.filter((_, j) => j !== i))} />
-          ) : null}
         </SectionCard>
       ))}
 
       <View style={{ marginHorizontal: 12 }}>
-        <Button title="Add hose" kind="secondary" onPress={() => setHoses((prev) => [...prev, emptyHose(prev.length + 1)])} />
         <Button title="Save & start verification" onPress={saveAndStart} busy={busy} />
       </View>
     </FormScrollView>

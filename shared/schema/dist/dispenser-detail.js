@@ -76,8 +76,10 @@ exports.hoseComponentsSchema = zod_1.z.object({
 exports.hoseDetailSchema = zod_1.z.object({
     /** "Hose/Pump No." on the certificate. */
     hoseNumber: zod_1.z.string().min(1).max(32),
-    /** Fuel grade delivered, e.g. "ULP 95", "Diesel 50ppm". */
-    product: zod_1.z.string().min(1).max(64),
+    /** Fuel grade delivered, e.g. "ULP 95", "Diesel 50ppm". A freshly created
+     * hose carries NO assumptions (#78/#85), so blank is valid in the REGISTER;
+     * the verification schema still requires a product on every verified hose. */
+    product: zod_1.z.string().max(64),
     securitySeal: zod_1.z.string().max(64).optional(),
     components: exports.hoseComponentsSchema,
 });

@@ -117,6 +117,11 @@ export default function ResultsScreen() {
   const router = useRouter();
   const record = useMemo(() => repo.getById(id), [id]);
   const [v, setV] = useState<Partial<Verification> | null>(record?.form ?? null);
+  // Collapsible hoses (#85): on a multi-hose pump the VO jumps straight to
+  // whichever hose is free. A single hose starts open.
+  const [open, setOpen] = useState<Record<number, boolean>>(() =>
+    (record?.form?.hoses?.length ?? 0) === 1 ? { 0: true } : ({} as Record<number, boolean>),
+  );
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   // Keyboard "next" chain across the delivery grid: flow → VFD → VREF → next
   // delivery's flow, keyed `${hose}.${delivery}.${field}`.
@@ -187,14 +192,15 @@ export default function ResultsScreen() {
     for (let i = 0; i < hoses.length; i++) {
       const h = hoses[i];
       const label = `Hose ${h.hoseNumber}`;
-      if (!h.status) return complain(`${label}: choose a verification status.`);
-      if (!h.testCondition) return complain(`${label}: choose hot or cold.`);
+      if (!h.status) return complain(`${label}: choose a verification status.`, i);
+      if (!h.testCondition) return complain(`${label}: choose hot or cold.`, i);
       const missingCheck = CHECKLIST_ITEMS.find((it) => !h.checklist[it.key]);
-      if (missingCheck) return complain(`${label}: complete the checklist ("${missingCheck.label}").`);
+      if (missingCheck)
+        return complain(`${label}: complete the checklist ("${missingCheck.label}").`, i);
       const bad = h.deliveries.find(
         (d) => !((d.flowRateLpm ?? 0) > 0 && (d.vfdMl ?? 0) > 0 && (d.vrefMl ?? 0) > 0),
       );
-      if (bad) return complain(`${label}: enter Flow, VFD and VREF for every delivery.`);
+      if (bad) return complain(`${label}: enter Flow, VFD and VREF for every delivery.`, i);
     }
 
     // Outcome follows the evidence (a failed check or delivery => rejected).
@@ -210,7 +216,9 @@ export default function ResultsScreen() {
     router.push({ pathname: '/verification/[id]/sign', params: { id } });
   };
 
-  const complain = (msg: string) => {
+  const complain = (msg: string, hoseIndex?: number) => {
+    // Expand the offending hose so the VO lands on the gap.
+    if (hoseIndex != null) setOpen((prev) => ({ ...prev, [hoseIndex]: true }));
     Alert.alert('Results incomplete', msg);
   };
 
@@ -224,8 +232,26 @@ export default function ResultsScreen() {
 
       {(v.hoses as HoseResult[]).map((hose, hi) => {
         const missing = hoseMissing(hose);
+        const isOpen = open[hi] ?? false;
         return (
-        <SectionCard key={hi} title={`Hose / Pump ${hose.hoseNumber} — ${hose.product}`}>
+        <SectionCard
+          key={hi}
+          title={`Hose / Pump ${hose.hoseNumber} · ${hose.product}`}
+          onTitlePress={() => setOpen((prev) => ({ ...prev, [hi]: !isOpen }))}
+          collapsed={!isOpen}
+          collapsedSummary={
+            <View style={{ marginTop: 2, alignSelf: 'flex-start' }}>
+              <Badge
+                text={
+                  missing.length === 0
+                    ? 'All results entered ✓'
+                    : `Still to enter: ${missing.join(', ')}`
+                }
+                tone={missing.length === 0 ? 'ok' : 'warn'}
+              />
+            </View>
+          }
+        >
           {missing.length === 0 ? (
             <View style={{ marginBottom: 6 }}>
               <Badge text="All results entered ✓" tone="ok" />

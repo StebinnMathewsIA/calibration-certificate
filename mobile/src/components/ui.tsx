@@ -61,11 +61,37 @@ export const fonts = {
   monoMedium: 'RobotoMono_500Medium',
 };
 
-export function SectionCard({ title, children }: { title: string; children: React.ReactNode }) {
+export function SectionCard({
+  title,
+  children,
+  onTitlePress,
+  collapsed,
+  collapsedSummary,
+}: {
+  title: string;
+  children: React.ReactNode;
+  /** Makes the title a collapse/expand toggle (#85). */
+  onTitlePress?: () => void;
+  collapsed?: boolean;
+  /** Shown instead of the body while collapsed, e.g. a status badge. */
+  collapsedSummary?: React.ReactNode;
+}) {
   return (
     <View style={styles.card}>
-      <Text style={styles.cardTitle}>{title}</Text>
-      {children}
+      {onTitlePress ? (
+        <Text
+          onPress={onTitlePress}
+          accessibilityRole="button"
+          accessibilityLabel={`${collapsed ? 'Expand' : 'Collapse'} ${title}`}
+          style={styles.cardTitle}
+        >
+          {collapsed ? '▸ ' : '▾ '}
+          {title}
+        </Text>
+      ) : (
+        <Text style={styles.cardTitle}>{title}</Text>
+      )}
+      {collapsed ? (collapsedSummary ?? null) : children}
     </View>
   );
 }

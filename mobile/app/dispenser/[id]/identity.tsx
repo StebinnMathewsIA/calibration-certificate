@@ -1,29 +1,46 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { Alert, Text, TextInput, View } from 'react-native';
+import type { DispenserDetail, HoseDetail } from '@prowalco/schema';
 import {
   DispenserResolved,
   SiteResolved,
   editDispenser,
   getDispenser,
+  getDispenserDetail,
   getSite,
+  saveDispenserDetail,
   upsertSite,
 } from '../../../src/api/client';
 import { useAuth } from '../../../src/auth/AuthContext';
 import { BarcodeScannerModal } from '../../../src/components/BarcodeScanner';
 import { Button, SectionCard, colors } from '../../../src/components/ui';
 import { FormScrollView } from '../../../src/components/FormScrollView';
+import { fetchThrough, writeCache } from '../../../src/db/cache';
+
+const emptyHose = (n: number): HoseDetail => ({
+  hoseNumber: String(n),
+  product: '',
+  securitySeal: '',
+  components: { meter: {}, pcBoard: {}, pulsar: {}, solenoid: {} },
+});
+
+const hoseHasData = (h: HoseDetail): boolean =>
+  Boolean(h.product || h.securitySeal) ||
+  Object.values(h.components).some((c) => c.make || c.model || c.serial || c.saApproval);
 
 function Field({
   label,
   value,
   onChangeText,
   placeholder,
+  keyboardType,
 }: {
   label: string;
   value: string;
   onChangeText: (t: string) => void;
   placeholder?: string;
+  keyboardType?: 'decimal-pad' | 'number-pad';
 }) {
   return (
     <View style={{ marginBottom: 10 }}>
@@ -41,6 +58,7 @@ function Field({
         value={value}
         onChangeText={onChangeText}
         placeholder={placeholder}
+        keyboardType={keyboardType}
       />
     </View>
   );
@@ -56,6 +74,12 @@ export default function DispenserIdentityScreen() {
   const { accessToken } = useAuth();
   const [site, setSite] = useState<Partial<SiteResolved>>({});
   const [disp, setDisp] = useState<Partial<DispenserResolved>>({});
+  // Data plate + hoses are dispenser identity (#85), stored in the
+  // per-dispenser register and prefilled every visit.
+  const [detail, setDetail] = useState<DispenserDetail | null>(null);
+  const [qMin, setQMin] = useState('');
+  const [qMax, setQMax] = useState('');
+  const [hoseCount, setHoseCount] = useState('');
   const [busy, setBusy] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [scanning, setScanning] = useState(false);
@@ -74,6 +98,17 @@ export default function DispenserIdentityScreen() {
       } finally {
         setLoaded(true);
       }
+      try {
+        const det = await fetchThrough(`dispenser-detail:${id}`, () =>
+          getDispenserDetail(accessToken, id),
+        );
+        setDetail(det as DispenserDetail);
+        setQMin(det.qMinLpm != null ? String(det.qMinLpm) : '');
+        setQMax(det.qMaxLpm != null ? String(det.qMaxLpm) : '');
+        if (det.hoses.length > 0) setHoseCount(String(det.hoses.length));
+      } catch {
+        // First visit offline with no mirror: fields start blank.
+      }
     })();
   }, [accessToken, id, siteId]);
 
@@ -88,6 +123,33 @@ export default function DispenserIdentityScreen() {
       Alert.alert('Dispenser incomplete', 'Make, model, serial number and SA approval number are required.');
       return;
     }
+    const count = Number(hoseCount);
+    if (!Number.isInteger(count) || count < 1 || count > 16) {
+      Alert.alert('Hoses required', 'Enter the number of hoses on this dispenser (1 to 16).');
+      return;
+    }
+    // Resize the hose register, preserving anything already captured. A
+    // shrink that would discard captured hose data needs confirmation.
+    const existing = detail?.hoses ?? [];
+    const dropped = existing.slice(count).filter(hoseHasData);
+    if (dropped.length > 0) {
+      const confirmed = await new Promise<boolean>((resolve) => {
+        Alert.alert(
+          'Remove hoses?',
+          `Reducing to ${count} hose${count === 1 ? '' : 's'} discards captured details for hose${dropped.length === 1 ? '' : 's'} ${dropped.map((h) => h.hoseNumber).join(', ')}.`,
+          [
+            { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+            { text: 'Remove', style: 'destructive', onPress: () => resolve(true) },
+          ],
+        );
+      });
+      if (!confirmed) return;
+    }
+    const hoses: HoseDetail[] = Array.from(
+      { length: count },
+      (_, i) => existing[i] ?? emptyHose(i + 1),
+    );
+
     setBusy(true);
     try {
       // Persist to our canonical store (seed -> fill -> persist).
@@ -105,6 +167,20 @@ export default function DispenserIdentityScreen() {
         saApprovalNumber: disp.saApprovalNumber!,
         siteId,
       });
+      const nextDetail = {
+        dispenserId: id,
+        qMinLpm: qMin ? Number(qMin) : undefined,
+        qMaxLpm: qMax ? Number(qMax) : undefined,
+        hoses,
+      };
+      await saveDispenserDetail(accessToken, id, {
+        qMinLpm: nextDetail.qMinLpm,
+        qMaxLpm: nextDetail.qMaxLpm,
+        hoses,
+      });
+      // The components screen reads through the mirror: reflect the resize
+      // there immediately, whether or not the server write reached it.
+      writeCache(`dispenser-detail:${id}`, nextDetail);
       router.push({
         pathname: '/dispenser/[id]/register',
         params: { id, workOrderId, siteId },
@@ -139,6 +215,24 @@ export default function DispenserIdentityScreen() {
           <Button title="Scan" kind="secondary" onPress={() => setScanning(true)} />
         </View>
         <Field label="SA approval number" value={disp.saApprovalNumber ?? ''} onChangeText={(t) => setDisp((p) => ({ ...p, saApprovalNumber: t }))} />
+      </SectionCard>
+
+      <SectionCard title="Data plate & hoses">
+        <Text style={{ color: colors.muted, fontSize: 12, marginBottom: 8 }}>
+          From the dispenser's data plate. Saved against this dispenser and prefilled every
+          verification. The hose entries are created below the count you set here.
+        </Text>
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <View style={{ flex: 1 }}>
+            <Field label="Qmin (L/min)" value={qMin} onChangeText={setQMin} keyboardType="decimal-pad" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Field label="Qmax (L/min)" value={qMax} onChangeText={setQMax} keyboardType="decimal-pad" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Field label="Number of hoses" value={hoseCount} onChangeText={setHoseCount} keyboardType="number-pad" />
+          </View>
+        </View>
       </SectionCard>
 
       <View style={{ marginHorizontal: 12 }}>

@@ -94,8 +94,10 @@ export type HoseComponents = z.infer<typeof hoseComponentsSchema>;
 export const hoseDetailSchema = z.object({
   /** "Hose/Pump No." on the certificate. */
   hoseNumber: z.string().min(1).max(32),
-  /** Fuel grade delivered, e.g. "ULP 95", "Diesel 50ppm". */
-  product: z.string().min(1).max(64),
+  /** Fuel grade delivered, e.g. "ULP 95", "Diesel 50ppm". A freshly created
+   * hose carries NO assumptions (#78/#85), so blank is valid in the REGISTER;
+   * the verification schema still requires a product on every verified hose. */
+  product: z.string().max(64),
   securitySeal: z.string().max(64).optional(),
   components: hoseComponentsSchema,
 });

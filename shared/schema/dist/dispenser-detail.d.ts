@@ -219,7 +219,9 @@ export type HoseComponents = z.infer<typeof hoseComponentsSchema>;
 export declare const hoseDetailSchema: z.ZodObject<{
     /** "Hose/Pump No." on the certificate. */
     hoseNumber: z.ZodString;
-    /** Fuel grade delivered, e.g. "ULP 95", "Diesel 50ppm". */
+    /** Fuel grade delivered, e.g. "ULP 95", "Diesel 50ppm". A freshly created
+     * hose carries NO assumptions (#78/#85), so blank is valid in the REGISTER;
+     * the verification schema still requires a product on every verified hose. */
     product: z.ZodString;
     securitySeal: z.ZodOptional<z.ZodString>;
     components: z.ZodObject<{
@@ -411,7 +413,9 @@ export declare const dispenserDetailSchema: z.ZodObject<{
     hoses: z.ZodDefault<z.ZodArray<z.ZodObject<{
         /** "Hose/Pump No." on the certificate. */
         hoseNumber: z.ZodString;
-        /** Fuel grade delivered, e.g. "ULP 95", "Diesel 50ppm". */
+        /** Fuel grade delivered, e.g. "ULP 95", "Diesel 50ppm". A freshly created
+         * hose carries NO assumptions (#78/#85), so blank is valid in the REGISTER;
+         * the verification schema still requires a product on every verified hose. */
         product: z.ZodString;
         securitySeal: z.ZodOptional<z.ZodString>;
         components: z.ZodObject<{

@@ -5,6 +5,7 @@ import type { Checklist, Delivery, HoseResult, Verification } from '@prowalco/sc
 import { CHECKLIST_ITEMS, DELIVERY_POINT_LABELS, MPE_PERCENT, computeEfd } from '@prowalco/schema';
 import { Badge, Button, SectionCard, colors, fonts } from '../../../src/components/ui';
 import { FormScrollView } from '../../../src/components/FormScrollView';
+import { DELIVERY_NOMINAL_ML } from '../../../src/data/registers';
 import * as repo from '../../../src/db/certificateRepo';
 
 // Glove-friendly: the delivery grid is the highest-frequency entry surface.
@@ -63,7 +64,8 @@ function hoseMissing(h: HoseResult): string[] {
   return missing;
 }
 
-const DELIVERY_FIELDS = ['flowRateLpm', 'vfdMl', 'vrefMl'] as const;
+// VFD is FIXED per delivery point (#87) — only Flow and VREF are entered.
+const DELIVERY_FIELDS = ['flowRateLpm', 'vrefMl'] as const;
 
 /** Show an empty field (not "0"/"undefined") until the VO enters a value. */
 const numStr = (v?: number) => (v == null || Number.isNaN(v) ? '' : String(v));
@@ -135,6 +137,31 @@ export default function ResultsScreen() {
         : `${hi}.${di + 1}.${DELIVERY_FIELDS[0]}`;
     inputs.current[key]?.focus();
   };
+
+  // Normalize drafts to the FIXED VFD nominals (#87): drafts started before
+  // the preset correction carry 20 L there; EFD recomputes where VREF exists.
+  useEffect(() => {
+    setV((prev) => {
+      if (!prev?.hoses) return prev;
+      let changed = false;
+      const hoses = prev.hoses.map((h) => {
+        const deliveries = h.deliveries.map((d) => {
+          const nominal = DELIVERY_NOMINAL_ML[d.point];
+          if (d.vfdMl === nominal) return d;
+          changed = true;
+          const merged = { ...d, vfdMl: nominal } as Delivery;
+          if ((merged.vrefMl ?? 0) > 0) {
+            const c = computeEfd(merged.vfdMl, merged.vrefMl);
+            merged.efdPercent = c.efdPercent;
+            merged.pass = c.pass;
+          }
+          return merged;
+        });
+        return { ...h, deliveries };
+      });
+      return changed ? { ...prev, hoses } : prev;
+    });
+  }, []);
 
   // Debounced autosave.
   useEffect(() => {
@@ -332,31 +359,72 @@ export default function ResultsScreen() {
             const isLastDelivery = di === hose.deliveries.length - 1;
             const FIELD_META: Record<(typeof DELIVERY_FIELDS)[number], { label: string; value?: number }> = {
               flowRateLpm: { label: 'Flow L/min', value: d.flowRateLpm },
-              vfdMl: { label: 'VFD', value: d.vfdMl },
               vrefMl: { label: 'VREF', value: d.vrefMl },
             };
+            const nominal = DELIVERY_NOMINAL_ML[d.point];
             return (
             <View key={di} style={{ borderTopWidth: 1, borderColor: colors.line, paddingVertical: 6 }}>
               <Text style={{ fontSize: 12, color: colors.ink }}>{DELIVERY_POINT_LABELS[d.point]}</Text>
               <View style={{ flexDirection: 'row', gap: 6, marginTop: 4 }}>
-                {DELIVERY_FIELDS.map((field, fi) => (
-                  <View key={field} style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 11, color: colors.muted }}>{FIELD_META[field].label}</Text>
-                    <TextInput
-                      ref={(r) => {
-                        inputs.current[`${hi}.${di}.${field}`] = r;
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 11, color: colors.muted }}>{FIELD_META.flowRateLpm.label}</Text>
+                  <TextInput
+                    ref={(r) => {
+                      inputs.current[`${hi}.${di}.flowRateLpm`] = r;
+                    }}
+                    style={numInput}
+                    keyboardType="decimal-pad"
+                    placeholder="—"
+                    value={numStr(d.flowRateLpm)}
+                    onChangeText={(t) => setDelivery(hi, di, { flowRateLpm: parseNum(t) } as Partial<Delivery>)}
+                    returnKeyType="next"
+                    onSubmitEditing={() => focusNext(hi, di, 'flowRateLpm')}
+                  />
+                </View>
+                {/* VFD is the volume the dispenser is SET to deliver — fixed
+                    per the NRCS form (#87), never entered. */}
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 11, color: colors.muted }}>VFD (fixed)</Text>
+                  <View
+                    style={{
+                      borderWidth: 1,
+                      borderColor: colors.line,
+                      borderRadius: 10,
+                      paddingHorizontal: 8,
+                      paddingVertical: 10,
+                      minHeight: 44,
+                      backgroundColor: colors.mist,
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: colors.ink,
+                        fontSize: 16,
+                        fontFamily: fonts.mono,
+                        fontVariant: ['tabular-nums', 'lining-nums'],
                       }}
-                      style={numInput}
-                      keyboardType="decimal-pad"
-                      placeholder="—"
-                      value={numStr(FIELD_META[field].value)}
-                      onChangeText={(t) => setDelivery(hi, di, { [field]: parseNum(t) } as Partial<Delivery>)}
-                      returnKeyType={isLastDelivery && fi === DELIVERY_FIELDS.length - 1 ? 'done' : 'next'}
-                      blurOnSubmit={isLastDelivery && fi === DELIVERY_FIELDS.length - 1}
-                      onSubmitEditing={() => focusNext(hi, di, field)}
-                    />
+                    >
+                      {nominal.toLocaleString('en-ZA')}
+                    </Text>
                   </View>
-                ))}
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 11, color: colors.muted }}>{FIELD_META.vrefMl.label}</Text>
+                  <TextInput
+                    ref={(r) => {
+                      inputs.current[`${hi}.${di}.vrefMl`] = r;
+                    }}
+                    style={numInput}
+                    keyboardType="decimal-pad"
+                    placeholder="—"
+                    value={numStr(d.vrefMl)}
+                    onChangeText={(t) => setDelivery(hi, di, { vrefMl: parseNum(t) } as Partial<Delivery>)}
+                    returnKeyType={isLastDelivery ? 'done' : 'next'}
+                    blurOnSubmit={isLastDelivery}
+                    onSubmitEditing={() => focusNext(hi, di, 'vrefMl')}
+                  />
+                </View>
                 <View style={{ width: 84, alignItems: 'center', justifyContent: 'flex-end' }}>
                   <Text style={{ fontSize: 11, color: colors.muted }}>EFD</Text>
                   <Badge

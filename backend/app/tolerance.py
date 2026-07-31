@@ -9,9 +9,9 @@ values disagree.
 VFD = volume indicated by the dispenser, VREF = volume indicated by the
 reference measure. A delivery passes when |EFD| <= MPE.
 
-The MPE is PROVISIONAL — confirm the exact NRCS / LM-IR 117-2 maximum
-permissible error and EFD sign convention with Prowalco's quality manager
-(CLAUDE.md open questions).
+MPE CONFIRMED (owner, 2026-07-31): SANS TEST PROC02 rev 14, Table 1
+(LM-IR 117-1), accuracy class 0.5, Line A = 0.5 percent, the cell
+highlighted as applicable in Prowalco's controlled procedure.
 """
 import math
 from dataclasses import dataclass

@@ -2,7 +2,13 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Text, TextInput, View } from 'react-native';
 import type { Checklist, Delivery, HoseResult, Verification } from '@prowalco/schema';
-import { CHECKLIST_ITEMS, DELIVERY_POINT_LABELS, MPE_PERCENT, computeEfd } from '@prowalco/schema';
+import {
+  CHECKLIST_ITEMS,
+  DELIVERY_POINT_LABELS,
+  MPE_PERCENT,
+  NOZZLE_BURST_LIMIT_ML,
+  computeEfd,
+} from '@prowalco/schema';
 import { Badge, Button, SectionCard, colors, fonts } from '../../../src/components/ui';
 import { FormScrollView } from '../../../src/components/FormScrollView';
 import { DELIVERY_NOMINAL_ML } from '../../../src/data/registers';
@@ -389,8 +395,21 @@ export default function ResultsScreen() {
                   advance of indication (0 expected). */}
               {item.key === 'nozzleBurst' || item.key === 'zeroSetting' ? (
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                  <Text style={{ fontSize: 11, color: colors.muted }}>
-                    {item.key === 'nozzleBurst' ? 'Measured (ml, limit 50)' : 'Reading (ml)'}
+                  <Text
+                    style={{
+                      fontSize: 11,
+                      color:
+                        item.key === 'nozzleBurst' &&
+                        (hose.nozzleBurstMl ?? 0) > NOZZLE_BURST_LIMIT_ML
+                          ? colors.red
+                          : colors.muted,
+                    }}
+                  >
+                    {item.key === 'nozzleBurst'
+                      ? (hose.nozzleBurstMl ?? 0) > NOZZLE_BURST_LIMIT_ML
+                        ? `Measured (ml): EXCEEDS ${NOZZLE_BURST_LIMIT_ML} ml limit`
+                        : `Measured (ml, limit ${NOZZLE_BURST_LIMIT_ML})`
+                      : 'Reading (ml)'}
                   </Text>
                   <TextInput
                     style={[numInput, { flex: 0, width: 110, minHeight: 38, paddingVertical: 6 }]}

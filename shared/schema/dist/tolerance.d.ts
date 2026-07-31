@@ -10,17 +10,21 @@
  * indicated by the reference proving measure. A delivery passes when
  * |EFD| ≤ MPE.
  *
- * IMPORTANT: the MPE below is provisional. Confirm the exact NRCS / LM-IR
- * 117-2 maximum permissible error and the EFD sign convention with Prowalco's
- * quality manager before production use (see CLAUDE.md open questions).
+ * MPE CONFIRMED (owner, 2026-07-31): SANS TEST PROC02 rev 14, Table 1
+ * (LM-IR 117-1 maximum permissible error), accuracy class 0.5, Line A =
+ * 0.5 % — the cell highlighted as applicable in Prowalco's controlled
+ * procedure. The nozzle burst limit is separate and absolute: 50 ml.
  *
  * This module is mirrored in Python at backend/app/tolerance.py — keep the two
  * implementations consistent in behaviour. The backend recomputes every
  * delivery and rejects submissions whose client-computed EFD/outcome disagree.
  */
-/** Maximum permissible error for a fuel-dispenser delivery, in percent.
- * PROVISIONAL — confirm with NRCS/QM. */
+/** Maximum permissible error for a fuel-dispenser delivery, in percent:
+ * accuracy class 0.5, Line A of LM-IR 117-1 Table 1 (confirmed, #91). */
 export declare const MPE_PERCENT = 0.5;
+/** Nozzle burst (hose dilation) limit, ml — absolute, not a percentage
+ * (SANS TEST PROC02 4.3.2.5). */
+export declare const NOZZLE_BURST_LIMIT_ML = 50;
 /** The delivery test points on the Metrologist Note, in report order.
  * min_flow_20l is the slow 20 L test added by SANS TEST PROC02 rev 15
  * (4.3.2, #89): an accuracy delivery at minimum flow into the 20 L

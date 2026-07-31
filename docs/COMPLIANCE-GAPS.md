@@ -45,11 +45,13 @@ beyond what the app captures today.
    nozzle burst immediately after. The app's five delivery points do not
    include it; VOs currently handwrite it in Comments on the paper note.
    Needs a sixth delivery point (20 L nominal at Qmin).
-2. **MPE table unconfirmed.** The app applies a flat +/-0.5 % (declared
-   provisional). PROC02/PROC05 Table 1 (LM-IR 117-1 MPE) is an image the
-   text extraction cannot read; the real table may differ per test point.
-   Owner/QM to supply the values. The nozzle burst MPE is absolute:
-   50 ml (4.3.2.5), not a percentage.
+2. **MPE table: RESOLVED (2026-07-31, #91).** Table 1 read from PROC02
+   page 5: accuracy classes 0.3/0.5/1.0/1.5 with Line A = 0.3/0.5/1.0/
+   1.5 %, Line B = 0.2/0.3/0.6/1.0 %, Line C (A minus B) = 0.1/0.2/0.4/
+   0.5 %. The document highlights class 0.5, Line A (0.5 %) as the
+   applicable MPE, which the app already applies. The nozzle burst MPE is
+   absolute: 50 ml (4.3.2.5); the results screen warns when the measured
+   value exceeds it.
 3. **Nozzle burst and advance-of-indication record verdicts, not values.**
    The paper note records the measured dilation (e.g. +10 ml, limit 50 ml)
    and the zero-setting reading. App captures Pass/Fail/NA only.

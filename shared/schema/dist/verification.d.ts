@@ -43,17 +43,23 @@ export declare const verificationSiteSchema: z.ZodObject<{
     siteName: z.ZodString;
     address: z.ZodString;
     telephone: z.ZodOptional<z.ZodString>;
+    /** Name of contact on premises (SANS TEST PROC01 4.1.1, #90). */
+    contactPerson: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
     customerName: string;
     siteName: string;
     address: string;
     telephone?: string | undefined;
+    contactPerson?: string | undefined;
 }, {
     customerName: string;
     siteName: string;
     address: string;
     telephone?: string | undefined;
+    contactPerson?: string | undefined;
 }>;
+/** Basis under which the LFD was approved (PROC01 4.2, #90). */
+export declare const approvalBasisSchema: z.ZodEnum<["SABS 1650", "LM R117"]>;
 /** Dispenser (LFD) identity snapshotted onto the certificate. */
 export declare const verificationDispenserSchema: z.ZodObject<{
     /** Stable internal dispenser ID (from OnKey seed or manually added). */
@@ -64,17 +70,28 @@ export declare const verificationDispenserSchema: z.ZodObject<{
     serialNumber: z.ZodString;
     /** Dispenser-level "Security Seal No.". */
     securitySealNumber: z.ZodOptional<z.ZodString>;
+    /** Type Approval Certificate number (PROC01 4.1.1, #90). */
+    tacNumber: z.ZodOptional<z.ZodString>;
+    approvalBasis: z.ZodOptional<z.ZodEnum<["SABS 1650", "LM R117"]>>;
+    /** Minimum measured quantity from the data plate, litres (#90). */
+    mmqLitres: z.ZodOptional<z.ZodNumber>;
 }, "strip", z.ZodTypeAny, {
     serialNumber: string;
     saApprovalNumber: string;
     dispenserId: string;
     makeModel: string;
+    tacNumber?: string | undefined;
+    approvalBasis?: "SABS 1650" | "LM R117" | undefined;
+    mmqLitres?: number | undefined;
     securitySealNumber?: string | undefined;
 }, {
     serialNumber: string;
     saApprovalNumber: string;
     dispenserId: string;
     makeModel: string;
+    tacNumber?: string | undefined;
+    approvalBasis?: "SABS 1650" | "LM R117" | undefined;
+    mmqLitres?: number | undefined;
     securitySealNumber?: string | undefined;
 }>;
 /** A reference proving measure used for the verification (200 / 20 / 5 L).
@@ -297,9 +314,16 @@ export declare const hoseResultSchema: z.ZodObject<{
         };
     }>;
     securitySeal: z.ZodOptional<z.ZodString>;
+    /** Unit price in Rand per litre (PROC01 4.1.1: recorded per nozzle,
+     * evidencing the price computation check, #90). */
+    unitPrice: z.ZodOptional<z.ZodNumber>;
     totalizerBefore: z.ZodOptional<z.ZodNumber>;
     totalizerAfter: z.ZodOptional<z.ZodNumber>;
     quantityDelivered: z.ZodOptional<z.ZodNumber>;
+    /** Measured nozzle burst dilation in ml (MPE 50 ml, PROC02 4.3.2.5, #90). */
+    nozzleBurstMl: z.ZodOptional<z.ZodNumber>;
+    /** Advance-of-indication reading after zero setting, ml (0 expected, #90). */
+    zeroSettingMl: z.ZodOptional<z.ZodNumber>;
     testCondition: z.ZodEnum<["hot", "cold"]>;
     /** Data-plate flow range (L/min). */
     qMinLpm: z.ZodOptional<z.ZodNumber>;
@@ -426,9 +450,12 @@ export declare const hoseResultSchema: z.ZodObject<{
     securitySeal?: string | undefined;
     qMinLpm?: number | undefined;
     qMaxLpm?: number | undefined;
+    unitPrice?: number | undefined;
     totalizerBefore?: number | undefined;
     totalizerAfter?: number | undefined;
     quantityDelivered?: number | undefined;
+    nozzleBurstMl?: number | undefined;
+    zeroSettingMl?: number | undefined;
     comments?: string | undefined;
 }, {
     status: "new" | "repaired" | "atu" | "rejected";
@@ -486,9 +513,12 @@ export declare const hoseResultSchema: z.ZodObject<{
     securitySeal?: string | undefined;
     qMinLpm?: number | undefined;
     qMaxLpm?: number | undefined;
+    unitPrice?: number | undefined;
     totalizerBefore?: number | undefined;
     totalizerAfter?: number | undefined;
     quantityDelivered?: number | undefined;
+    nozzleBurstMl?: number | undefined;
+    zeroSettingMl?: number | undefined;
     comments?: string | undefined;
 }>;
 export declare const authMethodSchema: z.ZodEnum<["microsoft", "google", "apple"]>;
@@ -607,16 +637,20 @@ export declare const verificationSchema: z.ZodObject<{
         siteName: z.ZodString;
         address: z.ZodString;
         telephone: z.ZodOptional<z.ZodString>;
+        /** Name of contact on premises (SANS TEST PROC01 4.1.1, #90). */
+        contactPerson: z.ZodOptional<z.ZodString>;
     }, "strip", z.ZodTypeAny, {
         customerName: string;
         siteName: string;
         address: string;
         telephone?: string | undefined;
+        contactPerson?: string | undefined;
     }, {
         customerName: string;
         siteName: string;
         address: string;
         telephone?: string | undefined;
+        contactPerson?: string | undefined;
     }>;
     /** Job Ref. No. — free text in PoC; the OnKey WO reference in future state. */
     jobReference: z.ZodOptional<z.ZodString>;
@@ -630,17 +664,28 @@ export declare const verificationSchema: z.ZodObject<{
         serialNumber: z.ZodString;
         /** Dispenser-level "Security Seal No.". */
         securitySealNumber: z.ZodOptional<z.ZodString>;
+        /** Type Approval Certificate number (PROC01 4.1.1, #90). */
+        tacNumber: z.ZodOptional<z.ZodString>;
+        approvalBasis: z.ZodOptional<z.ZodEnum<["SABS 1650", "LM R117"]>>;
+        /** Minimum measured quantity from the data plate, litres (#90). */
+        mmqLitres: z.ZodOptional<z.ZodNumber>;
     }, "strip", z.ZodTypeAny, {
         serialNumber: string;
         saApprovalNumber: string;
         dispenserId: string;
         makeModel: string;
+        tacNumber?: string | undefined;
+        approvalBasis?: "SABS 1650" | "LM R117" | undefined;
+        mmqLitres?: number | undefined;
         securitySealNumber?: string | undefined;
     }, {
         serialNumber: string;
         saApprovalNumber: string;
         dispenserId: string;
         makeModel: string;
+        tacNumber?: string | undefined;
+        approvalBasis?: "SABS 1650" | "LM R117" | undefined;
+        mmqLitres?: number | undefined;
         securitySealNumber?: string | undefined;
     }>;
     referenceMeasures: z.ZodArray<z.ZodObject<{
@@ -787,9 +832,16 @@ export declare const verificationSchema: z.ZodObject<{
             };
         }>;
         securitySeal: z.ZodOptional<z.ZodString>;
+        /** Unit price in Rand per litre (PROC01 4.1.1: recorded per nozzle,
+         * evidencing the price computation check, #90). */
+        unitPrice: z.ZodOptional<z.ZodNumber>;
         totalizerBefore: z.ZodOptional<z.ZodNumber>;
         totalizerAfter: z.ZodOptional<z.ZodNumber>;
         quantityDelivered: z.ZodOptional<z.ZodNumber>;
+        /** Measured nozzle burst dilation in ml (MPE 50 ml, PROC02 4.3.2.5, #90). */
+        nozzleBurstMl: z.ZodOptional<z.ZodNumber>;
+        /** Advance-of-indication reading after zero setting, ml (0 expected, #90). */
+        zeroSettingMl: z.ZodOptional<z.ZodNumber>;
         testCondition: z.ZodEnum<["hot", "cold"]>;
         /** Data-plate flow range (L/min). */
         qMinLpm: z.ZodOptional<z.ZodNumber>;
@@ -916,9 +968,12 @@ export declare const verificationSchema: z.ZodObject<{
         securitySeal?: string | undefined;
         qMinLpm?: number | undefined;
         qMaxLpm?: number | undefined;
+        unitPrice?: number | undefined;
         totalizerBefore?: number | undefined;
         totalizerAfter?: number | undefined;
         quantityDelivered?: number | undefined;
+        nozzleBurstMl?: number | undefined;
+        zeroSettingMl?: number | undefined;
         comments?: string | undefined;
     }, {
         status: "new" | "repaired" | "atu" | "rejected";
@@ -976,9 +1031,12 @@ export declare const verificationSchema: z.ZodObject<{
         securitySeal?: string | undefined;
         qMinLpm?: number | undefined;
         qMaxLpm?: number | undefined;
+        unitPrice?: number | undefined;
         totalizerBefore?: number | undefined;
         totalizerAfter?: number | undefined;
         quantityDelivered?: number | undefined;
+        nozzleBurstMl?: number | undefined;
+        zeroSettingMl?: number | undefined;
         comments?: string | undefined;
     }>, "many">;
     signOff: z.ZodObject<{
@@ -1142,9 +1200,12 @@ export declare const verificationSchema: z.ZodObject<{
         securitySeal?: string | undefined;
         qMinLpm?: number | undefined;
         qMaxLpm?: number | undefined;
+        unitPrice?: number | undefined;
         totalizerBefore?: number | undefined;
         totalizerAfter?: number | undefined;
         quantityDelivered?: number | undefined;
+        nozzleBurstMl?: number | undefined;
+        zeroSettingMl?: number | undefined;
         comments?: string | undefined;
     }[];
     certificateNumber: string;
@@ -1155,12 +1216,16 @@ export declare const verificationSchema: z.ZodObject<{
         siteName: string;
         address: string;
         telephone?: string | undefined;
+        contactPerson?: string | undefined;
     };
     dispenser: {
         serialNumber: string;
         saApprovalNumber: string;
         dispenserId: string;
         makeModel: string;
+        tacNumber?: string | undefined;
+        approvalBasis?: "SABS 1650" | "LM R117" | undefined;
+        mmqLitres?: number | undefined;
         securitySealNumber?: string | undefined;
     };
     referenceMeasures: {
@@ -1254,9 +1319,12 @@ export declare const verificationSchema: z.ZodObject<{
         securitySeal?: string | undefined;
         qMinLpm?: number | undefined;
         qMaxLpm?: number | undefined;
+        unitPrice?: number | undefined;
         totalizerBefore?: number | undefined;
         totalizerAfter?: number | undefined;
         quantityDelivered?: number | undefined;
+        nozzleBurstMl?: number | undefined;
+        zeroSettingMl?: number | undefined;
         comments?: string | undefined;
     }[];
     certificateNumber: string;
@@ -1267,12 +1335,16 @@ export declare const verificationSchema: z.ZodObject<{
         siteName: string;
         address: string;
         telephone?: string | undefined;
+        contactPerson?: string | undefined;
     };
     dispenser: {
         serialNumber: string;
         saApprovalNumber: string;
         dispenserId: string;
         makeModel: string;
+        tacNumber?: string | undefined;
+        approvalBasis?: "SABS 1650" | "LM R117" | undefined;
+        mmqLitres?: number | undefined;
         securitySealNumber?: string | undefined;
     };
     referenceMeasures: {

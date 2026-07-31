@@ -86,6 +86,8 @@ class Site(Base):
     site_name: Mapped[str] = mapped_column(String(200))
     address: Mapped[str] = mapped_column(String(500))
     telephone: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Name of contact on premises (#90) — prefills the next visit.
+    contact_person: Mapped[str | None] = mapped_column(String(200), nullable=True)
     source: Mapped[str] = mapped_column(String(16))  # 'onkey' | 'manual'
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 

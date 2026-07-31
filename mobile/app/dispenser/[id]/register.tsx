@@ -84,6 +84,13 @@ export default function RegisterScreen() {
   // Which hoses THIS verification covers (#85): all by default, tap to
   // unselect the ones not being verified today.
   const [selected, setSelected] = useState<boolean[]>([]);
+  // Data-plate identity captured on the identity screen (#85/#90),
+  // snapshotted onto the certificate.
+  const [plate, setPlate] = useState<{
+    tacNumber?: string;
+    approvalBasis?: 'SABS 1650' | 'LM R117';
+    mmqLitres?: number;
+  }>({});
   const [busy, setBusy] = useState(false);
   const [loaded, setLoaded] = useState(false);
 
@@ -98,6 +105,11 @@ export default function RegisterScreen() {
         setSelected(hs.map(() => true));
         setQMin(detail.qMinLpm != null ? String(detail.qMinLpm) : '');
         setQMax(detail.qMaxLpm != null ? String(detail.qMaxLpm) : '');
+        setPlate({
+          tacNumber: detail.tacNumber ?? undefined,
+          approvalBasis: detail.approvalBasis ?? undefined,
+          mmqLitres: detail.mmqLitres ?? undefined,
+        });
       } catch {
         setHoses([emptyHose(1)]);
         setSelected([true]);
@@ -233,6 +245,7 @@ export default function RegisterScreen() {
           siteName: site.siteName,
           address: site.address,
           telephone: site.telephone ?? undefined,
+          contactPerson: site.contactPerson ?? undefined,
         },
         jobReference: workOrderId,
         workOrderId,
@@ -241,6 +254,9 @@ export default function RegisterScreen() {
           makeModel: `${disp.make} ${disp.model}`.trim(),
           saApprovalNumber: disp.saApprovalNumber,
           serialNumber: disp.serialNumber,
+          tacNumber: plate.tacNumber,
+          approvalBasis: plate.approvalBasis,
+          mmqLitres: plate.mmqLitres,
         },
         // The VO's ACTIVE certified measures (#70) — the gate above
         // guarantees all three sizes exist and are in date.

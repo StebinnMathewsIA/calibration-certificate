@@ -59,7 +59,12 @@ export const verificationSiteSchema = z.object({
   siteName: z.string().min(1).max(200),
   address: z.string().min(1).max(500),
   telephone: z.string().max(64).optional(),
+  /** Name of contact on premises (SANS TEST PROC01 4.1.1, #90). */
+  contactPerson: z.string().max(200).optional(),
 });
+
+/** Basis under which the LFD was approved (PROC01 4.2, #90). */
+export const approvalBasisSchema = z.enum(['SABS 1650', 'LM R117']);
 
 /** Dispenser (LFD) identity snapshotted onto the certificate. */
 export const verificationDispenserSchema = z.object({
@@ -71,6 +76,11 @@ export const verificationDispenserSchema = z.object({
   serialNumber: z.string().min(1).max(100),
   /** Dispenser-level "Security Seal No.". */
   securitySealNumber: z.string().max(64).optional(),
+  /** Type Approval Certificate number (PROC01 4.1.1, #90). */
+  tacNumber: z.string().max(100).optional(),
+  approvalBasis: approvalBasisSchema.optional(),
+  /** Minimum measured quantity from the data plate, litres (#90). */
+  mmqLitres: z.number().positive().optional(),
 });
 
 /** A reference proving measure used for the verification (200 / 20 / 5 L).
@@ -139,9 +149,16 @@ export const hoseResultSchema = z.object({
   /** Component identity snapshot (meter/PC board/pulsar/solenoid). */
   components: hoseComponentsSchema,
   securitySeal: z.string().max(64).optional(),
+  /** Unit price in Rand per litre (PROC01 4.1.1: recorded per nozzle,
+   * evidencing the price computation check, #90). */
+  unitPrice: z.number().positive().optional(),
   totalizerBefore: z.number().finite().optional(),
   totalizerAfter: z.number().finite().optional(),
   quantityDelivered: z.number().finite().optional(),
+  /** Measured nozzle burst dilation in ml (MPE 50 ml, PROC02 4.3.2.5, #90). */
+  nozzleBurstMl: z.number().finite().optional(),
+  /** Advance-of-indication reading after zero setting, ml (0 expected, #90). */
+  zeroSettingMl: z.number().finite().optional(),
   testCondition: testConditionSchema,
   /** Data-plate flow range (L/min). */
   qMinLpm: z.number().positive().optional(),

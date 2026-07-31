@@ -14,6 +14,8 @@ export declare const siteRecordSchema: z.ZodObject<{
     siteName: z.ZodString;
     address: z.ZodString;
     telephone: z.ZodOptional<z.ZodString>;
+    /** Name of contact on premises (#90) — prefills the next visit. */
+    contactPerson: z.ZodOptional<z.ZodString>;
     source: z.ZodEnum<["onkey", "manual"]>;
     updatedAt: z.ZodString;
 }, "strip", z.ZodTypeAny, {
@@ -24,6 +26,7 @@ export declare const siteRecordSchema: z.ZodObject<{
     source: "onkey" | "manual";
     updatedAt: string;
     telephone?: string | undefined;
+    contactPerson?: string | undefined;
 }, {
     id: string;
     customerName: string;
@@ -32,6 +35,7 @@ export declare const siteRecordSchema: z.ZodObject<{
     source: "onkey" | "manual";
     updatedAt: string;
     telephone?: string | undefined;
+    contactPerson?: string | undefined;
 }>;
 export type SiteRecord = z.infer<typeof siteRecordSchema>;
 export declare const dispenserRecordSchema: z.ZodObject<{
@@ -410,6 +414,12 @@ export declare const dispenserDetailSchema: z.ZodObject<{
     qMinLpm: z.ZodOptional<z.ZodNumber>;
     /** Data-plate maximum flow rate (L/min). */
     qMaxLpm: z.ZodOptional<z.ZodNumber>;
+    /** Type Approval Certificate number from the data plate (#90). */
+    tacNumber: z.ZodOptional<z.ZodString>;
+    /** Approval basis: 'SABS 1650' or 'LM R117' (#90). */
+    approvalBasis: z.ZodOptional<z.ZodEnum<["SABS 1650", "LM R117"]>>;
+    /** Minimum measured quantity from the data plate, litres (#90). */
+    mmqLitres: z.ZodOptional<z.ZodNumber>;
     hoses: z.ZodDefault<z.ZodArray<z.ZodObject<{
         /** "Hose/Pump No." on the certificate. */
         hoseNumber: z.ZodString;
@@ -632,11 +642,17 @@ export declare const dispenserDetailSchema: z.ZodObject<{
     updatedAt?: string | undefined;
     qMinLpm?: number | undefined;
     qMaxLpm?: number | undefined;
+    tacNumber?: string | undefined;
+    approvalBasis?: "SABS 1650" | "LM R117" | undefined;
+    mmqLitres?: number | undefined;
 }, {
     dispenserId: string;
     updatedAt?: string | undefined;
     qMinLpm?: number | undefined;
     qMaxLpm?: number | undefined;
+    tacNumber?: string | undefined;
+    approvalBasis?: "SABS 1650" | "LM R117" | undefined;
+    mmqLitres?: number | undefined;
     hoses?: {
         hoseNumber: string;
         product: string;

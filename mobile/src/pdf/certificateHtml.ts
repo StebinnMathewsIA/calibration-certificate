@@ -125,7 +125,19 @@ function metrologistGrid(v: Verification): string {
     `<tr><td class="rl">${esc(item.label)}</td>${hoses
       .map((h) => {
         const val = h.checklist[item.key];
-        return `<td colspan="4" class="c ${checkClass(val)}">${String(val ?? '').toUpperCase()}</td>`;
+        // Nozzle burst and zero setting print their MEASURED value when the
+        // VO recorded one (#90), like the paper note; verdict colour stays.
+        const measured =
+          item.key === 'nozzleBurst'
+            ? h.nozzleBurstMl
+            : item.key === 'zeroSetting'
+              ? h.zeroSettingMl
+              : undefined;
+        const text =
+          measured != null
+            ? `${measured > 0 ? '+' : ''}${measured} ml`
+            : String(val ?? '').toUpperCase();
+        return `<td colspan="4" class="c ${checkClass(val)}">${esc(text)}</td>`;
       })
       .join('')}</tr>`,
   ).join('');
@@ -160,6 +172,7 @@ function metrologistGrid(v: Verification): string {
     ${identityRow('LFD Hose number', (h) => cell(h.hoseNumber))}
     ${identityRow('Verification Status (New / Repaired / ATU / Rej)', (h) => cell(HOSE_STATUS_LABELS[h.status] ?? h.status))}
     ${identityRow('Product', (h) => cell(h.product))}
+    ${identityRow('Unit price (R/L)', (h) => cell(h.unitPrice))}
     ${identityRow('Totalizer reading before', (h) => cell(h.totalizerBefore))}
     ${identityRow('Totalizer reading after', (h) => cell(h.totalizerAfter))}
     ${identityRow('Quantity delivered', (h) => cell(h.quantityDelivered))}
@@ -167,6 +180,8 @@ function metrologistGrid(v: Verification): string {
     ${checklistRows}
     ${identityRow('Instrument certified ( C ) or rejected ( R )', (h) => (h.outcome === 'certified' ? 'C' : 'R'), 'bold')}
     ${identityRow('Qmin / Qmax range on data plate', (h) => `${cell(h.qMinLpm)} / ${cell(h.qMaxLpm)} L/min`)}
+    ${identityRow('TAC No. / Approval basis / MMQ', () =>
+      `${cell(d.tacNumber)} / ${cell(d.approvalBasis)} / ${d.mmqLitres != null ? `${d.mmqLitres} L` : ''}`)}
     <tr><td class="rl acc">Accuracy: EFD = (VFD − VREF) / VREF × 100</td>${accuracyHeader}</tr>
     ${deliveryRows}
   </table>`;
@@ -282,6 +297,7 @@ export function certificateHtml(v: Verification, opts: RenderOptions = {}): stri
   <div class="f"><span class="k">Name (User):</span> ${cell(site.siteName)}</div>
   <div class="f"><span class="k">Oil Company:</span> ${cell(site.customerName)}</div>
   <div class="f"><span class="k">Address:</span> ${cell(site.address)}${site.telephone ? ` · Tel: ${esc(site.telephone)}` : ''}</div>
+  ${site.contactPerson ? `<div class="f"><span class="k">Contact on premises:</span> ${esc(site.contactPerson)}</div>` : ''}
 </div>
 
 <div class="trace">
@@ -322,6 +338,12 @@ export function certificateHtml(v: Verification, opts: RenderOptions = {}): stri
     <td class="lbl">SA Approval No.</td><td>${cell(dispenser.saApprovalNumber)}</td>
     <td class="lbl">Security Seal No.:</td><td>${cell(dispenser.securitySealNumber)}</td>
   </tr>
+  ${dispenser.tacNumber || dispenser.approvalBasis || dispenser.mmqLitres != null
+    ? `<tr>
+    <td class="lbl">TAC No.</td><td>${cell(dispenser.tacNumber)}</td>
+    <td class="lbl">Basis / MMQ:</td><td>${cell(dispenser.approvalBasis)}${dispenser.mmqLitres != null ? ` / ${dispenser.mmqLitres} L` : ''}</td>
+  </tr>`
+    : ''}
 </table>
 
 ${certificateGrid(hoses)}
@@ -388,6 +410,7 @@ ${certificateGrid(hoses)}
   <div class="f"><span class="k">Name (User):</span> ${cell(site.siteName)}</div>
   <div class="f"><span class="k">Oil Company:</span> ${cell(site.customerName)}</div>
   <div class="f"><span class="k">Address:</span> ${cell(site.address)}</div>
+  ${site.contactPerson ? `<div class="f"><span class="k">Contact:</span> ${esc(site.contactPerson)}</div>` : ''}
   <div class="f"><span class="k">Job Ref. No.:</span> ${cell(v.jobReference)}</div>
 </div>
 

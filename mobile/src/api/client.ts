@@ -346,6 +346,8 @@ export interface SiteResolved {
   siteName: string;
   address: string;
   telephone?: string | null;
+  /** Name of contact on premises (#90). */
+  contactPerson?: string | null;
   /** WKT "POINT (lon lat)" from the register / manual gap edits (#73). */
   gpsLocation?: string | null;
   source: 'onkey' | 'manual';

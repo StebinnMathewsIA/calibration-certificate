@@ -55,6 +55,7 @@ function hoseMissing(h: HoseResult): string[] {
   const missing: string[] = [];
   if (!h.status) missing.push('verification status');
   if (!h.testCondition) missing.push('test condition');
+  if (!((h.unitPrice ?? 0) > 0)) missing.push('unit price');
   const unanswered = CHECKLIST_ITEMS.filter((it) => !h.checklist[it.key]).length;
   if (unanswered) missing.push(`${unanswered} checklist item${unanswered === 1 ? '' : 's'}`);
   const dels = h.deliveries.filter(
@@ -70,6 +71,26 @@ const DELIVERY_FIELDS = ['flowRateLpm', 'vrefMl'] as const;
 /** Show an empty field (not "0"/"undefined") until the VO enters a value. */
 const numStr = (v?: number) => (v == null || Number.isNaN(v) ? '' : String(v));
 const parseNum = (t: string): number | undefined => (t.trim() === '' ? undefined : Number(t));
+
+/** Advisory flow-rate window check (#90): max-flow deliveries belong at 50
+ * to 100 % of Qmax, minimum-flow deliveries at 100 to 120 % of Qmin (both
+ * from the TAC / data plate). Null when in window or unknowable. */
+function flowWindowWarning(h: HoseResult, d: Delivery): string | null {
+  const f = d.flowRateLpm;
+  if (!f || f <= 0) return null;
+  if (d.point === 'del1_max' || d.point === 'del2_max' || d.point === 'del3_max') {
+    const qmax = h.qMaxLpm;
+    if (qmax && (f < 0.5 * qmax || f > qmax)) {
+      return `Flow ${f} L/min is outside 50 to 100% of Qmax (${qmax} L/min)`;
+    }
+  } else if (d.point === 'min_flow' || d.point === 'min_flow_20l') {
+    const qmin = h.qMinLpm;
+    if (qmin && (f < qmin || f > 1.2 * qmin)) {
+      return `Flow ${f} L/min is outside 100 to 120% of Qmin (${qmin} L/min)`;
+    }
+  }
+  return null;
+}
 
 /** Selectable pill following the brand chip recipe: active = tinted
  * background + dark status/semantic text (never white on a bright fill). */
@@ -221,6 +242,8 @@ export default function ResultsScreen() {
       const label = `Hose ${h.hoseNumber}`;
       if (!h.status) return complain(`${label}: choose a verification status.`, i);
       if (!h.testCondition) return complain(`${label}: choose hot or cold.`, i);
+      if (!((h.unitPrice ?? 0) > 0))
+        return complain(`${label}: enter the unit price (R/L).`, i);
       const missingCheck = CHECKLIST_ITEMS.find((it) => !h.checklist[it.key]);
       if (missingCheck)
         return complain(`${label}: complete the checklist ("${missingCheck.label}").`, i);
@@ -314,6 +337,16 @@ export default function ResultsScreen() {
           </View>
 
           <View style={{ flexDirection: 'row', gap: 8, marginTop: 6 }}>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 11, color: colors.muted }}>Unit price (R/L)</Text>
+              <TextInput
+                style={numInput}
+                keyboardType="decimal-pad"
+                placeholder="—"
+                value={numStr(hose.unitPrice)}
+                onChangeText={(t) => setHose(hi, { unitPrice: parseNum(t) })}
+              />
+            </View>
             {(['totalizerBefore', 'totalizerAfter', 'quantityDelivered'] as const).map((k) => (
               <View key={k} style={{ flex: 1 }}>
                 <Text style={{ fontSize: 11, color: colors.muted }}>{k}</Text>
@@ -329,26 +362,54 @@ export default function ResultsScreen() {
 
           <Text style={{ fontWeight: '700', color: colors.ink, marginTop: 10 }}>Checklist</Text>
           {CHECKLIST_ITEMS.map((item) => (
-            <View key={item.key} style={{ flexDirection: 'row', alignItems: 'center', marginVertical: 2 }}>
-              <Text
-                style={{
-                  flex: 1,
-                  fontSize: 12,
-                  color: hose.checklist[item.key] ? colors.ink : colors.amber,
-                }}
-              >
-                {hose.checklist[item.key] ? '' : '• '}
-                {item.label}
-              </Text>
-              {(['pass', 'fail', 'na'] as const).map((val) => (
-                <Pill
-                  key={val}
-                  label={val === 'na' ? 'N/A' : val[0].toUpperCase() + val.slice(1)}
-                  active={hose.checklist[item.key] === val}
-                  tone={val === 'fail' ? 'bad' : val === 'pass' ? 'ok' : 'muted'}
-                  onPress={() => setChecklist(hi, item.key, val)}
-                />
-              ))}
+            <View key={item.key}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginVertical: 2 }}>
+                <Text
+                  style={{
+                    flex: 1,
+                    fontSize: 12,
+                    color: hose.checklist[item.key] ? colors.ink : colors.amber,
+                  }}
+                >
+                  {hose.checklist[item.key] ? '' : '• '}
+                  {item.label}
+                </Text>
+                {(['pass', 'fail', 'na'] as const).map((val) => (
+                  <Pill
+                    key={val}
+                    label={val === 'na' ? 'N/A' : val[0].toUpperCase() + val.slice(1)}
+                    active={hose.checklist[item.key] === val}
+                    tone={val === 'fail' ? 'bad' : val === 'pass' ? 'ok' : 'muted'}
+                    onPress={() => setChecklist(hi, item.key, val)}
+                  />
+                ))}
+              </View>
+              {/* The paper note records these two as MEASURED values (#90):
+                  burst dilation in ml (limit 50) and the zero-setting
+                  advance of indication (0 expected). */}
+              {item.key === 'nozzleBurst' || item.key === 'zeroSetting' ? (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                  <Text style={{ fontSize: 11, color: colors.muted }}>
+                    {item.key === 'nozzleBurst' ? 'Measured (ml, limit 50)' : 'Reading (ml)'}
+                  </Text>
+                  <TextInput
+                    style={[numInput, { flex: 0, width: 110, minHeight: 38, paddingVertical: 6 }]}
+                    keyboardType="numbers-and-punctuation"
+                    placeholder="—"
+                    value={numStr(
+                      item.key === 'nozzleBurst' ? hose.nozzleBurstMl : hose.zeroSettingMl,
+                    )}
+                    onChangeText={(t) =>
+                      setHose(
+                        hi,
+                        item.key === 'nozzleBurst'
+                          ? { nozzleBurstMl: parseNum(t) }
+                          : { zeroSettingMl: parseNum(t) },
+                      )
+                    }
+                  />
+                </View>
+              ) : null}
             </View>
           ))}
 
@@ -437,9 +498,24 @@ export default function ResultsScreen() {
               {d.efdPercent != null && !Number.isNaN(d.efdPercent) ? (
                 <ToleranceBar efdPercent={d.efdPercent} />
               ) : null}
+              {flowWindowWarning(hose, d) ? (
+                <Text style={{ color: colors.amber, fontSize: 11, marginTop: 3 }}>
+                  ⚠ {flowWindowWarning(hose, d)}
+                </Text>
+              ) : null}
             </View>
             );
           })}
+
+          <Text style={{ fontWeight: '700', color: colors.ink, marginTop: 10 }}>Comments</Text>
+          <TextInput
+            style={[numInput, { fontFamily: fonts.body, fontSize: 14, minHeight: 64 }]}
+            multiline
+            textAlignVertical="top"
+            placeholder="Optional: printed on the certificate's Comments row"
+            value={hose.comments ?? ''}
+            onChangeText={(t) => setHose(hi, { comments: t || undefined })}
+          />
         </SectionCard>
         );
       })}

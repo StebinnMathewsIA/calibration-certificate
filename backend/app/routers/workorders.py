@@ -44,6 +44,7 @@ def _site_record(site: Site) -> dict:
         "siteName": site.site_name,
         "address": site.address,
         "telephone": site.telephone,
+        "contactPerson": site.contact_person,
         "source": site.source,
         "updatedAt": site.updated_at.isoformat() if site.updated_at else None,
     }
@@ -277,6 +278,7 @@ def upsert_site(
     site.site_name = payload["siteName"]
     site.address = payload["address"]
     site.telephone = payload.get("telephone")
+    site.contact_person = payload.get("contactPerson")
     site.updated_at = _now()
     db.commit()
     return _site_record(site)

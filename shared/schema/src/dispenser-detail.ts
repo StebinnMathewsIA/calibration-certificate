@@ -41,6 +41,8 @@ export const siteRecordSchema = z.object({
   siteName: z.string().min(1).max(200),
   address: z.string().min(1).max(500),
   telephone: z.string().max(64).optional(),
+  /** Name of contact on premises (#90) — prefills the next visit. */
+  contactPerson: z.string().max(200).optional(),
   source: recordSourceSchema,
   updatedAt: isoDateTime,
 });
@@ -111,6 +113,12 @@ export const dispenserDetailSchema = z.object({
   qMinLpm: z.number().positive().optional(),
   /** Data-plate maximum flow rate (L/min). */
   qMaxLpm: z.number().positive().optional(),
+  /** Type Approval Certificate number from the data plate (#90). */
+  tacNumber: z.string().max(100).optional(),
+  /** Approval basis: 'SABS 1650' or 'LM R117' (#90). */
+  approvalBasis: z.enum(['SABS 1650', 'LM R117']).optional(),
+  /** Minimum measured quantity from the data plate, litres (#90). */
+  mmqLitres: z.number().positive().optional(),
   hoses: z.array(hoseDetailSchema).default([]),
   updatedAt: isoDateTime.optional(),
 });

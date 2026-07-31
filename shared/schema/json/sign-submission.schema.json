@@ -51,6 +51,10 @@
                 "telephone": {
                   "type": "string",
                   "maxLength": 64
+                },
+                "contactPerson": {
+                  "type": "string",
+                  "maxLength": 200
                 }
               },
               "required": [
@@ -94,6 +98,21 @@
                 "securitySealNumber": {
                   "type": "string",
                   "maxLength": 64
+                },
+                "tacNumber": {
+                  "type": "string",
+                  "maxLength": 100
+                },
+                "approvalBasis": {
+                  "type": "string",
+                  "enum": [
+                    "SABS 1650",
+                    "LM R117"
+                  ]
+                },
+                "mmqLitres": {
+                  "type": "number",
+                  "exclusiveMinimum": 0
                 }
               },
               "required": [
@@ -222,6 +241,10 @@
                     "type": "string",
                     "maxLength": 64
                   },
+                  "unitPrice": {
+                    "type": "number",
+                    "exclusiveMinimum": 0
+                  },
                   "totalizerBefore": {
                     "type": "number"
                   },
@@ -229,6 +252,12 @@
                     "type": "number"
                   },
                   "quantityDelivered": {
+                    "type": "number"
+                  },
+                  "nozzleBurstMl": {
+                    "type": "number"
+                  },
+                  "zeroSettingMl": {
                     "type": "number"
                   },
                   "testCondition": {

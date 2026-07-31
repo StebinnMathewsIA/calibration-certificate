@@ -17,6 +17,21 @@
           "type": "number",
           "exclusiveMinimum": 0
         },
+        "tacNumber": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "approvalBasis": {
+          "type": "string",
+          "enum": [
+            "SABS 1650",
+            "LM R117"
+          ]
+        },
+        "mmqLitres": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
         "hoses": {
           "type": "array",
           "items": {

@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.CHECKLIST_ITEMS = exports.verificationSchema = exports.DEFAULT_METHOD_REFERENCE = exports.reportTypeSchema = exports.signOffSchema = exports.technicianIdentitySchema = exports.authMethodSchema = exports.hoseResultSchema = exports.hoseOutcomeSchema = exports.deliverySchema = exports.testConditionSchema = exports.hoseStatusSchema = exports.checklistSchema = exports.checklistOutcomeSchema = exports.referenceMeasureSchema = exports.verificationDispenserSchema = exports.verificationSiteSchema = exports.provenanceEntrySchema = exports.fieldSourceSchema = exports.certificateNumberSchema = exports.SCHEMA_VERSION = void 0;
+exports.CHECKLIST_ITEMS = exports.verificationSchema = exports.DEFAULT_METHOD_REFERENCE = exports.reportTypeSchema = exports.signOffSchema = exports.technicianIdentitySchema = exports.authMethodSchema = exports.hoseResultSchema = exports.hoseOutcomeSchema = exports.deliverySchema = exports.testConditionSchema = exports.hoseStatusSchema = exports.checklistSchema = exports.checklistOutcomeSchema = exports.referenceMeasureSchema = exports.verificationDispenserSchema = exports.approvalBasisSchema = exports.verificationSiteSchema = exports.provenanceEntrySchema = exports.fieldSourceSchema = exports.certificateNumberSchema = exports.SCHEMA_VERSION = void 0;
 const zod_1 = require("zod");
 const dispenser_detail_1 = require("./dispenser-detail");
 const tolerance_1 = require("./tolerance");
@@ -50,7 +50,11 @@ exports.verificationSiteSchema = zod_1.z.object({
     siteName: zod_1.z.string().min(1).max(200),
     address: zod_1.z.string().min(1).max(500),
     telephone: zod_1.z.string().max(64).optional(),
+    /** Name of contact on premises (SANS TEST PROC01 4.1.1, #90). */
+    contactPerson: zod_1.z.string().max(200).optional(),
 });
+/** Basis under which the LFD was approved (PROC01 4.2, #90). */
+exports.approvalBasisSchema = zod_1.z.enum(['SABS 1650', 'LM R117']);
 /** Dispenser (LFD) identity snapshotted onto the certificate. */
 exports.verificationDispenserSchema = zod_1.z.object({
     /** Stable internal dispenser ID (from OnKey seed or manually added). */
@@ -61,6 +65,11 @@ exports.verificationDispenserSchema = zod_1.z.object({
     serialNumber: zod_1.z.string().min(1).max(100),
     /** Dispenser-level "Security Seal No.". */
     securitySealNumber: zod_1.z.string().max(64).optional(),
+    /** Type Approval Certificate number (PROC01 4.1.1, #90). */
+    tacNumber: zod_1.z.string().max(100).optional(),
+    approvalBasis: exports.approvalBasisSchema.optional(),
+    /** Minimum measured quantity from the data plate, litres (#90). */
+    mmqLitres: zod_1.z.number().positive().optional(),
 });
 /** A reference proving measure used for the verification (200 / 20 / 5 L).
  * Traceable to the national standard; blocks signing when expired. */
@@ -120,9 +129,16 @@ exports.hoseResultSchema = zod_1.z.object({
     /** Component identity snapshot (meter/PC board/pulsar/solenoid). */
     components: dispenser_detail_1.hoseComponentsSchema,
     securitySeal: zod_1.z.string().max(64).optional(),
+    /** Unit price in Rand per litre (PROC01 4.1.1: recorded per nozzle,
+     * evidencing the price computation check, #90). */
+    unitPrice: zod_1.z.number().positive().optional(),
     totalizerBefore: zod_1.z.number().finite().optional(),
     totalizerAfter: zod_1.z.number().finite().optional(),
     quantityDelivered: zod_1.z.number().finite().optional(),
+    /** Measured nozzle burst dilation in ml (MPE 50 ml, PROC02 4.3.2.5, #90). */
+    nozzleBurstMl: zod_1.z.number().finite().optional(),
+    /** Advance-of-indication reading after zero setting, ml (0 expected, #90). */
+    zeroSettingMl: zod_1.z.number().finite().optional(),
     testCondition: exports.testConditionSchema,
     /** Data-plate flow range (L/min). */
     qMinLpm: zod_1.z.number().positive().optional(),

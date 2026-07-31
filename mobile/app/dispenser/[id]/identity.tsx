@@ -80,6 +80,9 @@ export default function DispenserIdentityScreen() {
   const [qMin, setQMin] = useState('');
   const [qMax, setQMax] = useState('');
   const [hoseCount, setHoseCount] = useState('');
+  const [tacNumber, setTacNumber] = useState('');
+  const [approvalBasis, setApprovalBasis] = useState<'SABS 1650' | 'LM R117' | null>(null);
+  const [mmq, setMmq] = useState('');
   const [busy, setBusy] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [scanning, setScanning] = useState(false);
@@ -105,6 +108,9 @@ export default function DispenserIdentityScreen() {
         setDetail(det as DispenserDetail);
         setQMin(det.qMinLpm != null ? String(det.qMinLpm) : '');
         setQMax(det.qMaxLpm != null ? String(det.qMaxLpm) : '');
+        setTacNumber(det.tacNumber ?? '');
+        setApprovalBasis(det.approvalBasis ?? null);
+        setMmq(det.mmqLitres != null ? String(det.mmqLitres) : '');
         if (det.hoses.length > 0) setHoseCount(String(det.hoses.length));
       } catch {
         // First visit offline with no mirror: fields start blank.
@@ -159,6 +165,7 @@ export default function DispenserIdentityScreen() {
         siteName: site.siteName!,
         address: site.address!,
         telephone: site.telephone ?? undefined,
+        contactPerson: site.contactPerson ?? undefined,
       });
       await editDispenser(accessToken, id, {
         make: disp.make!,
@@ -171,11 +178,17 @@ export default function DispenserIdentityScreen() {
         dispenserId: id,
         qMinLpm: qMin ? Number(qMin) : undefined,
         qMaxLpm: qMax ? Number(qMax) : undefined,
+        tacNumber: tacNumber.trim() || undefined,
+        approvalBasis: approvalBasis ?? undefined,
+        mmqLitres: mmq ? Number(mmq) : undefined,
         hoses,
       };
       await saveDispenserDetail(accessToken, id, {
         qMinLpm: nextDetail.qMinLpm,
         qMaxLpm: nextDetail.qMaxLpm,
+        tacNumber: nextDetail.tacNumber,
+        approvalBasis: nextDetail.approvalBasis,
+        mmqLitres: nextDetail.mmqLitres,
         hoses,
       });
       // The components screen reads through the mirror: reflect the resize
@@ -203,6 +216,11 @@ export default function DispenserIdentityScreen() {
         <Field label="Site / depot name (Name (User))" value={site.siteName ?? ''} onChangeText={(t) => setSite((p) => ({ ...p, siteName: t }))} />
         <Field label="Address" value={site.address ?? ''} onChangeText={(t) => setSite((p) => ({ ...p, address: t }))} />
         <Field label="Telephone" value={site.telephone ?? ''} onChangeText={(t) => setSite((p) => ({ ...p, telephone: t }))} />
+        <Field
+          label="Contact person on premises"
+          value={site.contactPerson ?? ''}
+          onChangeText={(t) => setSite((p) => ({ ...p, contactPerson: t }))}
+        />
       </SectionCard>
 
       <SectionCard title="Dispenser (LFD) identity">
@@ -232,6 +250,41 @@ export default function DispenserIdentityScreen() {
           <View style={{ flex: 1 }}>
             <Field label="Number of hoses" value={hoseCount} onChangeText={setHoseCount} keyboardType="number-pad" />
           </View>
+        </View>
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <View style={{ flex: 2 }}>
+            <Field label="TAC number" value={tacNumber} onChangeText={setTacNumber} placeholder="S.A. …" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Field label="MMQ (litres)" value={mmq} onChangeText={setMmq} keyboardType="decimal-pad" />
+          </View>
+        </View>
+        <Text style={{ fontSize: 12, color: colors.muted, marginBottom: 4 }}>Approval basis</Text>
+        <View style={{ flexDirection: 'row', gap: 6 }}>
+          {(['SABS 1650', 'LM R117'] as const).map((b) => {
+            const on = approvalBasis === b;
+            return (
+              <Text
+                key={b}
+                onPress={() => setApprovalBasis(on ? null : b)}
+                accessibilityRole="button"
+                accessibilityLabel={`${on ? 'Clear approval basis' : `Set approval basis ${b}`}`}
+                style={{
+                  borderWidth: 1,
+                  borderColor: on ? colors.blueText : colors.line,
+                  backgroundColor: on ? colors.blueTint : '#fff',
+                  color: on ? colors.blueText : colors.ink,
+                  paddingHorizontal: 12,
+                  paddingVertical: 6,
+                  borderRadius: 999,
+                  overflow: 'hidden',
+                  fontSize: 13,
+                }}
+              >
+                {b}
+              </Text>
+            );
+          })}
         </View>
       </SectionCard>
 

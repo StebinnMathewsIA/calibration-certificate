@@ -33,6 +33,8 @@ exports.siteRecordSchema = zod_1.z.object({
     siteName: zod_1.z.string().min(1).max(200),
     address: zod_1.z.string().min(1).max(500),
     telephone: zod_1.z.string().max(64).optional(),
+    /** Name of contact on premises (#90) — prefills the next visit. */
+    contactPerson: zod_1.z.string().max(200).optional(),
     source: exports.recordSourceSchema,
     updatedAt: isoDateTime,
 });
@@ -91,6 +93,12 @@ exports.dispenserDetailSchema = zod_1.z.object({
     qMinLpm: zod_1.z.number().positive().optional(),
     /** Data-plate maximum flow rate (L/min). */
     qMaxLpm: zod_1.z.number().positive().optional(),
+    /** Type Approval Certificate number from the data plate (#90). */
+    tacNumber: zod_1.z.string().max(100).optional(),
+    /** Approval basis: 'SABS 1650' or 'LM R117' (#90). */
+    approvalBasis: zod_1.z.enum(['SABS 1650', 'LM R117']).optional(),
+    /** Minimum measured quantity from the data plate, litres (#90). */
+    mmqLitres: zod_1.z.number().positive().optional(),
     hoses: zod_1.z.array(exports.hoseDetailSchema).default([]),
     updatedAt: isoDateTime.optional(),
 });

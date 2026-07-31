@@ -9,7 +9,7 @@ import type {
   HoseResult,
   Verification,
 } from '@prowalco/schema';
-import { SCHEMA_VERSION } from '@prowalco/schema';
+import { SCHEMA_VERSION, TestPlan, planForDesignation } from '@prowalco/schema';
 import {
   getDispenser,
   getDispenserDetail,
@@ -22,7 +22,7 @@ import { Button, SectionCard, colors } from '../../../src/components/ui';
 import { FormScrollView } from '../../../src/components/FormScrollView';
 import { config } from '../../../src/config';
 import { fetchThrough } from '../../../src/db/cache';
-import { DELIVERY_NOMINAL_ML, METHOD_REFERENCE, PRODUCT_OPTIONS } from '../../../src/data/registers';
+import { METHOD_REFERENCE, PRODUCT_OPTIONS } from '../../../src/data/registers';
 import { getProfile } from '../../../src/profile/profileStore';
 import * as repo from '../../../src/db/certificateRepo';
 
@@ -91,6 +91,9 @@ export default function RegisterScreen() {
     approvalBasis?: 'SABS 1650' | 'LM R117';
     mmqLitres?: number;
   }>({});
+  // The test plan (#92), selected by the dispenser's designation and PINNED
+  // into the draft at creation. Never re-derived mid-verification.
+  const [plan, setPlan] = useState<TestPlan>(planForDesignation('std'));
   const [busy, setBusy] = useState(false);
   const [loaded, setLoaded] = useState(false);
 
@@ -110,6 +113,7 @@ export default function RegisterScreen() {
           approvalBasis: detail.approvalBasis ?? undefined,
           mmqLitres: detail.mmqLitres ?? undefined,
         });
+        setPlan(planForDesignation(detail.designation ?? 'std'));
       } catch {
         setHoses([emptyHose(1)]);
         setSelected([true]);
@@ -130,15 +134,15 @@ export default function RegisterScreen() {
       ),
     );
 
-  // VFD is the fixed nominal the dispenser delivers (20 L / 5 L), so we
-  // pre-fill it. Flow and VREF are the VO's on-site readings — left blank.
+  // VFD is the fixed nominal per the PLAN (#92); Flow and VREF are the VO's
+  // on-site readings — left blank.
   const buildDeliveries = () =>
-    (['del1_max', 'del2_max', 'del3_max', 'min_flow_20l', 'min_flow', 'preset'] as const).map(
-      (point) =>
+    plan.deliveries.map(
+      (pd) =>
         ({
-          point,
+          point: pd.point,
           flowRateLpm: undefined,
-          vfdMl: DELIVERY_NOMINAL_ML[point],
+          vfdMl: pd.nominalMl,
           vrefMl: undefined,
           efdPercent: undefined,
           pass: false,
@@ -162,15 +166,17 @@ export default function RegisterScreen() {
     }
     if (!identity) return;
 
-    // Certified-measures gate (#70): no verification starts without all
-    // three measures registered and in date. Mirrored locally, so the gate
-    // works offline.
+    // Certified-measures gate (#70, plan-scoped by #92): the PLAN decides
+    // which measure sizes must be registered and in date (STD: 20 L + 5 L;
+    // HV: 200 L). Mirrored locally, so the gate works offline.
     const activeMeasures = getProfile(identity.subject).measures ?? [];
     const today = new Date().toISOString().slice(0, 10);
-    const missing = ['200L', '20L', '5L'].filter(
+    const missing = plan.requiredMeasures.filter(
       (s) => !activeMeasures.some((m) => m.size === s),
     );
-    const expired = activeMeasures.filter((m) => m.expiryDate < today);
+    const expired = activeMeasures.filter(
+      (m) => plan.requiredMeasures.some((s) => s === m.size) && m.expiryDate < today,
+    );
     if (missing.length > 0 || expired.length > 0) {
       const problems = [
         ...missing.map((s) => `• ${s} measure not registered`),
@@ -240,6 +246,7 @@ export default function RegisterScreen() {
         schemaVersion: SCHEMA_VERSION,
         certificateNumber: certificateNumber ?? undefined,
         reportType: 'verification',
+        testPlan: plan.id,
         site: {
           customerName: site.customerName,
           siteName: site.siteName,
@@ -258,9 +265,11 @@ export default function RegisterScreen() {
           approvalBasis: plate.approvalBasis,
           mmqLitres: plate.mmqLitres,
         },
-        // The VO's ACTIVE certified measures (#70) — the gate above
-        // guarantees all three sizes exist and are in date.
-        referenceMeasures: activeMeasures.map((m) => ({
+        // The VO's ACTIVE certified measures for THIS PLAN (#70/#92) — the
+        // gate above guarantees they exist and are in date.
+        referenceMeasures: activeMeasures
+          .filter((m) => plan.requiredMeasures.some((s) => s === m.size))
+          .map((m) => ({
           size: m.size,
           serialNumber: m.serialNumber,
           certificateNumber: m.certificateNumber,

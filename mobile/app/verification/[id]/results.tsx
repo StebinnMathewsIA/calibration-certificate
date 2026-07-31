@@ -8,10 +8,10 @@ import {
   MPE_PERCENT,
   NOZZLE_BURST_LIMIT_ML,
   computeEfd,
+  testPlanFor,
 } from '@prowalco/schema';
 import { Badge, Button, SectionCard, colors, fonts } from '../../../src/components/ui';
 import { FormScrollView } from '../../../src/components/FormScrollView';
-import { DELIVERY_NOMINAL_ML } from '../../../src/data/registers';
 import * as repo from '../../../src/db/certificateRepo';
 
 // Glove-friendly: the delivery grid is the highest-frequency entry surface.
@@ -165,15 +165,20 @@ export default function ResultsScreen() {
     inputs.current[key]?.focus();
   };
 
-  // Normalize drafts to the FIXED VFD nominals (#87): drafts started before
-  // the preset correction carry 20 L there; EFD recomputes where VREF exists.
+  // Normalize drafts to the FIXED VFD nominals of the draft's PINNED plan
+  // (#87/#92): drafts started before the preset correction carry 20 L
+  // there; EFD recomputes where VREF exists.
   useEffect(() => {
     setV((prev) => {
       if (!prev?.hoses) return prev;
+      const nominals = Object.fromEntries(
+        testPlanFor(prev).deliveries.map((pd) => [pd.point, pd.nominalMl]),
+      );
       let changed = false;
       const hoses = prev.hoses.map((h) => {
         const deliveries = h.deliveries.map((d) => {
-          const nominal = DELIVERY_NOMINAL_ML[d.point];
+          const nominal = nominals[d.point];
+          if (nominal == null) return d;
           if (d.vfdMl === nominal) return d;
           changed = true;
           const merged = { ...d, vfdMl: nominal } as Delivery;
@@ -441,10 +446,13 @@ export default function ResultsScreen() {
               flowRateLpm: { label: 'Flow L/min', value: d.flowRateLpm },
               vrefMl: { label: 'VREF', value: d.vrefMl },
             };
-            const nominal = DELIVERY_NOMINAL_ML[d.point];
+            const planDelivery = testPlanFor(v).deliveries.find((pd) => pd.point === d.point);
+            const nominal = d.vfdMl ?? planDelivery?.nominalMl ?? 0;
             return (
             <View key={di} style={{ borderTopWidth: 1, borderColor: colors.line, paddingVertical: 6 }}>
-              <Text style={{ fontSize: 12, color: colors.ink }}>{DELIVERY_POINT_LABELS[d.point]}</Text>
+              <Text style={{ fontSize: 12, color: colors.ink }}>
+                {planDelivery?.label ?? DELIVERY_POINT_LABELS[d.point]}
+              </Text>
               <View style={{ flexDirection: 'row', gap: 6, marginTop: 4 }}>
                 <View style={{ flex: 1 }}>
                   <Text style={{ fontSize: 11, color: colors.muted }}>{FIELD_META.flowRateLpm.label}</Text>

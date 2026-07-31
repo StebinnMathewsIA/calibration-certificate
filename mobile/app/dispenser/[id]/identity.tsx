@@ -1,7 +1,8 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { Alert, Text, TextInput, View } from 'react-native';
-import type { DispenserDetail, HoseDetail } from '@prowalco/schema';
+import type { Designation, DispenserDetail, HoseDetail } from '@prowalco/schema';
+import { HV_QMAX_THRESHOLD_LPM, deriveDesignation } from '@prowalco/schema';
 import {
   DispenserResolved,
   SiteResolved,
@@ -83,6 +84,9 @@ export default function DispenserIdentityScreen() {
   const [tacNumber, setTacNumber] = useState('');
   const [approvalBasis, setApprovalBasis] = useState<'SABS 1650' | 'LM R117' | null>(null);
   const [mmq, setMmq] = useState('');
+  // STD/HV designation (#92): selects the test plan. Derived from Qmax,
+  // confirmed explicitly, stored on the dispenser.
+  const [designation, setDesignation] = useState<Designation | null>(null);
   const [busy, setBusy] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [scanning, setScanning] = useState(false);
@@ -111,6 +115,7 @@ export default function DispenserIdentityScreen() {
         setTacNumber(det.tacNumber ?? '');
         setApprovalBasis(det.approvalBasis ?? null);
         setMmq(det.mmqLitres != null ? String(det.mmqLitres) : '');
+        setDesignation(det.designation ?? deriveDesignation(det.qMaxLpm));
         if (det.hoses.length > 0) setHoseCount(String(det.hoses.length));
       } catch {
         // First visit offline with no mirror: fields start blank.
@@ -132,6 +137,21 @@ export default function DispenserIdentityScreen() {
     const count = Number(hoseCount);
     if (!Number.isInteger(count) || count < 1 || count > 16) {
       Alert.alert('Hoses required', 'Enter the number of hoses on this dispenser (1 to 16).');
+      return;
+    }
+    // The designation selects the test plan (#92) and must be explicit.
+    if (!qMax || !(Number(qMax) > 0)) {
+      Alert.alert(
+        'Qmax required',
+        'Enter the data-plate Qmax. It determines whether this is a standard or high flow rate dispenser.',
+      );
+      return;
+    }
+    if (!designation) {
+      Alert.alert(
+        'Designation required',
+        'Confirm whether this dispenser is standard (STD) or high flow rate (HV).',
+      );
       return;
     }
     // Resize the hose register, preserving anything already captured. A
@@ -181,6 +201,7 @@ export default function DispenserIdentityScreen() {
         tacNumber: tacNumber.trim() || undefined,
         approvalBasis: approvalBasis ?? undefined,
         mmqLitres: mmq ? Number(mmq) : undefined,
+        designation,
         hoses,
       };
       await saveDispenserDetail(accessToken, id, {
@@ -189,6 +210,7 @@ export default function DispenserIdentityScreen() {
         tacNumber: nextDetail.tacNumber,
         approvalBasis: nextDetail.approvalBasis,
         mmqLitres: nextDetail.mmqLitres,
+        designation,
         hoses,
       });
       // The components screen reads through the mirror: reflect the resize
@@ -258,6 +280,42 @@ export default function DispenserIdentityScreen() {
           <View style={{ flex: 1 }}>
             <Field label="MMQ (litres)" value={mmq} onChangeText={setMmq} keyboardType="decimal-pad" />
           </View>
+        </View>
+        <Text style={{ fontSize: 12, color: colors.muted, marginBottom: 4 }}>
+          Flow designation (selects the test plan; above {HV_QMAX_THRESHOLD_LPM} L/min is high flow)
+        </Text>
+        <View style={{ flexDirection: 'row', gap: 6, marginBottom: 10 }}>
+          {(
+            [
+              { key: 'std', label: 'STD (20/5 L measures)' },
+              { key: 'hv', label: 'HV (200 L measure)' },
+            ] as const
+          ).map(({ key, label }) => {
+            const on = designation === key;
+            const derived = deriveDesignation(qMax ? Number(qMax) : null);
+            return (
+              <Text
+                key={key}
+                onPress={() => setDesignation(key)}
+                accessibilityRole="button"
+                accessibilityLabel={`Set flow designation ${key === 'std' ? 'standard' : 'high flow'}`}
+                style={{
+                  borderWidth: 1,
+                  borderColor: on ? colors.blueText : colors.line,
+                  backgroundColor: on ? colors.blueTint : '#fff',
+                  color: on ? colors.blueText : colors.ink,
+                  paddingHorizontal: 12,
+                  paddingVertical: 6,
+                  borderRadius: 999,
+                  overflow: 'hidden',
+                  fontSize: 13,
+                }}
+              >
+                {label}
+                {derived === key && !on ? ' (from Qmax)' : ''}
+              </Text>
+            );
+          })}
         </View>
         <Text style={{ fontSize: 12, color: colors.muted, marginBottom: 4 }}>Approval basis</Text>
         <View style={{ flexDirection: 'row', gap: 6 }}>

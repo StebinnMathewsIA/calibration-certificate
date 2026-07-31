@@ -18,7 +18,7 @@
  * (backend/app/signing/crosscheck.py) — change together.
  */
 import type { Component, Delivery, HoseResult, ReferenceMeasure, Verification } from '@prowalco/schema';
-import { CHECKLIST_ITEMS } from '@prowalco/schema';
+import { CHECKLIST_ITEMS, testPlanFor } from '@prowalco/schema';
 import { PROWALCO_LOGO_BASE64 } from '../../assets/logo-base64';
 import { NRCS_LOGO_BASE64, SANAS_LOGO_BASE64 } from '../../assets/agency-logos';
 
@@ -97,14 +97,9 @@ function certificateGrid(hoses: HoseResult[]): string {
 // Page 2 — Metrologist Note grid (test items as rows, hoses as columns)
 // ---------------------------------------------------------------------------
 
-const DELIVERY_ROWS: { point: Delivery['point']; label: string }[] = [
-  { point: 'del1_max', label: 'Del 1 at max. achievable flow rate' },
-  { point: 'del2_max', label: 'Del 2 at max. achievable flow rate' },
-  { point: 'del3_max', label: 'Del 3 at max. achievable flow rate' },
-  { point: 'min_flow_20l', label: 'Delivery at minimum flow rate (20 L)' },
-  { point: 'min_flow', label: 'Delivery at minimum flow rate (5 L)' },
-  { point: 'preset', label: 'Preset delivery' },
-];
+// Delivery rows come from the verification's PINNED test plan (#92); the
+// lfd-std-v1 pdfLabels are byte-identical to the pre-registry strings so
+// legacy certificates re-render unchanged (regression corpus verified).
 
 function metrologistGrid(v: Verification): string {
   const hoses = v.hoses;
@@ -142,7 +137,9 @@ function metrologistGrid(v: Verification): string {
       .join('')}</tr>`,
   ).join('');
 
-  const deliveryRows = DELIVERY_ROWS.map((row) =>
+  const deliveryRows = testPlanFor(v)
+    .deliveries.map((pd) => ({ point: pd.point, label: pd.pdfLabel }))
+    .map((row) =>
     `<tr><td class="rl">${esc(row.label)}</td>${hoses
       .map((h) => {
         const dv = h.deliveries.find((x) => x.point === row.point);

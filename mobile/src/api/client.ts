@@ -1,6 +1,7 @@
 import type {
   AnalysisResponse,
   DispenserDetail,
+  RejectionSubmission,
   SignResponse,
   SignSubmission,
   Verification,
@@ -36,6 +37,27 @@ export interface DeviceAuth {
 export async function submitForSigning(
   token: string | null,
   submission: SignSubmission,
+  deviceAuth?: DeviceAuth,
+): Promise<SignResponse> {
+  const body = await request('/v1/certificates/sign', token, {
+    method: 'POST',
+    body: JSON.stringify(submission),
+    headers: deviceAuth
+      ? {
+          'X-Device-Id': deviceAuth.deviceId,
+          'X-Device-Timestamp': deviceAuth.timestamp,
+          'X-Device-Signature': deviceAuth.signature,
+        }
+      : undefined,
+  });
+  return signResponseSchema.parse(body);
+}
+
+/** Seal a rejection certificate (#92): same endpoint, same guarantees,
+ * routed by documentType. Online-only in v1 (rejections are rare). */
+export async function submitRejectionForSigning(
+  token: string | null,
+  submission: RejectionSubmission,
   deviceAuth?: DeviceAuth,
 ): Promise<SignResponse> {
   const body = await request('/v1/certificates/sign', token, {
@@ -285,6 +307,8 @@ export async function getInsights(token: string | null): Promise<Insights> {
 /** One row of the site/dispenser verification history (#68). */
 export interface CertHistoryEntry {
   certificateNumber: string;
+  /** 'verification' | 'rejection-certificate' (#92); absent on old caches. */
+  documentType?: string | null;
   siteId: string | null;
   dispenserId: string | null;
   status: string;

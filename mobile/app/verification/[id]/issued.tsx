@@ -1,4 +1,4 @@
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Sharing from 'expo-sharing';
 import React, { useCallback, useMemo, useState } from 'react';
 import { Alert, Pressable, ScrollView, Text, View } from 'react-native';
@@ -12,6 +12,7 @@ import { certificateHtml } from '../../../src/pdf/certificateHtml';
 
 export default function IssuedScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const router = useRouter();
   const [record, setRecord] = useState(() => repo.getById(id));
   const [showVerification, setShowVerification] = useState(false);
 
@@ -60,6 +61,15 @@ export default function IssuedScreen() {
           signed PDF is a certificate.
         </Text>
         <Button title="Share signed PDF" onPress={share} disabled={!record.signedPdfUri} />
+        {(v.hoses ?? []).some((h) => h.outcome === 'rejected') ? (
+          <Button
+            title="Create rejection certificate"
+            kind="danger"
+            onPress={() =>
+              router.push({ pathname: '/verification/[id]/reject', params: { id } })
+            }
+          />
+        ) : null}
       </SectionCard>
 
       {previewHtml ? (

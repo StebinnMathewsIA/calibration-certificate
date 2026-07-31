@@ -1,8 +1,9 @@
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Print from 'expo-print';
-import type { Verification } from '@prowalco/schema';
+import type { RejectionCertificate, Verification } from '@prowalco/schema';
 import { sha256HexOfBase64 } from '../lib/bytes';
 import { certificateHtml } from './certificateHtml';
+import { rejectionHtml } from './rejectionHtml';
 
 export interface RenderedPdf {
   uri: string;
@@ -27,6 +28,19 @@ export async function renderCertificatePdf(
   const { uri } = await Print.printToFileAsync({
     html: certificateHtml(verification, signatures),
     ...A4_LANDSCAPE,
+  });
+  const base64 = await FileSystem.readAsStringAsync(uri, {
+    encoding: FileSystem.EncodingType.Base64,
+  });
+  return { uri, base64, sha256: sha256HexOfBase64(base64) };
+}
+
+/** Renders the rejection certificate (#92), A4 portrait. */
+export async function renderRejectionPdf(rejection: RejectionCertificate): Promise<RenderedPdf> {
+  const { uri } = await Print.printToFileAsync({
+    html: rejectionHtml(rejection),
+    width: 595,
+    height: 842,
   });
   const base64 = await FileSystem.readAsStringAsync(uri, {
     encoding: FileSystem.EncodingType.Base64,

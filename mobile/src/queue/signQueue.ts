@@ -213,7 +213,7 @@ async function ensureDeviceEnrolled(accessToken: string | null): Promise<void> {
 /** Device-binding proof for one upload (#52): ECDSA over
  * `deviceId.timestamp.pdfSha256`, computed at upload time (device is online
  * here, so the freshness window applies to clock skew only). */
-async function buildDeviceAuth(pdfSha256: string): Promise<DeviceAuth | undefined> {
+export async function buildDeviceAuth(pdfSha256: string): Promise<DeviceAuth | undefined> {
   try {
     const deviceId = await getDeviceId();
     const key = await getOrCreateDeviceKey();
@@ -230,7 +230,7 @@ async function buildDeviceAuth(pdfSha256: string): Promise<DeviceAuth | undefine
 
 const DEVICE_ID_FILE = () => `${FileSystem.documentDirectory}device-id`;
 
-async function getDeviceId(): Promise<string> {
+export async function getDeviceId(): Promise<string> {
   try {
     return await FileSystem.readAsStringAsync(DEVICE_ID_FILE());
   } catch {

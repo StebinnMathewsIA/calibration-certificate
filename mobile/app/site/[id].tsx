@@ -178,8 +178,20 @@ export default function SiteDetailScreen() {
                   </Text>
                 </View>
                 <Badge
-                  text={h.status === 'issued' ? 'Issued' : h.status}
-                  tone={h.status === 'issued' ? 'ok' : 'warn'}
+                  text={
+                    h.documentType === 'rejection-certificate'
+                      ? 'Rejection'
+                      : h.status === 'issued'
+                        ? 'Issued'
+                        : h.status
+                  }
+                  tone={
+                    h.documentType === 'rejection-certificate'
+                      ? 'bad'
+                      : h.status === 'issued'
+                        ? 'ok'
+                        : 'warn'
+                  }
                 />
               </View>
               <Text

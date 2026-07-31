@@ -1,0 +1,93 @@
+{
+  "lfd-std-v1": {
+    "id": "lfd-std-v1",
+    "designation": "std",
+    "requiredMeasures": [
+      "20L",
+      "5L"
+    ],
+    "zeroCheckSeconds": 5,
+    "flowRateMethod": "direct",
+    "mpePercent": 0.5,
+    "deliveries": [
+      {
+        "point": "del1_max",
+        "nominalMl": 20000,
+        "label": "Delivery 1 at max. achievable flow rate",
+        "pdfLabel": "Del 1 at max. achievable flow rate"
+      },
+      {
+        "point": "del2_max",
+        "nominalMl": 20000,
+        "label": "Delivery 2 at max. achievable flow rate",
+        "pdfLabel": "Del 2 at max. achievable flow rate"
+      },
+      {
+        "point": "del3_max",
+        "nominalMl": 20000,
+        "label": "Delivery 3 at max. achievable flow rate",
+        "pdfLabel": "Del 3 at max. achievable flow rate"
+      },
+      {
+        "point": "min_flow_20l",
+        "nominalMl": 20000,
+        "label": "Delivery at minimum flow rate (20 L)",
+        "pdfLabel": "Delivery at minimum flow rate (20 L)"
+      },
+      {
+        "point": "min_flow",
+        "nominalMl": 5000,
+        "label": "Delivery at minimum flow rate (5 L)",
+        "pdfLabel": "Delivery at minimum flow rate (5 L)"
+      },
+      {
+        "point": "preset",
+        "nominalMl": 5000,
+        "label": "Preset delivery",
+        "pdfLabel": "Preset delivery"
+      }
+    ]
+  },
+  "lfd-hv-v1": {
+    "id": "lfd-hv-v1",
+    "designation": "hv",
+    "requiredMeasures": [
+      "200L"
+    ],
+    "zeroCheckSeconds": 60,
+    "flowRateMethod": "timed5s_x12",
+    "mpePercent": 0.5,
+    "deliveries": [
+      {
+        "point": "del1_max",
+        "nominalMl": 200000,
+        "label": "Delivery 1 at max. achievable flow rate (200 L)",
+        "pdfLabel": "Del 1 at max. achievable flow rate (200 L)"
+      },
+      {
+        "point": "del2_max",
+        "nominalMl": 200000,
+        "label": "Delivery 2 at max. achievable flow rate (200 L)",
+        "pdfLabel": "Del 2 at max. achievable flow rate (200 L)"
+      },
+      {
+        "point": "del3_max",
+        "nominalMl": 200000,
+        "label": "Delivery 3 at max. achievable flow rate (200 L)",
+        "pdfLabel": "Del 3 at max. achievable flow rate (200 L)"
+      },
+      {
+        "point": "min_flow",
+        "nominalMl": 200000,
+        "label": "Delivery at minimum flow rate (200 L)",
+        "pdfLabel": "Delivery at minimum flow rate (200 L)"
+      },
+      {
+        "point": "preset",
+        "nominalMl": 200000,
+        "label": "Preset delivery (200 L)",
+        "pdfLabel": "Preset delivery (200 L)"
+      }
+    ]
+  }
+}

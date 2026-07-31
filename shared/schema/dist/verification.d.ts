@@ -630,6 +630,10 @@ export declare const verificationSchema: z.ZodObject<{
     /** Pre-printed NRCS booklet number, e.g. "139458". */
     nrcsBookNumber: z.ZodOptional<z.ZodString>;
     reportType: z.ZodEnum<["verification", "repair"]>;
+    /** Test plan the verification executed under (#92). Optional FOREVER:
+     * a missing value means lfd-std-v1 (payloads predating the registry,
+     * including offline-queued signings). Pinned at draft creation. */
+    testPlan: z.ZodOptional<z.ZodEnum<["lfd-std-v1", "lfd-hv-v1"]>>;
     site: z.ZodObject<{
         /** Oil Company. */
         customerName: z.ZodString;
@@ -1255,6 +1259,7 @@ export declare const verificationSchema: z.ZodObject<{
     };
     verificationDate: string;
     nrcsBookNumber?: string | undefined;
+    testPlan?: "lfd-std-v1" | "lfd-hv-v1" | undefined;
     jobReference?: string | undefined;
     workOrderId?: string | undefined;
     provenance?: Record<string, {
@@ -1374,6 +1379,7 @@ export declare const verificationSchema: z.ZodObject<{
     };
     verificationDate: string;
     nrcsBookNumber?: string | undefined;
+    testPlan?: "lfd-std-v1" | "lfd-hv-v1" | undefined;
     jobReference?: string | undefined;
     workOrderId?: string | undefined;
     provenance?: Record<string, {

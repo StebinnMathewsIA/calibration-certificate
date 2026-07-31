@@ -420,6 +420,10 @@ export declare const dispenserDetailSchema: z.ZodObject<{
     approvalBasis: z.ZodOptional<z.ZodEnum<["SABS 1650", "LM R117"]>>;
     /** Minimum measured quantity from the data plate, litres (#90). */
     mmqLitres: z.ZodOptional<z.ZodNumber>;
+    /** STD or HV designation (#92): derived from Qmax (above 100 L/min is
+     * high flow), confirmed explicitly on the identity screen. Selects the
+     * test plan; never chosen mid-verification. */
+    designation: z.ZodOptional<z.ZodEnum<["std", "hv"]>>;
     hoses: z.ZodDefault<z.ZodArray<z.ZodObject<{
         /** "Hose/Pump No." on the certificate. */
         hoseNumber: z.ZodString;
@@ -645,6 +649,7 @@ export declare const dispenserDetailSchema: z.ZodObject<{
     tacNumber?: string | undefined;
     approvalBasis?: "SABS 1650" | "LM R117" | undefined;
     mmqLitres?: number | undefined;
+    designation?: "std" | "hv" | undefined;
 }, {
     dispenserId: string;
     updatedAt?: string | undefined;
@@ -653,6 +658,7 @@ export declare const dispenserDetailSchema: z.ZodObject<{
     tacNumber?: string | undefined;
     approvalBasis?: "SABS 1650" | "LM R117" | undefined;
     mmqLitres?: number | undefined;
+    designation?: "std" | "hv" | undefined;
     hoses?: {
         hoseNumber: string;
         product: string;

@@ -1,8 +1,9 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.STATE_TRANSITIONS = exports.CERTIFICATE_STATES = exports.signResponseSchema = exports.signSubmissionSchema = exports.intentToSignSchema = exports.gpsFixSchema = void 0;
+exports.STATE_TRANSITIONS = exports.CERTIFICATE_STATES = exports.signResponseSchema = exports.rejectionSubmissionSchema = exports.signSubmissionSchema = exports.intentToSignSchema = exports.gpsFixSchema = void 0;
 exports.canTransition = canTransition;
 const zod_1 = require("zod");
+const rejection_1 = require("./rejection");
 const verification_1 = require("./verification");
 /**
  * Sign-queue / signing API envelope shared by the mobile queue and the
@@ -35,6 +36,16 @@ exports.signSubmissionSchema = zod_1.z.object({
     /** SHA-256 of the unsigned PDF bytes, computed on-device. */
     pdfSha256: sha256Hex,
     /** Unsigned PDF rendered on-device by expo-print, base64-encoded. */
+    pdfBase64: zod_1.z.string().min(1),
+    intentToSign: exports.intentToSignSchema,
+});
+/** Second document type (#92): a rejection certificate sealed through the
+ * same pipeline. The endpoint routes on `documentType`. */
+exports.rejectionSubmissionSchema = zod_1.z.object({
+    documentType: zod_1.z.literal('rejection-certificate'),
+    idempotencyKey: uuid,
+    rejection: rejection_1.rejectionCertificateSchema,
+    pdfSha256: sha256Hex,
     pdfBase64: zod_1.z.string().min(1),
     intentToSign: exports.intentToSignSchema,
 });

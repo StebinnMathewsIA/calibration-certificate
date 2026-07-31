@@ -11,10 +11,11 @@ import { mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import { verificationSchema } from '../src/verification';
-import { signSubmissionSchema } from '../src/envelope';
+import { rejectionSubmissionSchema, signSubmissionSchema } from '../src/envelope';
 import { analysisResultSchema } from '../src/analysis';
 import { workOrderBundleSchema } from '../src/onkey';
 import { dispenserDetailSchema } from '../src/dispenser-detail';
+import { TEST_PLANS } from '../src/test-plans';
 
 const outDir = join(__dirname, '..', 'json');
 mkdirSync(outDir, { recursive: true });
@@ -22,9 +23,13 @@ mkdirSync(outDir, { recursive: true });
 const targets = {
   'verification.schema.json': zodToJsonSchema(verificationSchema, 'Verification'),
   'sign-submission.schema.json': zodToJsonSchema(signSubmissionSchema, 'SignSubmission'),
+  'rejection-submission.schema.json': zodToJsonSchema(rejectionSubmissionSchema, 'RejectionSubmission'),
   'analysis-result.schema.json': zodToJsonSchema(analysisResultSchema, 'AnalysisResult'),
   'work-order-bundle.schema.json': zodToJsonSchema(workOrderBundleSchema, 'WorkOrderBundle'),
   'dispenser-detail.schema.json': zodToJsonSchema(dispenserDetailSchema, 'DispenserDetail'),
+  // Not a JSON Schema: the test-plan registry itself (#92), generated so
+  // the Python backend never hand-mirrors it.
+  'test-plans.json': TEST_PLANS,
 };
 
 for (const [name, schema] of Object.entries(targets)) {

@@ -14,8 +14,9 @@ from ..devices import STATUS_ACTIVE, check_device_binding
 from ..models import Certificate, Device, Dispenser, SequenceCounter
 from ..pdf_store import PdfStore, get_pdf_store
 from ..readiness import validate_ready_to_sign
-from ..schema_validation import validate_sign_submission
-from ..signing.crosscheck import crosscheck_pdf
+from ..schema_validation import validate_rejection_submission, validate_sign_submission
+from ..signing.crosscheck import crosscheck_pdf, crosscheck_rejection_pdf
+from ..testplans import validate_plan_consistency
 from ..signing.keys import provider_from_settings
 from ..signing.service import SigningService
 
@@ -76,12 +77,35 @@ def sign_certificate(
     x_device_timestamp: str | None = Header(default=None),
     x_device_signature: str | None = Header(default=None),
 ) -> dict:
+    # Second document type (#92): a rejection certificate rides the same
+    # pipeline (idempotency, device binding, PDF hash + crosscheck, seal,
+    # archive) with its own schema and checks.
+    if submission.get("documentType") == "rejection-certificate":
+        return _sign_rejection(
+            submission,
+            db,
+            identity,
+            settings,
+            signing_service,
+            pdf_store,
+            x_device_id,
+            x_device_timestamp,
+            x_device_signature,
+        )
+
     # 1. Structural validation against the shared (zod-derived) JSON Schema
     violations = validate_sign_submission(submission)
     if violations:
         raise HTTPException(status_code=422, detail={"violations": violations})
 
     verification = submission["verification"]
+
+    # 1b. Plan consistency (#92): applies only when the payload declares its
+    # test plan; legacy and queued pre-registry payloads are lfd-std-v1 by
+    # definition and are exempt from nominal checks.
+    plan_violations = validate_plan_consistency(verification)
+    if plan_violations:
+        raise HTTPException(status_code=422, detail={"violations": plan_violations})
     cert_number = verification["certificateNumber"]
     idempotency_key = submission["idempotencyKey"]
 
@@ -241,6 +265,146 @@ def sign_certificate(
             "signedPdfSha256": result.signed_pdf_sha256,
             "signatureId": result.signature_id,
             "signedAt": result.signed_at.isoformat(),
+        },
+    )
+    db.commit()
+    return _response_for(cert, pdf_store)
+
+
+def _sign_rejection(
+    submission: dict,
+    db: Session,
+    identity: Identity,
+    settings: Settings,
+    signing_service: SigningService,
+    pdf_store: PdfStore,
+    x_device_id: str | None,
+    x_device_timestamp: str | None,
+    x_device_signature: str | None,
+) -> dict:
+    """Seal a rejection certificate (#92). Same guarantees as a verification:
+    idempotent, device-bound, hash-verified, text-layer crosschecked,
+    archived write-once. The NRCS copy is a later phase."""
+    violations = validate_rejection_submission(submission)
+    if violations:
+        raise HTTPException(status_code=422, detail={"violations": violations})
+
+    rejection = submission["rejection"]
+    rej_number = rejection["rejectionNumber"]
+    idempotency_key = submission["idempotencyKey"]
+
+    existing = db.scalar(select(Certificate).where(Certificate.idempotency_key == idempotency_key))
+    if existing is not None:
+        return _response_for(existing, pdf_store)
+    clash = db.scalar(select(Certificate).where(Certificate.certificate_number == rej_number))
+    if clash is not None:
+        raise HTTPException(status_code=409, detail=f"{rej_number} has already been issued")
+
+    if rejection["vo"]["identity"]["subject"] != identity.subject:
+        raise HTTPException(status_code=403, detail="Token subject does not match signing VO")
+
+    # The parent verification must be a real issued certificate.
+    parent = db.scalar(
+        select(Certificate).where(
+            Certificate.certificate_number == rejection["parentCertificateNumber"]
+        )
+    )
+    if parent is None:
+        raise HTTPException(
+            status_code=422,
+            detail="parentCertificateNumber does not reference an issued certificate",
+        )
+
+    enrolled_key: str | None = None
+    if x_device_id:
+        device_row = db.scalar(
+            select(Device).where(
+                Device.device_id == x_device_id,
+                Device.subject == identity.subject,
+                Device.status == STATUS_ACTIVE,
+            )
+        )
+        enrolled_key = device_row.public_key_pem if device_row else None
+    device_check = check_device_binding(
+        enrolled_key, x_device_id, x_device_timestamp, x_device_signature, submission["pdfSha256"]
+    )
+    if settings.device_binding_enforce and device_check.result != "verified":
+        audit.record(
+            db,
+            rej_number,
+            audit.CERT_SIGN_REJECTED,
+            identity.subject,
+            {"reasons": [f"device binding: {device_check.reason}"]},
+        )
+        db.commit()
+        raise HTTPException(
+            status_code=403,
+            detail=f"Device not authorised to sign: {device_check.reason}. "
+            "Ask your administrator to approve this device.",
+        )
+
+    try:
+        pdf_bytes = base64.b64decode(submission["pdfBase64"], validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="pdfBase64 is not valid base64") from exc
+    if hashlib.sha256(pdf_bytes).hexdigest() != submission["pdfSha256"]:
+        raise HTTPException(status_code=400, detail="pdfSha256 does not match uploaded PDF bytes")
+
+    mismatches = crosscheck_rejection_pdf(pdf_bytes, rejection)
+    if mismatches:
+        audit.record(
+            db, rej_number, audit.CERT_SIGN_REJECTED, identity.subject, {"reasons": mismatches}
+        )
+        db.commit()
+        raise HTTPException(status_code=422, detail={"violations": mismatches})
+
+    audit.record(
+        db,
+        rej_number,
+        audit.CERT_SIGN_REQUESTED,
+        identity.subject,
+        {
+            "idempotencyKey": idempotency_key,
+            "intentToSign": submission["intentToSign"],
+            "unsignedPdfSha256": submission["pdfSha256"],
+            "documentType": "rejection-certificate",
+            "parentCertificateNumber": rejection["parentCertificateNumber"],
+            "deviceBinding": {"result": device_check.result, "deviceId": device_check.device_id},
+        },
+    )
+    result = signing_service.sign_certificate_pdf(
+        pdf_bytes,
+        technician_name=rejection["vo"]["identity"]["name"],
+        certificate_number=rej_number,
+    )
+    storage_ref = pdf_store.put(rej_number, result.signed_pdf)
+
+    cert = Certificate(
+        certificate_number=rej_number,
+        idempotency_key=idempotency_key,
+        document_type="rejection-certificate",
+        technician_subject=rejection["vo"]["identity"]["subject"],
+        form_json=rejection,
+        unsigned_pdf_sha256=submission["pdfSha256"],
+        signed_pdf_sha256=result.signed_pdf_sha256,
+        storage_ref=storage_ref,
+        signature_id=result.signature_id,
+        signed_at=result.signed_at,
+        site_id=rejection["siteId"],
+        dispenser_id=rejection["dispenser"]["dispenserId"],
+    )
+    db.add(cert)
+    db.flush()
+    audit.record(
+        db,
+        rej_number,
+        audit.CERT_ISSUED,
+        identity.subject,
+        {
+            "signedPdfSha256": result.signed_pdf_sha256,
+            "signatureId": result.signature_id,
+            "signedAt": result.signed_at.isoformat(),
+            "documentType": "rejection-certificate",
         },
     )
     db.commit()

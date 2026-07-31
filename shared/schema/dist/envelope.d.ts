@@ -64,6 +64,7 @@ export declare const signSubmissionSchema: z.ZodObject<{
         certificateNumber: z.ZodString;
         nrcsBookNumber: z.ZodOptional<z.ZodString>;
         reportType: z.ZodEnum<["verification", "repair"]>;
+        testPlan: z.ZodOptional<z.ZodEnum<["lfd-std-v1", "lfd-hv-v1"]>>;
         site: z.ZodObject<{
             customerName: z.ZodString;
             siteName: z.ZodString;
@@ -654,6 +655,7 @@ export declare const signSubmissionSchema: z.ZodObject<{
         };
         verificationDate: string;
         nrcsBookNumber?: string | undefined;
+        testPlan?: "lfd-std-v1" | "lfd-hv-v1" | undefined;
         jobReference?: string | undefined;
         workOrderId?: string | undefined;
         provenance?: Record<string, {
@@ -773,6 +775,7 @@ export declare const signSubmissionSchema: z.ZodObject<{
         };
         verificationDate: string;
         nrcsBookNumber?: string | undefined;
+        testPlan?: "lfd-std-v1" | "lfd-hv-v1" | undefined;
         jobReference?: string | undefined;
         workOrderId?: string | undefined;
         provenance?: Record<string, {
@@ -938,6 +941,7 @@ export declare const signSubmissionSchema: z.ZodObject<{
         };
         verificationDate: string;
         nrcsBookNumber?: string | undefined;
+        testPlan?: "lfd-std-v1" | "lfd-hv-v1" | undefined;
         jobReference?: string | undefined;
         workOrderId?: string | undefined;
         provenance?: Record<string, {
@@ -1072,6 +1076,7 @@ export declare const signSubmissionSchema: z.ZodObject<{
         };
         verificationDate: string;
         nrcsBookNumber?: string | undefined;
+        testPlan?: "lfd-std-v1" | "lfd-hv-v1" | undefined;
         jobReference?: string | undefined;
         workOrderId?: string | undefined;
         provenance?: Record<string, {
@@ -1092,6 +1097,360 @@ export declare const signSubmissionSchema: z.ZodObject<{
             accuracyM: number;
             consentGiven: true;
         } | undefined;
+    };
+}>;
+/** Second document type (#92): a rejection certificate sealed through the
+ * same pipeline. The endpoint routes on `documentType`. */
+export declare const rejectionSubmissionSchema: z.ZodObject<{
+    documentType: z.ZodLiteral<"rejection-certificate">;
+    idempotencyKey: z.ZodString;
+    rejection: z.ZodObject<{
+        schemaVersion: z.ZodLiteral<1>;
+        rejectionNumber: z.ZodString;
+        parentCertificateNumber: z.ZodString;
+        siteId: z.ZodString;
+        site: z.ZodObject<{
+            customerName: z.ZodString;
+            siteName: z.ZodString;
+            address: z.ZodString;
+            telephone: z.ZodOptional<z.ZodString>;
+            contactPerson: z.ZodOptional<z.ZodString>;
+        }, "strip", z.ZodTypeAny, {
+            customerName: string;
+            siteName: string;
+            address: string;
+            telephone?: string | undefined;
+            contactPerson?: string | undefined;
+        }, {
+            customerName: string;
+            siteName: string;
+            address: string;
+            telephone?: string | undefined;
+            contactPerson?: string | undefined;
+        }>;
+        dispenser: z.ZodObject<{
+            dispenserId: z.ZodString;
+            makeModel: z.ZodString;
+            saApprovalNumber: z.ZodString;
+            serialNumber: z.ZodString;
+            securitySealNumber: z.ZodOptional<z.ZodString>;
+            tacNumber: z.ZodOptional<z.ZodString>;
+            approvalBasis: z.ZodOptional<z.ZodEnum<["SABS 1650", "LM R117"]>>;
+            mmqLitres: z.ZodOptional<z.ZodNumber>;
+        }, "strip", z.ZodTypeAny, {
+            serialNumber: string;
+            saApprovalNumber: string;
+            dispenserId: string;
+            makeModel: string;
+            tacNumber?: string | undefined;
+            approvalBasis?: "SABS 1650" | "LM R117" | undefined;
+            mmqLitres?: number | undefined;
+            securitySealNumber?: string | undefined;
+        }, {
+            serialNumber: string;
+            saApprovalNumber: string;
+            dispenserId: string;
+            makeModel: string;
+            tacNumber?: string | undefined;
+            approvalBasis?: "SABS 1650" | "LM R117" | undefined;
+            mmqLitres?: number | undefined;
+            securitySealNumber?: string | undefined;
+        }>;
+        rejectedHoses: z.ZodArray<z.ZodObject<{
+            hoseNumber: z.ZodString;
+            product: z.ZodString;
+            reasons: z.ZodArray<z.ZodString, "many">;
+        }, "strip", z.ZodTypeAny, {
+            hoseNumber: string;
+            product: string;
+            reasons: string[];
+        }, {
+            hoseNumber: string;
+            product: string;
+            reasons: string[];
+        }>, "many">;
+        confirmations: z.ZodObject<{
+            marksObliterated: z.ZodLiteral<true>;
+            rejectionMarkApplied: z.ZodLiteral<true>;
+            nozzleSwitchRemoved: z.ZodLiteral<true>;
+        }, "strip", z.ZodTypeAny, {
+            marksObliterated: true;
+            rejectionMarkApplied: true;
+            nozzleSwitchRemoved: true;
+        }, {
+            marksObliterated: true;
+            rejectionMarkApplied: true;
+            nozzleSwitchRemoved: true;
+        }>;
+        vo: z.ZodObject<{
+            identity: z.ZodObject<{
+                subject: z.ZodString;
+                name: z.ZodString;
+                authMethod: z.ZodEnum<["microsoft", "google", "apple"]>;
+            }, "strip", z.ZodTypeAny, {
+                subject: string;
+                name: string;
+                authMethod: "microsoft" | "google" | "apple";
+            }, {
+                subject: string;
+                name: string;
+                authMethod: "microsoft" | "google" | "apple";
+            }>;
+            pliersNumber: z.ZodString;
+        }, "strip", z.ZodTypeAny, {
+            identity: {
+                subject: string;
+                name: string;
+                authMethod: "microsoft" | "google" | "apple";
+            };
+            pliersNumber: string;
+        }, {
+            identity: {
+                subject: string;
+                name: string;
+                authMethod: "microsoft" | "google" | "apple";
+            };
+            pliersNumber: string;
+        }>;
+        rejectionDate: z.ZodString;
+    }, "strip", z.ZodTypeAny, {
+        siteId: string;
+        vo: {
+            identity: {
+                subject: string;
+                name: string;
+                authMethod: "microsoft" | "google" | "apple";
+            };
+            pliersNumber: string;
+        };
+        schemaVersion: 1;
+        site: {
+            customerName: string;
+            siteName: string;
+            address: string;
+            telephone?: string | undefined;
+            contactPerson?: string | undefined;
+        };
+        dispenser: {
+            serialNumber: string;
+            saApprovalNumber: string;
+            dispenserId: string;
+            makeModel: string;
+            tacNumber?: string | undefined;
+            approvalBasis?: "SABS 1650" | "LM R117" | undefined;
+            mmqLitres?: number | undefined;
+            securitySealNumber?: string | undefined;
+        };
+        rejectionNumber: string;
+        parentCertificateNumber: string;
+        rejectedHoses: {
+            hoseNumber: string;
+            product: string;
+            reasons: string[];
+        }[];
+        confirmations: {
+            marksObliterated: true;
+            rejectionMarkApplied: true;
+            nozzleSwitchRemoved: true;
+        };
+        rejectionDate: string;
+    }, {
+        siteId: string;
+        vo: {
+            identity: {
+                subject: string;
+                name: string;
+                authMethod: "microsoft" | "google" | "apple";
+            };
+            pliersNumber: string;
+        };
+        schemaVersion: 1;
+        site: {
+            customerName: string;
+            siteName: string;
+            address: string;
+            telephone?: string | undefined;
+            contactPerson?: string | undefined;
+        };
+        dispenser: {
+            serialNumber: string;
+            saApprovalNumber: string;
+            dispenserId: string;
+            makeModel: string;
+            tacNumber?: string | undefined;
+            approvalBasis?: "SABS 1650" | "LM R117" | undefined;
+            mmqLitres?: number | undefined;
+            securitySealNumber?: string | undefined;
+        };
+        rejectionNumber: string;
+        parentCertificateNumber: string;
+        rejectedHoses: {
+            hoseNumber: string;
+            product: string;
+            reasons: string[];
+        }[];
+        confirmations: {
+            marksObliterated: true;
+            rejectionMarkApplied: true;
+            nozzleSwitchRemoved: true;
+        };
+        rejectionDate: string;
+    }>;
+    pdfSha256: z.ZodString;
+    pdfBase64: z.ZodString;
+    intentToSign: z.ZodObject<{
+        /** Device clock at the moment the technician passed the biometric prompt. */
+        deviceTimestamp: z.ZodString;
+        deviceId: z.ZodString;
+        gps: z.ZodOptional<z.ZodObject<{
+            latitude: z.ZodNumber;
+            longitude: z.ZodNumber;
+            accuracyM: z.ZodNumber;
+            /** POPIA: GPS is only captured with explicit consent. */
+            consentGiven: z.ZodLiteral<true>;
+        }, "strip", z.ZodTypeAny, {
+            latitude: number;
+            longitude: number;
+            accuracyM: number;
+            consentGiven: true;
+        }, {
+            latitude: number;
+            longitude: number;
+            accuracyM: number;
+            consentGiven: true;
+        }>>;
+    }, "strip", z.ZodTypeAny, {
+        deviceTimestamp: string;
+        deviceId: string;
+        gps?: {
+            latitude: number;
+            longitude: number;
+            accuracyM: number;
+            consentGiven: true;
+        } | undefined;
+    }, {
+        deviceTimestamp: string;
+        deviceId: string;
+        gps?: {
+            latitude: number;
+            longitude: number;
+            accuracyM: number;
+            consentGiven: true;
+        } | undefined;
+    }>;
+}, "strip", z.ZodTypeAny, {
+    idempotencyKey: string;
+    pdfSha256: string;
+    pdfBase64: string;
+    intentToSign: {
+        deviceTimestamp: string;
+        deviceId: string;
+        gps?: {
+            latitude: number;
+            longitude: number;
+            accuracyM: number;
+            consentGiven: true;
+        } | undefined;
+    };
+    documentType: "rejection-certificate";
+    rejection: {
+        siteId: string;
+        vo: {
+            identity: {
+                subject: string;
+                name: string;
+                authMethod: "microsoft" | "google" | "apple";
+            };
+            pliersNumber: string;
+        };
+        schemaVersion: 1;
+        site: {
+            customerName: string;
+            siteName: string;
+            address: string;
+            telephone?: string | undefined;
+            contactPerson?: string | undefined;
+        };
+        dispenser: {
+            serialNumber: string;
+            saApprovalNumber: string;
+            dispenserId: string;
+            makeModel: string;
+            tacNumber?: string | undefined;
+            approvalBasis?: "SABS 1650" | "LM R117" | undefined;
+            mmqLitres?: number | undefined;
+            securitySealNumber?: string | undefined;
+        };
+        rejectionNumber: string;
+        parentCertificateNumber: string;
+        rejectedHoses: {
+            hoseNumber: string;
+            product: string;
+            reasons: string[];
+        }[];
+        confirmations: {
+            marksObliterated: true;
+            rejectionMarkApplied: true;
+            nozzleSwitchRemoved: true;
+        };
+        rejectionDate: string;
+    };
+}, {
+    idempotencyKey: string;
+    pdfSha256: string;
+    pdfBase64: string;
+    intentToSign: {
+        deviceTimestamp: string;
+        deviceId: string;
+        gps?: {
+            latitude: number;
+            longitude: number;
+            accuracyM: number;
+            consentGiven: true;
+        } | undefined;
+    };
+    documentType: "rejection-certificate";
+    rejection: {
+        siteId: string;
+        vo: {
+            identity: {
+                subject: string;
+                name: string;
+                authMethod: "microsoft" | "google" | "apple";
+            };
+            pliersNumber: string;
+        };
+        schemaVersion: 1;
+        site: {
+            customerName: string;
+            siteName: string;
+            address: string;
+            telephone?: string | undefined;
+            contactPerson?: string | undefined;
+        };
+        dispenser: {
+            serialNumber: string;
+            saApprovalNumber: string;
+            dispenserId: string;
+            makeModel: string;
+            tacNumber?: string | undefined;
+            approvalBasis?: "SABS 1650" | "LM R117" | undefined;
+            mmqLitres?: number | undefined;
+            securitySealNumber?: string | undefined;
+        };
+        rejectionNumber: string;
+        parentCertificateNumber: string;
+        rejectedHoses: {
+            hoseNumber: string;
+            product: string;
+            reasons: string[];
+        }[];
+        confirmations: {
+            marksObliterated: true;
+            rejectionMarkApplied: true;
+            nozzleSwitchRemoved: true;
+        };
+        rejectionDate: string;
     };
 }>;
 export declare const signResponseSchema: z.ZodObject<{
@@ -1121,6 +1480,7 @@ export declare const signResponseSchema: z.ZodObject<{
     auditId: string;
 }>;
 export type SignSubmission = z.infer<typeof signSubmissionSchema>;
+export type RejectionSubmission = z.infer<typeof rejectionSubmissionSchema>;
 export type SignResponse = z.infer<typeof signResponseSchema>;
 export type IntentToSign = z.infer<typeof intentToSignSchema>;
 /** Sign-queue state machine (persisted in expo-sqlite; see CLAUDE.md). */

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { rejectionCertificateSchema } from './rejection';
 import { verificationSchema } from './verification';
 
 /**
@@ -40,6 +41,17 @@ export const signSubmissionSchema = z.object({
   intentToSign: intentToSignSchema,
 });
 
+/** Second document type (#92): a rejection certificate sealed through the
+ * same pipeline. The endpoint routes on `documentType`. */
+export const rejectionSubmissionSchema = z.object({
+  documentType: z.literal('rejection-certificate'),
+  idempotencyKey: uuid,
+  rejection: rejectionCertificateSchema,
+  pdfSha256: sha256Hex,
+  pdfBase64: z.string().min(1),
+  intentToSign: intentToSignSchema,
+});
+
 export const signResponseSchema = z.object({
   certificateNumber: z.string(),
   status: z.literal('issued'),
@@ -52,6 +64,7 @@ export const signResponseSchema = z.object({
 });
 
 export type SignSubmission = z.infer<typeof signSubmissionSchema>;
+export type RejectionSubmission = z.infer<typeof rejectionSubmissionSchema>;
 export type SignResponse = z.infer<typeof signResponseSchema>;
 export type IntentToSign = z.infer<typeof intentToSignSchema>;
 

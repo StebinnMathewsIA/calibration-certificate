@@ -30,6 +30,13 @@
                 "repair"
               ]
             },
+            "testPlan": {
+              "type": "string",
+              "enum": [
+                "lfd-std-v1",
+                "lfd-hv-v1"
+              ]
+            },
             "site": {
               "type": "object",
               "properties": {

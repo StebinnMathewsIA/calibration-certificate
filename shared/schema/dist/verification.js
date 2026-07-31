@@ -190,6 +190,10 @@ exports.verificationSchema = zod_1.z.object({
     /** Pre-printed NRCS booklet number, e.g. "139458". */
     nrcsBookNumber: zod_1.z.string().max(32).optional(),
     reportType: exports.reportTypeSchema,
+    /** Test plan the verification executed under (#92). Optional FOREVER:
+     * a missing value means lfd-std-v1 (payloads predating the registry,
+     * including offline-queued signings). Pinned at draft creation. */
+    testPlan: zod_1.z.enum(['lfd-std-v1', 'lfd-hv-v1']).optional(),
     site: exports.verificationSiteSchema,
     /** Job Ref. No. — free text in PoC; the OnKey WO reference in future state. */
     jobReference: zod_1.z.string().max(64).optional(),

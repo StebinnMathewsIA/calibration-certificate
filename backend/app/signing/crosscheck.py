@@ -24,6 +24,28 @@ def _number_variants(value: float) -> list[str]:
     return list(variants)
 
 
+def crosscheck_rejection_pdf(pdf_bytes: bytes, rejection: dict) -> list[str]:
+    """Key-field crosscheck for a rejection certificate (#92): the sealed
+    document must carry its number, the parent certificate, the VO and the
+    rejected instrument."""
+    problems: list[str] = []
+    try:
+        reader = PdfReader(io.BytesIO(pdf_bytes))
+        text = _normalise(" ".join(page.extract_text() or "" for page in reader.pages))
+    except Exception as exc:  # noqa: BLE001 — any parse failure blocks signing
+        return [f"PDF could not be parsed: {exc}"]
+    required = {
+        "rejection number": rejection["rejectionNumber"],
+        "parent certificate number": rejection["parentCertificateNumber"],
+        "VO name": rejection["vo"]["identity"]["name"],
+        "dispenser serial number": rejection["dispenser"]["serialNumber"],
+    }
+    for label, value in required.items():
+        if _normalise(str(value)) not in text:
+            problems.append(f"PDF text layer does not contain the {label} ({value!r})")
+    return problems
+
+
 def crosscheck_pdf(pdf_bytes: bytes, verification: dict) -> list[str]:
     """Returns a list of mismatches (empty = PDF matches the verification JSON)."""
     problems: list[str] = []

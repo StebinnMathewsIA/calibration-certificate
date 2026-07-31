@@ -32,6 +32,13 @@
           "type": "number",
           "exclusiveMinimum": 0
         },
+        "designation": {
+          "type": "string",
+          "enum": [
+            "std",
+            "hv"
+          ]
+        },
         "hoses": {
           "type": "array",
           "items": {

@@ -119,6 +119,10 @@ export const dispenserDetailSchema = z.object({
   approvalBasis: z.enum(['SABS 1650', 'LM R117']).optional(),
   /** Minimum measured quantity from the data plate, litres (#90). */
   mmqLitres: z.number().positive().optional(),
+  /** STD or HV designation (#92): derived from Qmax (above 100 L/min is
+   * high flow), confirmed explicitly on the identity screen. Selects the
+   * test plan; never chosen mid-verification. */
+  designation: z.enum(['std', 'hv']).optional(),
   hoses: z.array(hoseDetailSchema).default([]),
   updatedAt: isoDateTime.optional(),
 });

@@ -27,6 +27,8 @@ class Certificate(Base):
     certificate_number: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     # Client-generated idempotency UUID: retries never double-sign/double-issue.
     idempotency_key: Mapped[str] = mapped_column(String(36), unique=True, index=True)
+    # Document type (#92): 'verification' | 'rejection-certificate'.
+    document_type: Mapped[str] = mapped_column(String(32), default="verification")
     status: Mapped[str] = mapped_column(String(16), default="issued")
     technician_subject: Mapped[str] = mapped_column(String(200))
     form_json: Mapped[dict] = mapped_column(JSON)

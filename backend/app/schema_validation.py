@@ -37,5 +37,9 @@ def validate_sign_submission(payload: dict) -> list[str]:
     return validate_against("sign-submission.schema.json", payload)
 
 
+def validate_rejection_submission(payload: dict) -> list[str]:
+    return validate_against("rejection-submission.schema.json", payload)
+
+
 def validate_verification(payload: dict) -> list[str]:
     return validate_against("verification.schema.json", payload)

@@ -314,6 +314,7 @@
                             "del1_max",
                             "del2_max",
                             "del3_max",
+                            "min_flow_20l",
                             "min_flow",
                             "preset"
                           ]

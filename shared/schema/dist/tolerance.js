@@ -26,11 +26,15 @@ exports.computeEfd = computeEfd;
 /** Maximum permissible error for a fuel-dispenser delivery, in percent.
  * PROVISIONAL — confirm with NRCS/QM. */
 exports.MPE_PERCENT = 0.5;
-/** The delivery test points on the Metrologist Note, in report order. */
+/** The delivery test points on the Metrologist Note, in report order.
+ * min_flow_20l is the slow 20 L test added by SANS TEST PROC02 rev 15
+ * (4.3.2, #89): an accuracy delivery at minimum flow into the 20 L
+ * measure, run after the three max-flow deliveries. */
 exports.DELIVERY_POINTS = [
     'del1_max',
     'del2_max',
     'del3_max',
+    'min_flow_20l',
     'min_flow',
     'preset',
 ];
@@ -38,7 +42,8 @@ exports.DELIVERY_POINT_LABELS = {
     del1_max: 'Delivery 1 at max. achievable flow rate',
     del2_max: 'Delivery 2 at max. achievable flow rate',
     del3_max: 'Delivery 3 at max. achievable flow rate',
-    min_flow: 'Delivery at minimum flow rate',
+    min_flow_20l: 'Delivery at minimum flow rate (20 L)',
+    min_flow: 'Delivery at minimum flow rate (5 L)',
     preset: 'Preset delivery',
 };
 function roundTo(value, decimals) {

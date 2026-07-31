@@ -21,8 +21,11 @@
 /** Maximum permissible error for a fuel-dispenser delivery, in percent.
  * PROVISIONAL — confirm with NRCS/QM. */
 export declare const MPE_PERCENT = 0.5;
-/** The delivery test points on the Metrologist Note, in report order. */
-export declare const DELIVERY_POINTS: readonly ["del1_max", "del2_max", "del3_max", "min_flow", "preset"];
+/** The delivery test points on the Metrologist Note, in report order.
+ * min_flow_20l is the slow 20 L test added by SANS TEST PROC02 rev 15
+ * (4.3.2, #89): an accuracy delivery at minimum flow into the 20 L
+ * measure, run after the three max-flow deliveries. */
+export declare const DELIVERY_POINTS: readonly ["del1_max", "del2_max", "del3_max", "min_flow_20l", "min_flow", "preset"];
 export type DeliveryPoint = (typeof DELIVERY_POINTS)[number];
 export declare const DELIVERY_POINT_LABELS: Record<DeliveryPoint, string>;
 export interface EfdComputation {

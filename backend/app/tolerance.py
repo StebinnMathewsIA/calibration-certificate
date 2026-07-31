@@ -20,7 +20,7 @@ from dataclasses import dataclass
 MPE_PERCENT = 0.5
 
 # The delivery test points on the Metrologist Note, in report order.
-DELIVERY_POINTS = ("del1_max", "del2_max", "del3_max", "min_flow", "preset")
+DELIVERY_POINTS = ("del1_max", "del2_max", "del3_max", "min_flow_20l", "min_flow", "preset")
 
 # Match the TS EPSILON nudge in roundTo(): Python's round() uses banker's
 # rounding, so implement half-up rounding with the same epsilon behaviour.

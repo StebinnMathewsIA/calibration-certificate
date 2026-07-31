@@ -101,7 +101,8 @@ const DELIVERY_ROWS: { point: Delivery['point']; label: string }[] = [
   { point: 'del1_max', label: 'Del 1 at max. achievable flow rate' },
   { point: 'del2_max', label: 'Del 2 at max. achievable flow rate' },
   { point: 'del3_max', label: 'Del 3 at max. achievable flow rate' },
-  { point: 'min_flow', label: 'Delivery at minimum flow rate' },
+  { point: 'min_flow_20l', label: 'Delivery at minimum flow rate (20 L)' },
+  { point: 'min_flow', label: 'Delivery at minimum flow rate (5 L)' },
   { point: 'preset', label: 'Preset delivery' },
 ];
 

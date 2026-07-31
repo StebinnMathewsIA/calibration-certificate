@@ -147,7 +147,7 @@ export declare const hoseStatusSchema: z.ZodEnum<["new", "repaired", "atu", "rej
 export declare const testConditionSchema: z.ZodEnum<["hot", "cold"]>;
 /** One EFD delivery: the dispenser vs the reference measure at a flow rate. */
 export declare const deliverySchema: z.ZodObject<{
-    point: z.ZodEnum<["del1_max", "del2_max", "del3_max", "min_flow", "preset"]>;
+    point: z.ZodEnum<["del1_max", "del2_max", "del3_max", "min_flow_20l", "min_flow", "preset"]>;
     flowRateLpm: z.ZodNumber;
     /** VFD — volume indicated by the dispenser. */
     vfdMl: z.ZodNumber;
@@ -158,14 +158,14 @@ export declare const deliverySchema: z.ZodObject<{
     pass: z.ZodBoolean;
 }, "strip", z.ZodTypeAny, {
     pass: boolean;
-    point: "del1_max" | "del2_max" | "del3_max" | "min_flow" | "preset";
+    point: "del1_max" | "del2_max" | "del3_max" | "min_flow_20l" | "min_flow" | "preset";
     flowRateLpm: number;
     vfdMl: number;
     vrefMl: number;
     efdPercent: number;
 }, {
     pass: boolean;
-    point: "del1_max" | "del2_max" | "del3_max" | "min_flow" | "preset";
+    point: "del1_max" | "del2_max" | "del3_max" | "min_flow_20l" | "min_flow" | "preset";
     flowRateLpm: number;
     vfdMl: number;
     vrefMl: number;
@@ -344,7 +344,7 @@ export declare const hoseResultSchema: z.ZodObject<{
         zeroSetting: "pass" | "fail" | "na";
     }>;
     deliveries: z.ZodArray<z.ZodObject<{
-        point: z.ZodEnum<["del1_max", "del2_max", "del3_max", "min_flow", "preset"]>;
+        point: z.ZodEnum<["del1_max", "del2_max", "del3_max", "min_flow_20l", "min_flow", "preset"]>;
         flowRateLpm: z.ZodNumber;
         /** VFD — volume indicated by the dispenser. */
         vfdMl: z.ZodNumber;
@@ -355,14 +355,14 @@ export declare const hoseResultSchema: z.ZodObject<{
         pass: z.ZodBoolean;
     }, "strip", z.ZodTypeAny, {
         pass: boolean;
-        point: "del1_max" | "del2_max" | "del3_max" | "min_flow" | "preset";
+        point: "del1_max" | "del2_max" | "del3_max" | "min_flow_20l" | "min_flow" | "preset";
         flowRateLpm: number;
         vfdMl: number;
         vrefMl: number;
         efdPercent: number;
     }, {
         pass: boolean;
-        point: "del1_max" | "del2_max" | "del3_max" | "min_flow" | "preset";
+        point: "del1_max" | "del2_max" | "del3_max" | "min_flow_20l" | "min_flow" | "preset";
         flowRateLpm: number;
         vfdMl: number;
         vrefMl: number;
@@ -416,7 +416,7 @@ export declare const hoseResultSchema: z.ZodObject<{
     };
     deliveries: {
         pass: boolean;
-        point: "del1_max" | "del2_max" | "del3_max" | "min_flow" | "preset";
+        point: "del1_max" | "del2_max" | "del3_max" | "min_flow_20l" | "min_flow" | "preset";
         flowRateLpm: number;
         vfdMl: number;
         vrefMl: number;
@@ -476,7 +476,7 @@ export declare const hoseResultSchema: z.ZodObject<{
     };
     deliveries: {
         pass: boolean;
-        point: "del1_max" | "del2_max" | "del3_max" | "min_flow" | "preset";
+        point: "del1_max" | "del2_max" | "del3_max" | "min_flow_20l" | "min_flow" | "preset";
         flowRateLpm: number;
         vfdMl: number;
         vrefMl: number;
@@ -834,7 +834,7 @@ export declare const verificationSchema: z.ZodObject<{
             zeroSetting: "pass" | "fail" | "na";
         }>;
         deliveries: z.ZodArray<z.ZodObject<{
-            point: z.ZodEnum<["del1_max", "del2_max", "del3_max", "min_flow", "preset"]>;
+            point: z.ZodEnum<["del1_max", "del2_max", "del3_max", "min_flow_20l", "min_flow", "preset"]>;
             flowRateLpm: z.ZodNumber;
             /** VFD — volume indicated by the dispenser. */
             vfdMl: z.ZodNumber;
@@ -845,14 +845,14 @@ export declare const verificationSchema: z.ZodObject<{
             pass: z.ZodBoolean;
         }, "strip", z.ZodTypeAny, {
             pass: boolean;
-            point: "del1_max" | "del2_max" | "del3_max" | "min_flow" | "preset";
+            point: "del1_max" | "del2_max" | "del3_max" | "min_flow_20l" | "min_flow" | "preset";
             flowRateLpm: number;
             vfdMl: number;
             vrefMl: number;
             efdPercent: number;
         }, {
             pass: boolean;
-            point: "del1_max" | "del2_max" | "del3_max" | "min_flow" | "preset";
+            point: "del1_max" | "del2_max" | "del3_max" | "min_flow_20l" | "min_flow" | "preset";
             flowRateLpm: number;
             vfdMl: number;
             vrefMl: number;
@@ -906,7 +906,7 @@ export declare const verificationSchema: z.ZodObject<{
         };
         deliveries: {
             pass: boolean;
-            point: "del1_max" | "del2_max" | "del3_max" | "min_flow" | "preset";
+            point: "del1_max" | "del2_max" | "del3_max" | "min_flow_20l" | "min_flow" | "preset";
             flowRateLpm: number;
             vfdMl: number;
             vrefMl: number;
@@ -966,7 +966,7 @@ export declare const verificationSchema: z.ZodObject<{
         };
         deliveries: {
             pass: boolean;
-            point: "del1_max" | "del2_max" | "del3_max" | "min_flow" | "preset";
+            point: "del1_max" | "del2_max" | "del3_max" | "min_flow_20l" | "min_flow" | "preset";
             flowRateLpm: number;
             vfdMl: number;
             vrefMl: number;
@@ -1132,7 +1132,7 @@ export declare const verificationSchema: z.ZodObject<{
         };
         deliveries: {
             pass: boolean;
-            point: "del1_max" | "del2_max" | "del3_max" | "min_flow" | "preset";
+            point: "del1_max" | "del2_max" | "del3_max" | "min_flow_20l" | "min_flow" | "preset";
             flowRateLpm: number;
             vfdMl: number;
             vrefMl: number;
@@ -1244,7 +1244,7 @@ export declare const verificationSchema: z.ZodObject<{
         };
         deliveries: {
             pass: boolean;
-            point: "del1_max" | "del2_max" | "del3_max" | "min_flow" | "preset";
+            point: "del1_max" | "del2_max" | "del3_max" | "min_flow_20l" | "min_flow" | "preset";
             flowRateLpm: number;
             vfdMl: number;
             vrefMl: number;

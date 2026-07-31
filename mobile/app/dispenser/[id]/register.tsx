@@ -121,7 +121,7 @@ export default function RegisterScreen() {
   // VFD is the fixed nominal the dispenser delivers (20 L / 5 L), so we
   // pre-fill it. Flow and VREF are the VO's on-site readings — left blank.
   const buildDeliveries = () =>
-    (['del1_max', 'del2_max', 'del3_max', 'min_flow', 'preset'] as const).map(
+    (['del1_max', 'del2_max', 'del3_max', 'min_flow_20l', 'min_flow', 'preset'] as const).map(
       (point) =>
         ({
           point,

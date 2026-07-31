@@ -28,6 +28,7 @@ export const DELIVERY_NOMINAL_ML: Record<DeliveryPoint, number> = {
   del1_max: 20000,
   del2_max: 20000,
   del3_max: 20000,
+  min_flow_20l: 20000,
   min_flow: 5000,
   preset: 5000,
 };

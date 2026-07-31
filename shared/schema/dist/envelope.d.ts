@@ -286,7 +286,7 @@ export declare const signSubmissionSchema: z.ZodObject<{
                 zeroSetting: "pass" | "fail" | "na";
             }>;
             deliveries: z.ZodArray<z.ZodObject<{
-                point: z.ZodEnum<["del1_max", "del2_max", "del3_max", "min_flow", "preset"]>;
+                point: z.ZodEnum<["del1_max", "del2_max", "del3_max", "min_flow_20l", "min_flow", "preset"]>;
                 flowRateLpm: z.ZodNumber;
                 vfdMl: z.ZodNumber;
                 vrefMl: z.ZodNumber;
@@ -294,14 +294,14 @@ export declare const signSubmissionSchema: z.ZodObject<{
                 pass: z.ZodBoolean;
             }, "strip", z.ZodTypeAny, {
                 pass: boolean;
-                point: "del1_max" | "del2_max" | "del3_max" | "min_flow" | "preset";
+                point: "del1_max" | "del2_max" | "del3_max" | "min_flow_20l" | "min_flow" | "preset";
                 flowRateLpm: number;
                 vfdMl: number;
                 vrefMl: number;
                 efdPercent: number;
             }, {
                 pass: boolean;
-                point: "del1_max" | "del2_max" | "del3_max" | "min_flow" | "preset";
+                point: "del1_max" | "del2_max" | "del3_max" | "min_flow_20l" | "min_flow" | "preset";
                 flowRateLpm: number;
                 vfdMl: number;
                 vrefMl: number;
@@ -355,7 +355,7 @@ export declare const signSubmissionSchema: z.ZodObject<{
             };
             deliveries: {
                 pass: boolean;
-                point: "del1_max" | "del2_max" | "del3_max" | "min_flow" | "preset";
+                point: "del1_max" | "del2_max" | "del3_max" | "min_flow_20l" | "min_flow" | "preset";
                 flowRateLpm: number;
                 vfdMl: number;
                 vrefMl: number;
@@ -415,7 +415,7 @@ export declare const signSubmissionSchema: z.ZodObject<{
             };
             deliveries: {
                 pass: boolean;
-                point: "del1_max" | "del2_max" | "del3_max" | "min_flow" | "preset";
+                point: "del1_max" | "del2_max" | "del3_max" | "min_flow_20l" | "min_flow" | "preset";
                 flowRateLpm: number;
                 vfdMl: number;
                 vrefMl: number;
@@ -568,7 +568,7 @@ export declare const signSubmissionSchema: z.ZodObject<{
             };
             deliveries: {
                 pass: boolean;
-                point: "del1_max" | "del2_max" | "del3_max" | "min_flow" | "preset";
+                point: "del1_max" | "del2_max" | "del3_max" | "min_flow_20l" | "min_flow" | "preset";
                 flowRateLpm: number;
                 vfdMl: number;
                 vrefMl: number;
@@ -680,7 +680,7 @@ export declare const signSubmissionSchema: z.ZodObject<{
             };
             deliveries: {
                 pass: boolean;
-                point: "del1_max" | "del2_max" | "del3_max" | "min_flow" | "preset";
+                point: "del1_max" | "del2_max" | "del3_max" | "min_flow_20l" | "min_flow" | "preset";
                 flowRateLpm: number;
                 vfdMl: number;
                 vrefMl: number;
@@ -838,7 +838,7 @@ export declare const signSubmissionSchema: z.ZodObject<{
             };
             deliveries: {
                 pass: boolean;
-                point: "del1_max" | "del2_max" | "del3_max" | "min_flow" | "preset";
+                point: "del1_max" | "del2_max" | "del3_max" | "min_flow_20l" | "min_flow" | "preset";
                 flowRateLpm: number;
                 vfdMl: number;
                 vrefMl: number;
@@ -965,7 +965,7 @@ export declare const signSubmissionSchema: z.ZodObject<{
             };
             deliveries: {
                 pass: boolean;
-                point: "del1_max" | "del2_max" | "del3_max" | "min_flow" | "preset";
+                point: "del1_max" | "del2_max" | "del3_max" | "min_flow_20l" | "min_flow" | "preset";
                 flowRateLpm: number;
                 vfdMl: number;
                 vrefMl: number;

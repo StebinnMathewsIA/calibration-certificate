@@ -140,7 +140,31 @@ the device mirror like other reads.
    stay at the site they were archived at; a re-linked equipment number
    appears at the new site as a blank-identity seed only.
 
-## 8. Deferred (post-PoC approval)
+## 8. Test plans and document types (agreed 2026-07-31, #92)
+
+Two registries, both versioned code, neither a configuration engine:
+
+- **Test plans** (shared/schema/src/test-plans.ts, generated to JSON for
+  the Python backend — never hand-mirrored): required measures, delivery
+  points with fixed nominals, timing rules, MPE. `lfd-std-v1` is the
+  classic 20/5 L flow; `lfd-hv-v1` verifies high flow rate dispensers
+  with the 200 L measure. The dispenser identity's STD/HV designation
+  (derived from Qmax above 100 L/min, confirmed explicitly) selects the
+  plan, which is PINNED into the draft at creation and recorded on the
+  certificate. A missing testPlan on any payload means lfd-std-v1,
+  forever, so pre-registry offline-queued signings stay valid.
+- **Document types**: the verification certificate and, first beyond it,
+  the rejection certificate (documentType on the sign envelope and the
+  archive). Both seal through the same pipeline with identical
+  guarantees. Registry features are added only when a document forces
+  them (senior-review rule: no speculative abstraction).
+
+Guard rails from the review: a 187-payload production regression corpus
+must re-render byte-identically across renderer refactors; backend
+tolerance deploys before the app emits new fields; plan-nominal
+validation applies only to payloads that declare their plan.
+
+## 9. Deferred (post-PoC approval)
 Paid hosting near South Africa (Supabase `af-south-1` + signing service in
 Johannesburg — the planned end-state once the PoC is approved),
 `@prowalco.co.za` sending domain, historic certificate import, OnKey

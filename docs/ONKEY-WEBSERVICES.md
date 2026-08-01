@@ -110,6 +110,58 @@ write-back, with capabilities confirmed in the guide's change log:
 - `StaffMemberImportService`, `UserImportService` (StaffMemberCode column
   links users to staff members): relevant to the identity mapping.
 
+## 6b. Discovered contracts (live WSDL introspection, 2026-08-01)
+
+Introspected directly from the tenant's service registry (the base URL
+lives in Render env, not this repo; note for the owner: the registry and
+WSDLs are reachable WITHOUT authentication, data access still requires
+Logon). Facts that remove the guesswork:
+
+- **Type hierarchy**: `ImportItemBase{ReferenceId}` >
+  `CrudImportItemBase{Action, Id}` > `MasterImportItem{Code, NewCode}` >
+  business fields. `Action` is the enum Insert | Update | Delete | Merge.
+  Master records are keyed by their **Code**, no internal Id needed.
+- **WorkOrderImport.svc operations** (each with an Async twin):
+  ImportWorkOrders, ImportWorkOrderChangeStatusAndQueues, ImportTasks,
+  ImportWorkTaskLabour, ImportWorkTaskSpares, ImportWorkTaskSparesUsed,
+  ImportWorkOrderCosting, ImportDowntimes.
+- **ImportWorkOrderChangeStatusAndQueue** (extends ImportItemBase):
+  `WorkOrderCode` (string) or `WorkOrderId` (long), plus
+  `UserDefinedStateCode` (the target status; values come from the
+  owner's status-flow document), `QueueUser`, `Priority`, `Remark`.
+  Status write-back (#96) is therefore keyed by the codes we already
+  sync.
+- **ImportWorkOrder** (MasterImportItem, Merge on Code) carries the
+  feedback surface directly: `WorkPerformed`, `Notes`, `StartOn`,
+  `CompletedOn`, `ReceivedOn`, `RequiredBy`, `StaffCode`, the failure
+  analysis block (`FailureCode`, `FailureTypeCode`, `RootCauseCode`,
+  `FailedComponentCode`, `AnalysisComponentCode`, `RepairTypeCode`),
+  `ExternalReference` (candidate slot for our certificate number),
+  GPS fields, `IsPermitRequired`/`PermitNumber`. Feedback (#97) is one
+  Merge on the WO code.
+- **ImportWorkTaskLabourItem** (ChildImportItem): `StaffCode`,
+  `NormalTimeInMinutes`, `Overtime1/2/3InMinutes`, `PerformedOn`,
+  `Notes`, `TradeCode`, `WorkTaskId` (long). Labour (#98) needs the WORK
+  TASK id, so the read side must surface task ids (extend WOE001 or a
+  small export).
+- **ImportWorkTaskSpare** (ChildImportItem): `WorkOrderCode`,
+  `TaskCode`/`TaskId`, `ItemCode`, `ItemDescription`, `ItemType` (int,
+  the four categories), `QuantityRequired`, `UnitCode`,
+  `WarehouseItemWarehouseCode`, `SupplierCode`,
+  `UnitPriceInSourceCurrency`. Spares (#99) map fully;
+  ImportWorkTaskSpareUsed records actual usage (Quantity, Date,
+  ItemCost) as a child of the spare line.
+- Response shapes confirmed: `RecordFailures[{ReferenceId, Message}]`
+  and `RecordSuccesses` with Ids; `AsyncImportStatus` enum for the async
+  pattern.
+- **DocumentLinkImport.svc**: listed in the registry but its WSDL fetch
+  resets from our sandbox; introspect it from the signing service (same
+  network path as the sync) before building #101/#102 write-back.
+- The seven [TEST] work orders are NOT in our mirror: WOE001 only pulls
+  open statuses and they sit at Completed / Costing Complete. Testing
+  the visible lifecycle needs one flipped to an open status, or a
+  temporary read extension.
+
 ## 7. Integration rules for our stack
 
 - Client: extend the existing zeep client in

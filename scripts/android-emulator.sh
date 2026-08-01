@@ -76,7 +76,7 @@ require_sdk() {
 }
 
 cmd_doctor() {
-  local problems=0 major image_dir
+  local problems=0 major image_dir existing
 
   say "Toolchain for the Prowalco app on an Android emulator (${ABI}, API ${API_LEVEL})"
   say ""
@@ -125,7 +125,15 @@ cmd_doctor() {
   if [ -x "$EMULATOR" ] && "$EMULATOR" -list-avds 2>/dev/null | grep -qx "$AVD_NAME"; then
     report "AVD" "ok ($AVD_NAME)"
   else
-    report "AVD" "not created yet (run: $0 create)"
+    # An AVD made in Android Studio's Device Manager works just as well, it
+    # just has a different name.
+    existing="$({ [ -x "$EMULATOR" ] && "$EMULATOR" -list-avds 2>/dev/null; } | tr '\n' ' ')"
+    if [ -n "${existing// /}" ]; then
+      report "AVD" "'$AVD_NAME' not found, but these exist: ${existing% }"
+      report "" "use one with: AVD_NAME=<name> $0 up"
+    else
+      report "AVD" "not created yet (run: $0 create)"
+    fi
   fi
 
   [ -d "$REPO_ROOT/mobile/node_modules" ] &&

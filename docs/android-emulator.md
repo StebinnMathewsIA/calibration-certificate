@@ -68,6 +68,44 @@ It reports one line per component. `bash scripts/android-emulator.sh install`
 installs the SDK packages listed above through `sdkmanager` (it will ask you to
 accept licences first).
 
+### If you already have Android Studio
+
+It covers most of the table above: the SDK platform, platform-tools, build
+tools, the emulator, a bundled JDK (the JetBrains Runtime, currently 21, which
+satisfies the 17-or-newer requirement) and the Device Manager for creating
+AVDs. Three things it does **not** install by default, all of which this app
+needs:
+
+- **NDK 27.1.12297006** and **CMake 3.22.1**, because quick-crypto compiles C++
+- **Android SDK Command-line Tools (latest)**, which provide `sdkmanager` and
+  `avdmanager`, used by the helper script
+
+Add them in Android Studio: Settings, Languages and Frameworks, Android SDK,
+**SDK Tools** tab. Tick "Show Package Details" to choose the exact NDK and
+CMake versions rather than the newest ones, then tick "Android SDK Command-line
+Tools (latest)". Or install the command-line tools there and let the script do
+the rest with `bash scripts/android-emulator.sh install`.
+
+Two more things to check on an existing Android Studio setup:
+
+- **`ANDROID_HOME` is usually not exported to your shell.** Android Studio
+  knows where the SDK is, your terminal does not. Export it as above, or copy
+  the path from Settings, Android SDK, "Android SDK Location".
+- **No separate JDK needed.** If `scripts/android-emulator.sh doctor` reports
+  the JDK missing, point at the bundled one:
+  `export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"`
+  on macOS, `~/android-studio/jbr` on Linux,
+  `C:\Program Files\Android\Android Studio\jbr` on Windows. If Gradle later
+  complains about an unsupported Java or Kotlin version, install a JDK 17 and
+  point `JAVA_HOME` there instead.
+
+**Already made an AVD in Device Manager?** Use it. Either boot it from the
+Device Manager Play button and skip straight to
+`bash scripts/android-emulator.sh run`, or pass the name:
+`AVD_NAME=Pixel_7_API_36 bash scripts/android-emulator.sh up`. `doctor` lists
+the AVDs it can see. It needs to be a Google Play or Google APIs image (for the
+OAuth browser tab) on API 35 or 36.
+
 Hardware acceleration matters more than anything else for emulator speed: KVM
 on Linux (check with `ls -l /dev/kvm`), the Windows Hypervisor Platform on
 Windows, and Hypervisor.framework on macOS, which needs no setup.

@@ -29,7 +29,81 @@ catalogued at the end; each item needs an owner decision before it
 becomes a ticket, and several (Syspro inventory, payroll, SOS/comms) are
 separate systems, not app features.
 
-## Stages and tickets
+## Solidified build plan (2026-08-01)
+
+Owner commitments: priority 1 and 2 reports from ONKEY-REPORTS-SPEC.md
+WILL be authored; priority 3 is best effort. Owner decisions locked in:
+OnKey I/O (reads AND writes) is Supabase-native (pg_cron + pg_net +
+Edge Functions; the contracts are hand-built SOAP from the introspected
+WSDLs); Render remains ONLY for PAdES sealing, kept warm by a
+keep-alive ping since the sync no longer wakes it; job cards keep the
+drawn client signature; mandatory import columns are discovered by
+trial and error against per-record RecordFailures; the same OnKey
+account serves reads and writes.
+
+### Workstream A: Supabase-native OnKey platform (no dependencies, starts first)
+1. Migration: enable pg_cron and pg_net; `onkey_outbox` (kind, payload,
+   wo_code, state pending/sent/failed, record_failures, onkey_record_ids);
+   per-report staging tables with content-hash dedupe (the WOE001
+   pattern, generalized to any ReportCode); config table with the
+   DRY-RUN flag (default on) and the write allowlist (test codes only,
+   values via Supabase secrets/config, never the repo).
+2. Edge Function `onkey`: SOAP envelope builder from the introspected
+   contracts (Logon, ExportData, the WorkOrderImport operations,
+   LogOff), session per invocation, SessionExpired re-logon, both
+   response error channels surfaced. Owner one-time step: copy the four
+   ONKEY_* values from Render env into Supabase Edge Function secrets.
+3. Read pipeline port: WOE001 fetched by the Edge Function side by side
+   with the Render sync until the derived registers match, then the
+   GitHub Actions cron flips to a Render keep-alive ping only.
+   Derivation logic moves into SQL functions (it is mostly SQL already).
+
+### Workstream B: device lifecycle (no dependencies, parallel with A)
+- #95: start/pause/resume/stop machine, offline-first, pause-reason
+  rules, SLA timestamps, work list filters (All / Started / Not
+  Started / Completed). Purely local until the write path opens.
+- #100 job card (client signature pad returns, per owner) and #101
+  attachments (app + Supabase Storage side) are also not report-gated
+  and follow straight after.
+
+### Workstream C: report-gated, in arrival order
+- PWR-WO01 lands: full work-list fields (#94 closes), closed-status
+  and [TEST] visibility, created-WO code resolution.
+- PWR-REF01 lands: status mapping table for #96 built from real state
+  codes; first ever write = a NO-OP status change (a test WO set to its
+  current state) to validate codes; then the test-WO factory (#104)
+  performs the first Insert; then lifecycle write-back (#96) goes live
+  end to end on factory-created test WOs.
+- PWR-WT01 lands: labour capture (#98).
+- PWR-REF02 lands: feedback with real failure-analysis pickers (#97).
+- PWR-INV01 lands: spares step 2, warehouse and item search (#99;
+  step 1 free-coded entry ships un-gated with #97).
+- PWR-STF01 / PWR-AST01 land: manual technician/location master uploads
+  retire in favour of OnKey-sourced registers; full per-site asset
+  lists.
+
+### Workstream D: close-out bridge
+- DocumentLinkImport introspection runs from Render's network path
+  regardless of PWR-DOC01 (its WSDL refuses our sandbox).
+- #102: on certificate issue, attach the sealed PDF reference and drive
+  the close-out transition; rejection issues raise the linked repair WO
+  (#104 part 2). Gated on the #96 mapping plus DocumentLink.
+
+### Priority-3 fallbacks (if those reports never arrive)
+- Without PWR-DOC01: attachment success is verified from the import's
+  RecordSuccesses plus an owner spot check in the OnKey UI; the app's
+  Documents tab lists our own Storage copies, which we hold anyway.
+- Without PWR-WO02: our append-only audit of every write plus
+  PWR-WO01's StatusChangedOn column serves as transition verification.
+
+### Cutover checklist (end of phase)
+WOE001 retired after side-by-side parity; master file uploads retired
+after PWR-STF01/AST01 parity; GitHub cron reduced to the Render
+keep-alive; dry-run flag off only per explicit owner instruction, and
+the allowlist stays even then until Prowalco signs off production
+write-back.
+
+## Original stages and tickets (superseded by the solidified plan above)
 
 ### Stage 0: access and safety rails (blocks everything)
 - **#93 OnKey write client + hard allowlist.** Write-capable integration

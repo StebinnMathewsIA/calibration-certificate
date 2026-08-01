@@ -103,6 +103,49 @@ keep-alive; dry-run flag off only per explicit owner instruction, and
 the allowlist stays even then until Prowalco signs off production
 write-back.
 
+## Becoming the system of record (owner direction, 2026-08-01)
+
+The owner intends to eventually take control of the asset-management and
+work-order process: their own hosted database as the system of record,
+OnKey retired. That system is NOT built now, but these decisions bind
+TODAY's build so tomorrow is a swap, not a rewrite:
+
+1. **The outbox stores domain events, never SOAP payloads.** Entries are
+   intents ("work order started", "labour recorded", "close out with
+   certificate X") translated by an OnKey ADAPTER into import calls.
+   Replacing OnKey means writing a native adapter (SQL writes into our
+   own tables); the app, the outbox and the audit trail never change.
+2. **Our own work-order entity with our own IDs.** Lifecycle state,
+   feedback, labour and spares hang off OUR `work_orders` record (uuid,
+   `source: onkey | native`, `external_ref` carrying the OnKey code).
+   OnKey codes are foreign references, not primary keys. Native-era and
+   OnKey-era work orders coexist exactly as manual-era and prefill-era
+   certificates already do.
+3. **Our lifecycle states are the durable model.** The device state
+   machine's states are canonical; OnKey's UserDefinedStateCodes are an
+   adapter mapping (already the #96 design). At cutover the mapping is
+   dropped and the states remain.
+4. **Raw report snapshots are never pruned.** Every Analyser Report
+   lands in an append-only content-hashed snapshot table. That archive
+   is the migration corpus: the full history of work orders, statuses,
+   assets and staff needed to seed the native system without depending
+   on Pragma's cooperation at cutover. Storage cost is trivial.
+5. **Portability guardrails.** Everything stays plain Postgres,
+   reproducible from the SQL migrations in this repo (CI already proves
+   it); Storage objects and Edge Functions have self-host equivalents
+   (Supabase is open source; the planned post-PoC move to a paid or
+   self-hosted region is the same motion). No feature without an exit.
+6. **The canonical-store rule extends to every new entity.** Our record
+   wins over the OnKey seed, with source flags, for work orders and
+   tasks exactly as it does for sites and dispensers today. The day the
+   OnKey feed stops, the canonical store simply IS the register.
+
+What is deliberately NOT built until the owner schedules it: the
+planner/SMA side (creating and allocating work company-wide, SLA
+engines, queues) and the migration of Pragma-side configuration
+(states, importances, failure registers) into owned reference tables.
+Both become straightforward once rules 1 to 6 hold.
+
 ## Original stages and tickets (superseded by the solidified plan above)
 
 ### Stage 0: access and safety rails (blocks everything)

@@ -303,6 +303,8 @@ Alternatively keep the URL as `localhost` and map the port instead:
 | App installs but shows a blank white screen | Metro is not running or not reachable. `npm start` in `mobile/`, then `adb reverse tcp:8081 tcp:8081` |
 | `INSTALL_FAILED_INSUFFICIENT_STORAGE` | The AVD's data partition is too small. Recreate it with at least 8 GB |
 | `adb: no devices/emulators found` | The emulator has not finished booting. `adb wait-for-device` |
+| Windows: "Android Emulator hypervisor driver (installer)" fails to install | Optional, and usually the wrong accelerator. AEHD needs admin rights and refuses to coexist with Hyper-V (WSL2, Docker Desktop and Defender's virtualization-based security all enable it). Ignore it and use Windows Hypervisor Platform instead: Turn Windows features on or off, tick it, reboot |
+| Windows: emulator will not start, no accelerator found | Tick **Windows Hypervisor Platform** in Windows features and reboot. If Task Manager, Performance, CPU shows "Virtualization: Disabled", enable VT-x or SVM in the BIOS first, nothing works without it |
 | Emulator is very slow | Hardware acceleration is off. Check `/dev/kvm` on Linux, or use an arm64 image on Apple Silicon |
 | Metro cannot resolve `@prowalco/schema` | Run `npm install` in `mobile/`. The package is a `file:` dependency on `shared/schema`, whose `dist/` is committed |
 

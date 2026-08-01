@@ -29,79 +29,115 @@ catalogued at the end; each item needs an owner decision before it
 becomes a ticket, and several (Syspro inventory, payroll, SOS/comms) are
 separate systems, not app features.
 
-## Solidified build plan (2026-08-01)
+## Solidified build plan (2026-08-01, revised after senior review 2026-08-02)
 
 Owner commitments: priority 1 and 2 reports from ONKEY-REPORTS-SPEC.md
-WILL be authored; priority 3 is best effort. Owner decisions locked in:
-OnKey I/O (reads AND writes) is Supabase-native (pg_cron + pg_net +
-Edge Functions; the contracts are hand-built SOAP from the introspected
-WSDLs); Render remains ONLY for PAdES sealing, kept warm by a
-keep-alive ping since the sync no longer wakes it; job cards keep the
-drawn client signature; mandatory import columns are discovered by
-trial and error against per-record RecordFailures; the same OnKey
-account serves reads and writes.
+WILL be authored; priority 3 is best effort. Supabase Pro is a given.
+Owner decisions locked in: OnKey I/O (reads AND writes) is
+Supabase-native (pg_cron + pg_net + Edge Functions; hand-built SOAP
+from the introspected WSDLs); Render remains ONLY for PAdES sealing,
+kept warm by a best-effort keep-alive (GitHub schedules can slip, so an
+occasional ~30 s cold first seal remains possible until Render goes
+paid; recorded in TESTING.md, not a bug); job cards keep the drawn
+client signature; mandatory import columns are discovered by trial and
+error against per-record RecordFailures; the same OnKey account serves
+reads and writes.
 
-### Workstream A: Supabase-native OnKey platform (no dependencies, starts first)
-1. Migration: enable pg_cron and pg_net; `onkey_outbox` (kind, payload,
-   wo_code, state pending/sent/failed, record_failures, onkey_record_ids);
-   per-report staging tables with content-hash dedupe (the WOE001
-   pattern, generalized to any ReportCode); config table with the
-   DRY-RUN flag (default on) and the write allowlist (test codes only,
-   values via Supabase secrets/config, never the repo).
-2. Edge Function `onkey`: SOAP envelope builder from the introspected
-   contracts (Logon, ExportData, the WorkOrderImport operations,
-   LogOff), session per invocation, SessionExpired re-logon, both
-   response error channels surfaced. Owner one-time step: copy the four
-   ONKEY_* values from Render env into Supabase Edge Function secrets.
-3. Read pipeline port: WOE001 fetched by the Edge Function side by side
-   with the Render sync until the derived registers match, then the
-   GitHub Actions cron flips to a Render keep-alive ping only.
-   Derivation logic moves into SQL functions (it is mostly SQL already).
+### Binding write rules (from review)
+- **ExternalReference carries our event UUID on every import that
+  supports it** (work orders, labour, spares). Retry logic queries by
+  it (PWR-WO01/WT01) before re-sending, so a lost response can never
+  double-create or double-book. This is the idempotency mechanism; the
+  stored OnKey RecordIds are the audit trail, not the guard.
+- **Domain events carry a schemaVersion** from day one: the outbox
+  persists across OTA updates, exactly like the sign queue.
+- **Reconciliation policy**: planners keep changing work orders inside
+  OnKey while technicians work offline. On every sync, OnKey's state is
+  recorded beside ours; divergence (reassigned, cancelled, completed by
+  someone else) is SURFACED to the technician, and queued events whose
+  target moved land in a **dead-letter state visible to managers**,
+  never a silent drop or a blind apply.
+- **Cron-to-function trust**: the Edge Function endpoints require a
+  shared-secret header (JWT verification off); the secret lives in the
+  Edge secrets and inside the cron job definition, nowhere else.
 
-### Workstream B: device lifecycle (no dependencies, parallel with A)
-- #95: start/pause/resume/stop machine, offline-first, pause-reason
-  rules, SLA timestamps, work list filters (All / Started / Not
-  Started / Completed). Purely local until the write path opens.
-- #100 job card (client signature pad returns, per owner) and #101
-  attachments (app + Supabase Storage side) are also not report-gated
-  and follow straight after.
+### Workstream A1: SOAP skeleton and first proof (days, starts first)
+1. Migration: enable pg_cron and pg_net; `onkey_outbox` (domain events:
+   kind, schemaVersion, payload, target wo_code, event uuid, state
+   pending/sent/failed/dead_letter, record_failures, onkey_record_ids);
+   `sync_runs` bookkeeping; config with the DRY-RUN flag (default on)
+   and the write allowlist (values via Supabase secrets, never the repo).
+2. Edge Function `onkey`: envelope builder for Logon/LogOff plus the
+   WorkOrderImport operations, session per invocation, SessionExpired
+   re-logon, both error channels surfaced. **Golden transcripts**: the
+   working Render client logs a handful of real request/response XML
+   pairs once, and CI pins the Deno builder to them.
+3. Proof ladder, in order: connectivity smoke (Logon/LogOff only); the
+   NO-OP status trial (a test WO set to its current state) validating
+   state codes from PWR-REF01; the test-WO factory's first Insert.
+   Owner one-time step before any of it: copy the four ONKEY_* values
+   from Render env into Supabase Edge Function secrets.
+
+### Workstream A2: read-pipeline port (trails A1, blocks nobody)
+- One chunk per invocation (Edge Functions have hard wall-clock
+  limits; the Render sync's long single-process loop does NOT port
+  as-is), driven by `sync_runs` so a killed backfill resumes.
+- WOE001 runs side by side with the Render sync until a **scripted
+  parity comparison** (same content-hash sets over the same window,
+  register diff query) passes repeatedly; the Render path stays
+  callable as rollback for two weeks after the flip; only then does the
+  GitHub cron become keep-alive-only. Derivation stays in SQL.
+- **Observability is part of A2, not an afterthought**: an admin
+  Insights card showing last-sync age, outbox depth, failure and
+  dead-letter counts, replacing the visibility the GitHub cron logs
+  provided.
+
+### Workstream B: device lifecycle (no dependencies, parallel)
+- #95: start/pause/resume/stop machine on OUR work-order entity (own
+  uuid, source flag, OnKey code as external_ref), offline-first,
+  pause-reason rules, SLA timestamps, work-list filters. Purely local
+  until A1's proof ladder completes.
+- #100 job card (client signature pad returns) and #101 attachments
+  (app + Storage side) follow, under the storage rules below.
 
 ### Workstream C: report-gated, in arrival order
-- PWR-WO01 lands: full work-list fields (#94 closes), closed-status
-  and [TEST] visibility, created-WO code resolution.
-- PWR-REF01 lands: status mapping table for #96 built from real state
-  codes; first ever write = a NO-OP status change (a test WO set to its
-  current state) to validate codes; then the test-WO factory (#104)
-  performs the first Insert; then lifecycle write-back (#96) goes live
-  end to end on factory-created test WOs.
-- PWR-WT01 lands: labour capture (#98).
-- PWR-REF02 lands: feedback with real failure-analysis pickers (#97).
-- PWR-INV01 lands: spares step 2, warehouse and item search (#99;
-  step 1 free-coded entry ships un-gated with #97).
-- PWR-STF01 / PWR-AST01 land: manual technician/location master uploads
-  retire in favour of OnKey-sourced registers; full per-site asset
-  lists.
+- PWR-WO01: full work-list fields (#94 closes), closed-status and
+  [TEST] visibility, created-WO code resolution, and the read-back that
+  the ExternalReference idempotency check depends on.
+- PWR-REF01: the #96 status mapping table from real state codes, then
+  the no-op trial, then lifecycle write-back live end to end on
+  factory-created test WOs.
+- PWR-WT01: labour (#98). PWR-REF02: failure-analysis pickers (#97).
+- PWR-INV01: spares step 2 (#99; free-coded step 1 ships un-gated).
+- PWR-STF01 / PWR-AST01: manual master uploads retire after their own
+  scripted parity check.
 
 ### Workstream D: close-out bridge
 - DocumentLinkImport introspection runs from Render's network path
-  regardless of PWR-DOC01 (its WSDL refuses our sandbox).
-- #102: on certificate issue, attach the sealed PDF reference and drive
-  the close-out transition; rejection issues raise the linked repair WO
-  (#104 part 2). Gated on the #96 mapping plus DocumentLink.
+  regardless of PWR-DOC01.
+- #102: certificate issue attaches the sealed PDF reference and drives
+  close-out; rejection issue raises the linked repair WO (#104). Gated
+  on the #96 mapping plus DocumentLink.
+
+### Test-WO factory hygiene (#104)
+Created test WOs appear in Prowalco planners' dashboards: unmistakable
+[TEST] marker, designated test staff code and site, a volume cap, a
+verified cleanup path (Action Delete trialled first), and the owner
+warns the planning team before the first run.
 
 ### Priority-3 fallbacks (if those reports never arrive)
-- Without PWR-DOC01: attachment success is verified from the import's
-  RecordSuccesses plus an owner spot check in the OnKey UI; the app's
-  Documents tab lists our own Storage copies, which we hold anyway.
-- Without PWR-WO02: our append-only audit of every write plus
-  PWR-WO01's StatusChangedOn column serves as transition verification.
+- Without PWR-DOC01: attachment success verified from RecordSuccesses
+  plus an owner spot check in the OnKey UI; the Documents tab lists our
+  own Storage copies, which are primary anyway.
+- Without PWR-WO02: our append-only write audit plus PWR-WO01's
+  StatusChangedOn column serve as transition verification.
 
 ### Cutover checklist (end of phase)
-WOE001 retired after side-by-side parity; master file uploads retired
-after PWR-STF01/AST01 parity; GitHub cron reduced to the Render
-keep-alive; dry-run flag off only per explicit owner instruction, and
-the allowlist stays even then until Prowalco signs off production
-write-back.
+WOE001 retired after scripted parity; master uploads retired after
+PWR-STF01/AST01 parity; GitHub cron reduced to the Render keep-alive;
+dry-run off only per explicit owner instruction; the allowlist stays
+even then until Prowalco signs off production write-back; off-site
+document replication running BEFORE production write-back is declared.
 
 ## Becoming the system of record (owner direction, 2026-08-01)
 
@@ -145,6 +181,46 @@ planner/SMA side (creating and allocating work company-wide, SLA
 engines, queues) and the migration of Pragma-side configuration
 (states, importances, failure registers) into owned reference tables.
 Both become straightforward once rules 1 to 6 hold.
+
+## Document storage (binding rules, from the storage review)
+
+Three classes: sealed legal documents (certificates, rejection
+certificates, job cards: the existing write-once, hash-recorded,
+audited pipeline, unchanged); evidence attachments (photos, files,
+voice notes: named at capture, immutable once uploaded, admin-only soft
+delete); working documents (PTW and checklists later: editable until
+completed, then frozen into class 2).
+
+- One `documents` registry table (type, storage path, sha256, size,
+  mime, creator, anchors to our work order / site / dispenser /
+  certificate). Certificates keep their table; a **union view** is the
+  single read path for every Documents surface.
+- **Our storage is primary; OnKey receives references** (DocumentLink),
+  never the other way around.
+- **Separate media lane**, not the domain-event outbox: its own retry
+  pacing so a large photo on poor signal never blocks a tiny lifecycle
+  event. Events reference documents by id + hash and fire only when
+  their referenced documents are server-side; ordering is per work
+  order.
+- Upload permission is minted by an Edge Function applying OUR role
+  logic (storage RLS path policies cannot express app_roles/view-as),
+  as short-lived signed URLs issued at DRAIN time, not enqueue time.
+- **Content-addressed attachment paths** (sha256 in the path): retries
+  idempotent, duplicates free.
+- Device policy: local media evictable once uploaded and hash-verified;
+  sealed PDFs kept; last N days of media retained. EXIF stripped at
+  capture; location only via the existing consent flow.
+- Soft delete: object retained, registry row records who/when/why,
+  hidden from technician and manager views, visible to admin and audit.
+- Integrity sweep: a pg_cron job re-verifies stored hashes (Supabase
+  Storage has no true WORM; our immutability is code plus audit).
+- Per-file size caps (compressed photos, capped voice notes), MIME
+  validated server-side at registry insert.
+- Storage usage watchdog feeding the admin Insights card (hygiene under
+  Pro's 100 GB, not an emergency).
+- **Off-site object replication is a pre-production requirement**:
+  database backups never cover Storage objects, and these are legal
+  documents held indefinitely.
 
 ## Original stages and tickets (superseded by the solidified plan above)
 

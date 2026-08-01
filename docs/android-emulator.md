@@ -298,6 +298,7 @@ Alternatively keep the URL as `localhost` and map the port instead:
 | Fingerprint prompt never accepts | Run `scripts/android-emulator.sh finger` on the host while the prompt is open |
 | Sign-in opens a tab that goes nowhere | Chrome's first-run screen, or the redirect URL is not allow-listed in Supabase |
 | Gradle fails with a CMake or NDK error | NDK 27.1.12297006 or CMake missing. `scripts/android-emulator.sh install` |
+| "Dependant package with key emulator not found" when creating an AVD | The **Android Emulator** SDK package is not installed. SDK Tools tab, tick it, Apply. If it is already ticked, untick, Apply, re-tick, Apply, which forces a reinstall of a stale package list |
 | `SDK location not found` | `ANDROID_HOME` not exported, or `mobile/android/local.properties` missing after a manual prebuild |
 | App installs but shows a blank white screen | Metro is not running or not reachable. `npm start` in `mobile/`, then `adb reverse tcp:8081 tcp:8081` |
 | `INSTALL_FAILED_INSUFFICIENT_STORAGE` | The AVD's data partition is too small. Recreate it with at least 8 GB |

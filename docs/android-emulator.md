@@ -37,6 +37,41 @@ you start, because each one fails in a way that looks like an app bug:
    CMake, so the NDK and CMake have to be installed, not just the SDK platform.
    Missing them produces a late Gradle failure that does not name the cause.
 
+## 0. Check your machine can run an emulator at all
+
+| Host | Emulator | Notes |
+|---|---|---|
+| Windows on x86_64 (Intel, AMD) | Yes | Use Windows Hypervisor Platform, see section 1 |
+| **Windows on ARM (Snapdragon, Copilot+ PCs)** | **No** | Google publishes no emulator binaries for win-arm64. The official requirement is an x86_64 CPU, and the tracking issue ([264614669](https://issuetracker.google.com/issues/264614669)) is open |
+| macOS, Intel or Apple Silicon | Yes | Apple Silicon runs arm64 images natively |
+| Linux on x86_64 | Yes | Needs KVM |
+
+On Windows on ARM the symptoms are confusing rather than explicit: **Android
+Emulator** cannot be ticked in SDK Tools, and the **Android Emulator hypervisor
+driver (AEHD)** fails to install because it is an x86-only driver (and is being
+retired on 31 December 2026 regardless). Neither error says "wrong CPU". Do not
+spend time on the SDK Manager: there is nothing to install.
+
+### The no-emulator route: a real tablet, built in the cloud
+
+This needs no local toolchain, no terminal, and no emulator, and it runs on the
+hardware the app is actually for:
+
+1. On GitHub: **Actions**, **eas-build**, **Run workflow**
+2. Platform **android**, profile **preview**, run it
+3. About 15 minutes later the run summary links to the Expo build page with an
+   install QR code and an APK
+4. Open it on an Android tablet and install
+
+The `preview` profile is standalone: the JavaScript is embedded, so nothing has
+to keep running on a computer, and it already points at the deployed backend
+and Supabase project. The workflow needs an `EXPO_TOKEN` repository secret and
+fails immediately with an explanation if it is missing.
+
+Use this if your machine cannot run an emulator, and prefer it in general for
+anything about real-world feel: touch targets, the signature pad with a finger,
+sunlight readability, poor connectivity.
+
 ## 1. Prerequisites
 
 | Component | Version | Notes |
@@ -303,7 +338,8 @@ Alternatively keep the URL as `localhost` and map the port instead:
 | App installs but shows a blank white screen | Metro is not running or not reachable. `npm start` in `mobile/`, then `adb reverse tcp:8081 tcp:8081` |
 | `INSTALL_FAILED_INSUFFICIENT_STORAGE` | The AVD's data partition is too small. Recreate it with at least 8 GB |
 | `adb: no devices/emulators found` | The emulator has not finished booting. `adb wait-for-device` |
-| Windows: "Android Emulator hypervisor driver (installer)" fails to install | Optional, and usually the wrong accelerator. AEHD needs admin rights and refuses to coexist with Hyper-V (WSL2, Docker Desktop and Defender's virtualization-based security all enable it). Ignore it and use Windows Hypervisor Platform instead: Turn Windows features on or off, tick it, reboot |
+| Windows: "Android Emulator hypervisor driver (installer)" fails to install | On an **ARM** PC this is terminal, AEHD is x86-only and so is the emulator: see section 0. On an x86_64 PC it is optional and usually the wrong accelerator anyway (AEHD needs admin rights and cannot coexist with Hyper-V, which WSL2, Docker Desktop and Defender's virtualization-based security all enable). Use Windows Hypervisor Platform instead: Turn Windows features on or off, tick it, reboot |
+| **Android Emulator** cannot be ticked in SDK Tools | Almost always an ARM Windows machine. Section 0 |
 | Windows: emulator will not start, no accelerator found | Tick **Windows Hypervisor Platform** in Windows features and reboot. If Task Manager, Performance, CPU shows "Virtualization: Disabled", enable VT-x or SVM in the BIOS first, nothing works without it |
 | Emulator is very slow | Hardware acceleration is off. Check `/dev/kvm` on Linux, or use an arm64 image on Apple Silicon |
 | Metro cannot resolve `@prowalco/schema` | Run `npm install` in `mobile/`. The package is a `file:` dependency on `shared/schema`, whose `dist/` is committed |

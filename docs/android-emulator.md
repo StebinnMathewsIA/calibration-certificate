@@ -162,9 +162,17 @@ cheap Android tablets, so anything that feels marginal on the emulator will be
 worse in the field.
 
 If you would rather use the Android Studio GUI: Device Manager, Create Virtual
-Device, **Tablet** category, **Pixel Tablet**, a **Google Play** system image
-for API 35 or 36, then in Additional Settings raise the internal storage to at
-least 8 GB.
+Device, **Tablet** category (Pixel Tablet or Medium Tablet), a **Google Play**
+system image for API 35 or 36, then on the **Additional settings** tab:
+
+| Setting | Value | Why |
+|---|---|---|
+| Internal storage | 8 GB or more | The debug build plus Gradle's artefacts fill a stock AVD |
+| RAM | 4096 MB (3072 on an 8 GB machine) | The default is under 2 GB |
+| VM heap size | 512 MB | Rendering the certificate PDF is the heaviest thing the app does |
+| Graphics acceleration | Hardware | Automatic can silently fall back to software rendering |
+| Rear camera | Webcam0 | Makes the barcode scanner testable, see section 6 |
+| Default boot | Quick | Later boots take seconds instead of minutes |
 
 ### Set a screen lock and a fingerprint (once per AVD)
 
@@ -277,8 +285,8 @@ Alternatively keep the URL as `localhost` and map the port instead:
 |---|---|
 | Biometric prompt | `bash scripts/android-emulator.sh finger` while the prompt is showing |
 | GPS (POPIA consent capture) | `bash scripts/android-emulator.sh geo [lon] [lat]`, or the Location tab in Extended Controls. Without a fix the app records no coordinates and carries on |
-| Camera (seal and totaliser photos) | Extended Controls, Camera. The default virtual scene is enough to prove capture works |
-| Barcode scanning | Awkward on an emulator. Point the virtual camera at a barcode shown on your desktop, or leave this for a physical device |
+| Camera (seal and totaliser photos) | Set the AVD's rear camera to **Webcam0** when creating it (Additional settings, Camera) so it uses your machine's webcam. VirtualScene, the default, is a synthetic room: fine for proving capture works, useless for anything you need to read back |
+| Barcode scanning | Practical only with the webcam: hold a printed barcode, or one on a phone screen, up to it. If the emulator camera is black, another app has the webcam or the machine has none, so switch the rear camera back to VirtualScene and leave scanning for a physical device |
 | Signature pad | Draw with the mouse. Worth confirming on a real tablet with a finger before sign-off |
 | Offline and sign-queue behaviour | Extended Controls, Cellular, set Data status to Denied, or use the emulator's airplane mode |
 

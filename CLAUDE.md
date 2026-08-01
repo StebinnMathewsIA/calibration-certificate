@@ -267,6 +267,14 @@ Validation rules: all required fields complete, standards in-date, at least one 
 
 **Not built in the PoC** — but the PoC is designed so this slots in without rework.
 
+> NEXT PHASE CONTEXT (2026-08-01): the owner supplied the On Key 5 Web
+> Service API Guide and confirmed the next phase covers work-order
+> management alongside certificate management. The distilled, buildable
+> reference is `docs/ONKEY-WEBSERVICES.md` (SOAP/session rules, the
+> Analyser-Report export we already run, the Import services for
+> write-back, and the open questions for Prowalco). Read it before any
+> OnKey work.
+
 ### Target experience
 1. Technician logs in → home screen lists **open work orders assigned to them** (synced from On Key)
 2. Technician selects a WO → **customer, site address, asset/UUT details prepopulate** from On Key's asset register (fields render prefilled + locked, with an "override" affordance that logs a discrepancy flag)

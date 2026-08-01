@@ -106,6 +106,29 @@ Device Manager Play button and skip straight to
 the AVDs it can see. It needs to be a Google Play or Google APIs image (for the
 OAuth browser tab) on API 35 or 36.
 
+### On Windows
+
+`scripts/android-emulator.sh` is a bash script, so run it from **Git Bash**
+(installed with Git for Windows), not PowerShell or cmd. The SDK normally
+lives at `C:\Users\<you>\AppData\Local\Android\Sdk`.
+
+Nothing here depends on the script. Every command has a point-and-click or npm
+equivalent, which is also the answer if you would rather not install Git Bash:
+
+| Script command | Equivalent |
+|---|---|
+| `doctor` | Android Studio, Settings, Android SDK, SDK Tools tab: check NDK and CMake are ticked |
+| `install` | Same screen, tick the packages (use "Show Package Details" for exact versions) |
+| `create` | Device Manager, plus button, Create Virtual Device |
+| `up` | Device Manager, play button next to the device |
+| `run` | `npx expo run:android` in `mobile/` |
+| `finger` | Emulator window, three dots for Extended Controls, Fingerprint, Touch Sensor |
+| `geo` | Extended Controls, Location, set coordinates, Send |
+
+Do not open this repository as an Android Studio project. It is an Expo
+project: Android Studio is here for the SDK and the emulator only, and the
+`mobile/android/` folder it would open is generated output.
+
 Hardware acceleration matters more than anything else for emulator speed: KVM
 on Linux (check with `ls -l /dev/kvm`), the Windows Hypervisor Platform on
 Windows, and Hypervisor.framework on macOS, which needs no setup.

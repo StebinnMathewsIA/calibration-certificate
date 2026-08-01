@@ -43,6 +43,10 @@ the checklist is worked through on one.
       machine with Android Studio installed
 - [ ] `scripts/android-emulator.sh up` boots the AVD from cold and reports the
       screen-lock and fingerprint steps still to do
+- [ ] The AVD is a **tablet** profile (Pixel Tablet or similar), matching the
+      field devices in docs/ARCHITECTURE-V2.md, not a phone
+- [ ] The six-section form and the results tables are usable at tablet width
+      (the app has no width breakpoints yet, so this is a look-and-see)
 - [ ] `npx expo run:android` builds and installs the dev client on the running
       emulator (first build 10 to 20 minutes, quick-crypto compiles via CMake)
 - [ ] Sign-in completes in the emulator's Chrome Custom Tab and returns to the

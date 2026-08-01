@@ -102,9 +102,9 @@ Two more things to check on an existing Android Studio setup:
 **Already made an AVD in Device Manager?** Use it. Either boot it from the
 Device Manager Play button and skip straight to
 `bash scripts/android-emulator.sh run`, or pass the name:
-`AVD_NAME=Pixel_7_API_36 bash scripts/android-emulator.sh up`. `doctor` lists
-the AVDs it can see. It needs to be a Google Play or Google APIs image (for the
-OAuth browser tab) on API 35 or 36.
+`AVD_NAME=Pixel_Tablet_API_36 bash scripts/android-emulator.sh up`. `doctor`
+lists the AVDs it can see. It needs to be a tablet profile on a Google Play or
+Google APIs image (for the OAuth browser tab), API 35 or 36.
 
 ### On Windows
 
@@ -139,15 +139,32 @@ Windows, and Hypervisor.framework on macOS, which needs no setup.
 bash scripts/android-emulator.sh up
 ```
 
-This creates `prowalco-api36` (Pixel 7, API 36, Google Play image, matched to
-your CPU architecture) if it does not exist, boots it, raises the RAM to 4 GB
-and the data partition to 8 GB, forwards Metro's port 8081 to the host, and
-sets a GPS fix over Johannesburg. Override the name or API level with
-`AVD_NAME=... API_LEVEL=... bash scripts/android-emulator.sh up`.
+This creates `prowalco-tablet-api36` (Pixel Tablet, API 36, Google Play image,
+matched to your CPU architecture) if it does not exist, boots it, raises the
+RAM to 4 GB and the data partition to 8 GB, forwards Metro's port 8081 to the
+host, and sets a GPS fix over Johannesburg. Override any of it:
+`AVD_NAME=... DEVICE=... API_LEVEL=... bash scripts/android-emulator.sh up`,
+and `avdmanager list device` shows the device ids your SDK has.
+
+**Use a tablet profile, not a phone.** The field devices are Android tablets,
+one per technician (`docs/ARCHITECTURE-V2.md` section 3.1), so a phone AVD
+tests a form factor nobody will use. Two things to keep in mind when reading
+the result:
+
+- The app is currently locked to portrait (`orientation` in `mobile/app.json`),
+  so a tablet emulator stays portrait when you rotate it.
+- There is no tablet-specific layout code in the app yet, no width
+  breakpoints, so the screens are phone layouts stretched to tablet width.
+  Judge the emulator against that, not against a redesign that does not exist.
+
+A Pixel Tablet AVD is a generous stand-in for the real hardware: the target is
+cheap Android tablets, so anything that feels marginal on the emulator will be
+worse in the field.
 
 If you would rather use the Android Studio GUI: Device Manager, Create Virtual
-Device, Pixel 7, a **Google Play** system image for API 35 or 36, then in
-Additional Settings raise the internal storage to at least 8 GB.
+Device, **Tablet** category, **Pixel Tablet**, a **Google Play** system image
+for API 35 or 36, then in Additional Settings raise the internal storage to at
+least 8 GB.
 
 ### Set a screen lock and a fingerprint (once per AVD)
 

@@ -13,12 +13,15 @@
 # Full walkthrough: docs/android-emulator.md
 #
 # Overridable with environment variables:
-#   AVD_NAME    (default prowalco-api36)
+#   AVD_NAME    (default prowalco-tablet-api36)
+#   DEVICE      (default pixel_tablet; the field devices are Android tablets,
+#               see docs/ARCHITECTURE-V2.md. `avdmanager list device` for ids)
 #   API_LEVEL   (default 36, matches the compile/target SDK of Expo SDK 54)
 #   ANDROID_HOME / ANDROID_SDK_ROOT
 set -euo pipefail
 
-AVD_NAME="${AVD_NAME:-prowalco-api36}"
+AVD_NAME="${AVD_NAME:-prowalco-tablet-api36}"
+DEVICE="${DEVICE:-pixel_tablet}"
 API_LEVEL="${API_LEVEL:-36}"
 NDK_VERSION="27.1.12297006"
 BUILD_TOOLS="36.0.0"
@@ -182,8 +185,16 @@ cmd_create() {
   [ -d "$SDK/system-images/android-${API_LEVEL}/google_apis_playstore/${ABI}" ] ||
     fail "System image missing. Run: $0 install"
 
-  say "Creating AVD '$AVD_NAME' (pixel_7, $SYSTEM_IMAGE)..."
-  echo "no" | "$avdmanager" create avd --name "$AVD_NAME" --package "$SYSTEM_IMAGE" --device "pixel_7"
+  # Device profile ids differ between SDK versions, so check before creating
+  # rather than letting avdmanager fail with a wall of Java output.
+  if ! "$avdmanager" list device 2>/dev/null | grep -q "\"$DEVICE\""; then
+    say "Device profile '$DEVICE' is not in your SDK. Tablet profiles available:"
+    "$avdmanager" list device 2>/dev/null | grep -iE "tablet|pixel_c|nexus (9|10)" | sed 's/^/  /'
+    fail "Pick one and rerun as: DEVICE=<id> $0 create"
+  fi
+
+  say "Creating AVD '$AVD_NAME' ($DEVICE, $SYSTEM_IMAGE)..."
+  echo "no" | "$avdmanager" create avd --name "$AVD_NAME" --package "$SYSTEM_IMAGE" --device "$DEVICE"
 
   # A stock AVD is short on RAM and disk for a React Native debug build with
   # Hermes plus the SQLite store and rendered PDFs.

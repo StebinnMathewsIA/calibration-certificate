@@ -1,0 +1,231 @@
+# Running the app on an Android emulator
+
+How to get the Prowalco calibration app running on an Android Virtual Device
+(AVD) on your own machine. A helper script automates most of it:
+
+```bash
+bash scripts/android-emulator.sh doctor    # what is installed, what is missing
+bash scripts/android-emulator.sh install   # install the SDK packages
+bash scripts/android-emulator.sh up        # create (if needed) and boot the AVD
+bash scripts/android-emulator.sh run       # build and install the app
+```
+
+The rest of this document explains what those steps do, what still has to be
+done by hand, and how to read the errors when something fails.
+
+## Expo Go will not work, and why
+
+The app depends on native modules that are not in the Expo Go binary:
+`react-native-quick-crypto` (SHA-256 of the rendered PDF and the device
+signing key), `expo-local-authentication` (the biometric gate before signing)
+and `expo-sqlite` (the offline store and sign queue). The emulator therefore
+needs a **development build**, the same requirement as a physical device.
+
+Three things about this app trip up a stock AVD. They are worth knowing before
+you start, because each one fails in a way that looks like an app bug:
+
+1. **Signing needs a screen lock.** `enqueueForSigning`
+   (`mobile/src/queue/signQueue.ts:51`) calls `LocalAuthentication.authenticateAsync`
+   with device fallback allowed, so Android accepts either a biometric or the
+   device PIN. A fresh AVD has neither, so the prompt cannot be shown and the
+   Sign step fails with "Identity confirmation cancelled".
+2. **Sign-in needs a browser.** `AuthContext` opens the Supabase PKCE flow with
+   `WebBrowser.openAuthSessionAsync`, which uses a Chrome Custom Tab. A plain
+   AOSP system image has no browser, so pick a Google APIs or Google Play
+   image.
+3. **The first build compiles C++.** `react-native-quick-crypto` builds through
+   CMake, so the NDK and CMake have to be installed, not just the SDK platform.
+   Missing them produces a late Gradle failure that does not name the cause.
+
+## 1. Prerequisites
+
+| Component | Version | Notes |
+|---|---|---|
+| Node | 20 or newer | CI uses 22 |
+| JDK | 17 | React Native 0.81 needs 17 or newer. Android Studio's bundled JBR is fine |
+| Android SDK platform | API 36 | Expo SDK 54 compiles and targets API 36, minimum is API 24 |
+| Build tools | 36.0.0 | |
+| NDK | 27.1.12297006 | Required by react-native-quick-crypto |
+| CMake | 3.22.1 | Same |
+| System image | API 35 or 36, Google Play or Google APIs | Needs a browser for the OAuth tab |
+
+Install Android Studio (it brings the SDK, the emulator and a usable JDK), then
+point your shell at the SDK. On macOS or Linux add to `~/.zshrc` or `~/.bashrc`:
+
+```bash
+export ANDROID_HOME="$HOME/Library/Android/sdk"     # macOS
+# export ANDROID_HOME="$HOME/Android/Sdk"           # Linux
+export PATH="$PATH:$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator"
+```
+
+Then check everything at once:
+
+```bash
+bash scripts/android-emulator.sh doctor
+```
+
+It reports one line per component. `bash scripts/android-emulator.sh install`
+installs the SDK packages listed above through `sdkmanager` (it will ask you to
+accept licences first).
+
+Hardware acceleration matters more than anything else for emulator speed: KVM
+on Linux (check with `ls -l /dev/kvm`), the Windows Hypervisor Platform on
+Windows, and Hypervisor.framework on macOS, which needs no setup.
+
+## 2. Create and boot the AVD
+
+```bash
+bash scripts/android-emulator.sh up
+```
+
+This creates `prowalco-api36` (Pixel 7, API 36, Google Play image, matched to
+your CPU architecture) if it does not exist, boots it, raises the RAM to 4 GB
+and the data partition to 8 GB, forwards Metro's port 8081 to the host, and
+sets a GPS fix over Johannesburg. Override the name or API level with
+`AVD_NAME=... API_LEVEL=... bash scripts/android-emulator.sh up`.
+
+If you would rather use the Android Studio GUI: Device Manager, Create Virtual
+Device, Pixel 7, a **Google Play** system image for API 35 or 36, then in
+Additional Settings raise the internal storage to at least 8 GB.
+
+### Set a screen lock and a fingerprint (once per AVD)
+
+This is the step that cannot be scripted, and skipping it breaks signing.
+
+1. In the emulator: Settings, Security and privacy, Device unlock, Screen lock.
+   Set a PIN. **This alone is enough to get past the signing prompt**, because
+   the app allows device-credential fallback.
+2. To exercise the real biometric path, stay on that screen and add a
+   fingerprint. When Android asks you to touch the sensor, run this on the
+   host:
+
+   ```bash
+   bash scripts/android-emulator.sh finger
+   ```
+
+   Repeat it for each touch the enrolment wizard asks for. The same command
+   answers the fingerprint prompt later when you tap Sign in the app.
+
+### Open Chrome once
+
+Launch Chrome in the emulator and dismiss its first-run screens. Otherwise the
+sign-in Custom Tab opens onto Chrome's welcome flow instead of the Microsoft or
+Google login page, which looks like a broken redirect.
+
+## 3. Get the app onto the emulator
+
+Two routes. Use the local build if you are going to change code, and the EAS
+build if you only want to look at the app.
+
+### Route A: build locally (best for a dev loop)
+
+```bash
+cd mobile
+npm install
+npx expo run:android      # or: bash scripts/android-emulator.sh run
+```
+
+This runs `expo prebuild` (generating `mobile/android/`), compiles the dev
+client, installs it on the running emulator and starts Metro. The first build
+takes 10 to 20 minutes because Gradle downloads its dependencies and CMake
+compiles the quick-crypto sources. Later runs take a minute or two, and if you
+have only changed JavaScript you do not need to rebuild at all: `npm start`
+and reload.
+
+`mobile/android/` is generated output and is gitignored. Never edit it by hand
+and never commit it. If native config changes (a new native module, an edit to
+`app.json` or `app.config.js`), regenerate it with
+`npx expo prebuild --platform android --clean`.
+
+### Route B: install an EAS development build
+
+No local Android toolchain is needed beyond `adb`, but you need an Expo account
+and each build takes around 15 minutes in the cloud.
+
+```bash
+cd mobile
+npm install
+npx eas-cli login
+npx eas-cli build --profile development --platform android
+adb install /path/to/downloaded.apk
+npx expo start --dev-client
+```
+
+The `development` profile produces a universal APK (the project builds
+`armeabi-v7a`, `arm64-v8a`, `x86`, `x86_64`), so the same file installs on the
+emulator and on a physical tablet.
+
+## 4. Sign in
+
+The app ships pointing at the deployed backend and Supabase project
+(`mobile/app.config.js`), so there is nothing to configure for a normal run.
+Sign-in works on the emulator provided that, in the Supabase dashboard:
+
+- the Azure, Google or Apple provider you want to test is enabled
+  (`docs/supabase-setup.md` section 4), and
+- `prowalco-cal://auth-callback` is in the redirect allow-list.
+
+That deep link is what `Linking.createURL('auth-callback')` returns in a
+development build, and the generated manifest registers both `prowalco-cal`
+and `exp+prowalco-cal`. You can confirm the emulator honours it without
+signing in:
+
+```bash
+adb shell am start -W -a android.intent.action.VIEW -d "prowalco-cal://auth-callback"
+```
+
+Sign in with Apple is iOS-only in its native form. On Android it goes through
+the same browser flow as the others.
+
+## 5. Point the app at a local backend (optional)
+
+The emulator reaches your host machine at **10.0.2.2**, not `localhost`.
+
+```bash
+cd backend && .venv/bin/uvicorn app.main:app --reload    # host, port 8000
+```
+
+Then set `EXPO_PUBLIC_API_URL=http://10.0.2.2:8000` in `mobile/.env` and
+restart Metro with `npx expo start --dev-client --clear`. Plain HTTP works
+because debug builds allow cleartext traffic. Do not commit that change to
+`mobile/.env`.
+
+Alternatively keep the URL as `localhost` and map the port instead:
+`adb reverse tcp:8000 tcp:8000`.
+
+## 6. Emulator controls for the on-device features
+
+| Feature | How to drive it |
+|---|---|
+| Biometric prompt | `bash scripts/android-emulator.sh finger` while the prompt is showing |
+| GPS (POPIA consent capture) | `bash scripts/android-emulator.sh geo [lon] [lat]`, or the Location tab in Extended Controls. Without a fix the app records no coordinates and carries on |
+| Camera (seal and totaliser photos) | Extended Controls, Camera. The default virtual scene is enough to prove capture works |
+| Barcode scanning | Awkward on an emulator. Point the virtual camera at a barcode shown on your desktop, or leave this for a physical device |
+| Signature pad | Draw with the mouse. Worth confirming on a real tablet with a finger before sign-off |
+| Offline and sign-queue behaviour | Extended Controls, Cellular, set Data status to Denied, or use the emulator's airplane mode |
+
+## 7. Troubleshooting
+
+| Symptom | Cause and fix |
+|---|---|
+| "Identity confirmation cancelled" when tapping Sign | No screen lock on the AVD. Set a PIN (section 2) |
+| Fingerprint prompt never accepts | Run `scripts/android-emulator.sh finger` on the host while the prompt is open |
+| Sign-in opens a tab that goes nowhere | Chrome's first-run screen, or the redirect URL is not allow-listed in Supabase |
+| Gradle fails with a CMake or NDK error | NDK 27.1.12297006 or CMake missing. `scripts/android-emulator.sh install` |
+| `SDK location not found` | `ANDROID_HOME` not exported, or `mobile/android/local.properties` missing after a manual prebuild |
+| App installs but shows a blank white screen | Metro is not running or not reachable. `npm start` in `mobile/`, then `adb reverse tcp:8081 tcp:8081` |
+| `INSTALL_FAILED_INSUFFICIENT_STORAGE` | The AVD's data partition is too small. Recreate it with at least 8 GB |
+| `adb: no devices/emulators found` | The emulator has not finished booting. `adb wait-for-device` |
+| Emulator is very slow | Hardware acceleration is off. Check `/dev/kvm` on Linux, or use an arm64 image on Apple Silicon |
+| Metro cannot resolve `@prowalco/schema` | Run `npm install` in `mobile/`. The package is a `file:` dependency on `shared/schema`, whose `dist/` is committed |
+
+A note on `npx expo prebuild`: it warns that `userInterfaceStyle: automatic`
+needs `expo-system-ui` on Android. That is harmless for running the app. It
+only means Android will not follow the system dark-mode setting.
+
+## What still needs a physical device
+
+The emulator covers most of the flow, but not everything. Real biometrics,
+barcode scanning, the touchscreen signature, PDF rendering differences and
+poor-connectivity behaviour at a forecourt all need real hardware. The
+checklist is `docs/TESTING.md`.

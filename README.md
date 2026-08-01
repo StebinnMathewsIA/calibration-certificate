@@ -96,6 +96,21 @@ eas build --profile development --platform android   # or ios
 npm start
 ```
 
+### Android emulator
+
+Build the dev client locally instead (needs the Android SDK, NDK and CMake,
+because quick-crypto compiles C++):
+
+```bash
+bash scripts/android-emulator.sh doctor   # check the toolchain
+bash scripts/android-emulator.sh up       # create and boot the AVD
+bash scripts/android-emulator.sh run      # build and install the app
+```
+
+Full walkthrough, including the screen lock the signing biometric needs and the
+emulator controls for GPS and the camera:
+[docs/android-emulator.md](docs/android-emulator.md).
+
 Configure per-profile env in `mobile/eas.json`: `EXPO_PUBLIC_API_URL`,
 `EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_ANON_KEY` (Supabase Auth
 federates Microsoft/Google/Apple — enable the providers per

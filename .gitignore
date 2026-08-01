@@ -13,6 +13,10 @@ npm-debug.log*
 .expo/
 .expo-shared/
 web-build/
+# Native projects are prebuild output in this workflow (expo run:android /
+# eas build regenerate them). Never commit them: docs/android-emulator.md
+mobile/android/
+mobile/ios/
 *.jks
 *.p8
 *.p12

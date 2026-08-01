@@ -32,6 +32,29 @@ supported in Expo Go (needs a dev/preview build): PDF render+hash
 (react-native-quick-crypto), biometric re-prompt, actual signing/queue
 upload — the sign step will error in Expo Go by design.
 
+## Running on an Android emulator (setup verification)
+
+Setup guide: [android-emulator.md](android-emulator.md). Helper:
+`bash scripts/android-emulator.sh doctor`. An emulator covers most of the flow
+below, so these items confirm the emulator path itself works before the rest of
+the checklist is worked through on one.
+
+- [ ] `scripts/android-emulator.sh doctor` reports every component ok on a
+      machine with Android Studio installed
+- [ ] `scripts/android-emulator.sh up` boots the AVD from cold and reports the
+      screen-lock and fingerprint steps still to do
+- [ ] `npx expo run:android` builds and installs the dev client on the running
+      emulator (first build 10 to 20 minutes, quick-crypto compiles via CMake)
+- [ ] Sign-in completes in the emulator's Chrome Custom Tab and returns to the
+      app via `prowalco-cal://auth-callback`
+- [ ] With a PIN set but no fingerprint enrolled, tapping Sign shows the device
+      credential prompt and signing proceeds (device fallback is allowed)
+- [ ] With a fingerprint enrolled, `scripts/android-emulator.sh finger` answers
+      the biometric prompt and signing proceeds
+- [ ] After an emulator run, `git status` is clean (`mobile/android/` ignored)
+- [ ] With `EXPO_PUBLIC_API_URL=http://10.0.2.2:8000` and the backend running
+      on the host, an emulator-issued certificate uploads and signs
+
 ## Auth (Supabase PKCE flow)
 
 - [ ] Sign in with Microsoft (Azure) completes and returns to the app

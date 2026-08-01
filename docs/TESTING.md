@@ -56,6 +56,19 @@ the checklist is worked through on one.
 - [ ] With a fingerprint enrolled, `scripts/android-emulator.sh finger` answers
       the biometric prompt and signing proceeds
 - [ ] After an emulator run, `git status` is clean (`mobile/android/` ignored)
+
+### Cloud device (Appetize, for hosts that cannot run an emulator)
+
+- [ ] `appetize` workflow with a pasted `apk_url` returns a working
+      appetize.io link in the run summary
+- [ ] Same workflow with `apk_url` blank resolves the latest preview build
+- [ ] With `APPETIZE_PUBLIC_KEY` set as a repository variable, a second run
+      replaces the app at the same URL instead of creating another
+- [ ] The app opens in a browser, signs in through the OAuth tab, and the
+      six-section form is usable
+- [ ] Confirmed NOT covered by the cloud device, still needs a physical
+      tablet: biometric signing prompt, camera capture, barcode scan,
+      handwritten client signature
 - [ ] With `EXPO_PUBLIC_API_URL=http://10.0.2.2:8000` and the backend running
       on the host, an emulator-issued certificate uploads and signs
 

@@ -72,6 +72,35 @@ Use this if your machine cannot run an emulator, and prefer it in general for
 anything about real-world feel: touch targets, the signature pad with a finger,
 sunlight readability, poor connectivity.
 
+### Driving the app in a browser (Appetize)
+
+If there is no tablet to hand, Appetize runs the build on a device in their
+cloud and streams it to a browser tab, so the host CPU stops mattering.
+
+One-time setup: create a token at appetize.io (Account, API) and add it as the
+repository secret `APPETIZE_API_TOKEN`.
+
+Then, on GitHub: **Actions**, **appetize**, **Run workflow**. Leave `apk_url`
+blank to use the latest finished EAS build, or paste the `.apk` link from an
+Expo build page. The run summary comes back with a URL that opens the app.
+
+The first run prints a public key. Save it as the repository **variable**
+`APPETIZE_PUBLIC_KEY` and every later run replaces that same app, so the URL
+never changes and the account does not fill up with old builds.
+
+The same upload works from a terminal, if you have one:
+
+```bash
+APPETIZE_API_TOKEN=... node scripts/appetize-upload.mjs --url <link to the apk>
+APPETIZE_API_TOKEN=... node scripts/appetize-upload.mjs --file ./app.apk
+```
+
+What a cloud device does **not** give you, and these are the parts of this app
+that matter most in the field: a real fingerprint sensor for the signing
+prompt (simulation is a paid-tier feature), a real camera for seal photos and
+barcode scanning, and a real touchscreen for the client's signature. Treat it
+as a way to review screens and flows, not as sign-off.
+
 ## 1. Prerequisites
 
 | Component | Version | Notes |

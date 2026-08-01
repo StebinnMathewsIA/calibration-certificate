@@ -1,0 +1,137 @@
+name: appetize
+
+# Puts an Android build on Appetize.io, which runs it on a device in their
+# cloud and streams it to a browser tab. No local Android toolchain, no
+# emulator, and it works from machines that cannot run one at all (Windows on
+# ARM). Also the easiest way to hand Prowalco a build to look at.
+#
+# Required repository secret:
+#   APPETIZE_API_TOKEN   appetize.io -> Account -> API
+#
+# Optional repository variable:
+#   APPETIZE_PUBLIC_KEY  the key printed by the first run. Set it and every
+#                        later run replaces that app, so the URL never changes
+#                        and the account does not fill up with builds.
+#
+# Optional repository secret (only when apk_url is left blank):
+#   EXPO_TOKEN           already required by the eas-build workflow
+#
+# Biometrics, camera and the signature pad are not real on a cloud device.
+# docs/TESTING.md stays the checklist for physical hardware.
+
+on:
+  workflow_dispatch:
+    inputs:
+      apk_url:
+        description: "Link to the .apk (copy it from the Expo build page). Blank = use the latest finished EAS build."
+        required: false
+        type: string
+      profile:
+        description: "eas.json profile to take the latest build from (ignored when apk_url is set)"
+        type: choice
+        default: preview
+        options: [preview, development, production]
+
+jobs:
+  appetize:
+    name: Upload to Appetize
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check APPETIZE_API_TOKEN is configured
+        run: |
+          if [ -z "${{ secrets.APPETIZE_API_TOKEN }}" ]; then
+            echo "::error::Missing repository secret APPETIZE_API_TOKEN. Create a token at appetize.io (Account, API), then add it under Settings, Secrets and variables, Actions"
+            exit 1
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # Everything below up to "Choose the APK" only runs when no link was
+      # pasted, because looking a build up costs an npm install.
+      - name: Setup EAS CLI
+        if: inputs.apk_url == ''
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Check EXPO_TOKEN is configured
+        if: inputs.apk_url == ''
+        run: |
+          if [ -z "${{ secrets.EXPO_TOKEN }}" ]; then
+            echo "::error::No apk_url was given and EXPO_TOKEN is not set, so the latest build cannot be looked up. Either add the secret, or paste the .apk link from the Expo build page into the apk_url input"
+            exit 1
+          fi
+
+      - name: Install dependencies
+        if: inputs.apk_url == ''
+        run: npm install
+        working-directory: mobile
+
+      - name: Link the EAS project
+        if: inputs.apk_url == ''
+        run: eas init --non-interactive --force
+        working-directory: mobile
+
+      - name: Find the latest finished build
+        if: inputs.apk_url == ''
+        id: latest
+        working-directory: mobile
+        env:
+          PROFILE: ${{ inputs.profile }}
+        run: |
+          set -euo pipefail
+          # Filtering happens in node rather than through a build:list flag,
+          # so this does not depend on EAS CLI flag naming.
+          eas build:list --platform android --status finished --limit 20 \
+            --json --non-interactive > builds.json
+          node -e '
+            const fs = require("fs");
+            const builds = JSON.parse(fs.readFileSync("builds.json", "utf8"));
+            const wanted = process.env.PROFILE;
+            const match = builds.find((b) => b.buildProfile === wanted) ?? builds[0];
+            if (!match) {
+              console.error(`::error::No finished Android build found. Run the eas-build workflow first.`);
+              process.exit(1);
+            }
+            if (match.buildProfile !== wanted) {
+              console.error(`::warning::No finished build for profile ${wanted}; using the newest (${match.buildProfile}).`);
+            }
+            const artifacts = match.artifacts ?? {};
+            const url = artifacts.applicationArchiveUrl || artifacts.buildUrl || "";
+            if (!url) {
+              console.error("::error::The build has no downloadable artifact. Paste the .apk link into apk_url instead.");
+              process.exit(1);
+            }
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, `url=${url}\n`);
+            console.log(`Using build ${match.id} (profile ${match.buildProfile}).`);
+          '
+
+      - name: Choose the APK
+        id: apk
+        env:
+          INPUT_URL: ${{ inputs.apk_url }}
+          RESOLVED_URL: ${{ steps.latest.outputs.url }}
+        run: |
+          set -euo pipefail
+          url="${INPUT_URL:-$RESOLVED_URL}"
+          if [ -z "$url" ]; then
+            echo "::error::No APK URL to upload"
+            exit 1
+          fi
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+
+      - name: Upload to Appetize
+        env:
+          APPETIZE_API_TOKEN: ${{ secrets.APPETIZE_API_TOKEN }}
+          APPETIZE_PUBLIC_KEY: ${{ vars.APPETIZE_PUBLIC_KEY }}
+          APK_URL: ${{ steps.apk.outputs.url }}
+        run: |
+          node scripts/appetize-upload.mjs \
+            --url "$APK_URL" \
+            --platform android \
+            --note "prowalco-cal ${GITHUB_SHA:0:7} (${{ inputs.profile }})"

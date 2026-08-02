@@ -24,12 +24,18 @@ export interface Ranked {
   why: string;
 }
 
-const IMPORTANCE_WEIGHT: Record<string, number> = {
-  HIGH: 0,
-  CRITICAL: 0,
-  MEDIUM: 1,
-  LOW: 2,
-};
+/**
+ * SLA urgency penalty, in the 0 (most urgent) to 2 (least) scale the
+ * score below expects. OnKey's importance register carries its own
+ * Weight where HIGHER means more urgent: SLA-Emergency 10, SLA-Urgent 7,
+ * Other/Manual 5, SLA-Normal 3, UNKNOWN 0. Invert it onto our scale.
+ *
+ * Work orders with no importance yet (the current export does not carry
+ * ImportanceCode) land on 1, the middle, so ranking falls back to
+ * due date and distance rather than pretending to know.
+ */
+const importancePenalty = (weight: number | null | undefined): number =>
+  weight == null ? 1 : Math.max(0, Math.min(2, (10 - weight) / 5));
 
 export function haversineKm(
   a: { latitude: number; longitude: number },
@@ -69,7 +75,7 @@ export function rankWorkOrders(
       here && point ? haversineKm(here, { latitude: point.lat, longitude: point.lon }) : null;
     const untilDue = hoursUntil(wo.completeBy ?? wo.requiredBy, now);
     const overdue = untilDue != null && untilDue < 0;
-    const importance = IMPORTANCE_WEIGHT[(wo.importanceCode ?? '').toUpperCase()] ?? 1;
+    const importance = importancePenalty(wo.importanceWeight);
 
     // Tier 0 = overdue and nothing outranks it. Within the tier, the most
     // overdue first, then the nearest.

@@ -186,6 +186,50 @@ van stock is genuinely empty or issues are booked off without
 replenishment being captured. If quantity is not trustworthy the picker
 shows the item list without stock levels rather than a wrong number.
 
+### FIELDOPS - STATE (PWR-REF01, part 1)
+Base table `wrkWorkOrderStatuses`. 53 statuses with Code, Description,
+BaseStatus, BaseStatusDescription, Id, IsActive. The base status is the
+prize: it classifies every code as Approved (28), Completed (12),
+Awaiting Approval (9), Closed (3) or Cancelled (1).
+Wired in migration 031 as `onkey_statuses`; `app_open_statuses()` now
+derives from it. Corrected two real errors: Referral (REF) is a
+Completed status we were showing as open, and WPA/WST/WOS/SCTD/DIS/TUA
+are approved work we were hiding. 39 more work orders reached the
+lifecycle on re-seed.
+
+### FIELDOPS - STATEMAP (PWR-REF01, part 2)
+Base table `wrkWorkOrderTargetStatuses`, with the status relationship
+expanded on BOTH sides (ParentCode/ParentDescription and
+WorkOrderStatusCode/WorkOrderStatusDescription) plus BaseStatus and
+ApplyTargetStatusRules on each. 115 transitions, rules enforced
+throughout.
+
+The technician path it describes is our state machine exactly:
+
+```
+ALC -> WOR -> WPA <-> WRE -> WST -> WOS -> CPD
+               |
+               +-> LSI (Incomplete for Spares) / REF (Referral)
+```
+
+LSI and REF are reachable only from WPA and neither returns to WRE, so
+the blocks_resume rule in migration 027 is OnKey's rule too. Wired in
+migration 032 with `onkey_transition_plan()`, which walks every hop and
+refuses anything it cannot verify.
+
+Note: `wrkWorkOrderTargetStatuses` has no SiteId of its own, so the Site
+Path must be set through the status relationship (the green globe icon
+on the SiteId node), otherwise the Analyser cannot build the user-rights
+join.
+
+### FIELDOPS - IMP (PWR-REF02, partial)
+Base table `wrkImportances`. 5 rows: SLA-Emergency 10, SLA-Urgent 7,
+Other/Manual 5, SLA-Normal 3, UNKNOWN 0, where Weight is OnKey's own
+urgency ranking. Replaces the HIGH/CRITICAL/MEDIUM/LOW labels the
+scheduler was using, which do not exist in OnKey.
+Wired in migration 033, but INERT until FIELDOPS - WOE carries
+ImportanceCode: all seeded work orders have importance_code NULL today.
+
 ### Authoring recipe for the remaining reports
 - Header tab: Code, Description, Site PRD, Active, User Right, and
   **Is For Export** ticked (the export service cannot see it otherwise).

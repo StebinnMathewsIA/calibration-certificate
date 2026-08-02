@@ -215,6 +215,10 @@ export interface WorkOrderRecord {
   statusCode: string | null;
   statusDescription: string | null;
   importanceCode: string | null;
+  /** SLA class name from OnKey's importance register, e.g. SLA-Urgent. */
+  importanceDescription: string | null;
+  /** OnKey's own urgency weight, higher is more urgent (0 to 10). */
+  importanceWeight: number | null;
   estimatedDurationMinutes: number | null;
   completeBy: string | null;
   requiredBy: string | null;

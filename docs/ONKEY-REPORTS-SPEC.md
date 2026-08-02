@@ -128,6 +128,83 @@ Parameters: StartDate/EndDate.
 Columns: WorkOrderCode, from/to state, changed on, changed by, remark.
 Cadence: 5-minute piggyback.
 
+## Delivered reports (verified against the live sandbox)
+
+Authored by Prowalco in the OnKey Analyser and proven end to end with
+`POST /v1/onkey/probe-report`. Recorded here because the exact parameter
+names and value formats are not guessable and cost several probes each.
+
+### FIELDOPS - STAFF (PWR-STF01)
+594 rows, 358 active, every one with an email address; 87 staff codes
+match work-order staff codes across 71 sites. Columns: Code, Id,
+Description, FirstName, LastName, Initials, Email, Mobile, JobTitle,
+IsActive, SiteCode, SectionTradeTradeCode, SectionTradeTradeDescription,
+LastModifiedOn.
+Parameters: wildcard string filters, `%` for all.
+Known gap: GeographicDataLocation (technician home base) is ticked in
+the column list but does not appear in the export. Two re-probes
+returned byte-identical payloads, confirmed by unchanged content hashes.
+Parked: home base only sharpens morning route planning.
+
+### FIELDOPS - INV (PWR-INV01)
+Base table stkWarehouseItems, joined to Warehouses (and its Site),
+StockItems (and its Unit and PreferredSupplier), the warehouse-item Unit,
+and Categories. 25 columns, all populated.
+
+The material finding: **every warehouse is a technician van**, named
+`VAN - <branch> - <person>` (RSAJHB, RSADBN, RSACPT, RSACTN, LESOTHO,
+BOTSWANA, SWA). 77 vans, 417 distinct part numbers, 5305+ warehouse-item
+rows. The spares picker therefore opens on the technician's OWN van
+stock rather than a company-wide item master, and WarehouseSiteCode
+gives the branch grouping.
+
+Parameters (names and value formats are exact, all three verified):
+
+| Name | Operator | Value | Notes |
+|---|---|---|---|
+| `StockItemCode` | Is Like | `%` | `9%` returned 626 rows fleet-wide |
+| `WarehouseCode` | Is Like | `%` | `EB` returned 124 rows in 19 s |
+| `IsActive` | Is Like | `1` | boolean: **`1`, not `True`** (`True` faults with E5044) |
+
+Ingest rule: **page by WarehouseCode.** MaxRecordCount caps rows
+returned but NOT query cost, because the generated SQL joins
+usrUserRights per site:
+
+```sql
+JOIN usrUserRights UR ON ((stkWarehouseItems.SiteId = UR.SiteId)
+  AND (UR.UserId = @UserId) AND (UR.RightId = @RightId))
+```
+
+So one van takes about 20 seconds while the unfiltered pull runs past
+280 seconds and trips client timeouts. Note the export still COMPLETES
+server-side when the client gives up, so a timed-out probe can still
+land its rows.
+
+Open question for Prowalco: several vans carry items at zero quantity
+across the board (EB 124 items, NC 61, BW 58, JC 56, all zero). Either
+van stock is genuinely empty or issues are booked off without
+replenishment being captured. If quantity is not trustworthy the picker
+shows the item list without stock levels rather than a wrong number.
+
+### Authoring recipe for the remaining reports
+- Header tab: Code, Description, Site PRD, Active, User Right, and
+  **Is For Export** ticked (the export service cannot see it otherwise).
+- Filter Criteria rows become parameters through the row's own **Name**
+  and **State: User Defined** fields. The Name is the exact string
+  passed to ExportData and it is case sensitive. A row with no Name is
+  compiled in as a literal.
+- Use **Is Like**, never Is Equal To: Is Equal To matches a literal `%`
+  and returns zero rows.
+- Never select the same column name twice. `parse_export_xml` builds
+  each row as a name-to-value map, so a duplicate silently overwrites
+  with no error.
+- Stay in the Query builder rather than the SQL Statement tab. In
+  builder mode `select top N` tracks MaxRecordCount; in SQL mode it is
+  frozen text and becomes a silent ceiling.
+- Columns that are null in every returned row are omitted from the
+  export entirely, so an absent column means unpopulated data, not a
+  missing selection.
+
 ## What this replaces and what stays
 
 WOE001 stays in production until PWR-WO01 runs side by side and the

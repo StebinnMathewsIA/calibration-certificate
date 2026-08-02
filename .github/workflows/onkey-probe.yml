@@ -21,6 +21,10 @@ on:
         description: "EndDate parameter (YYYY-MM-DD), blank to omit"
         type: string
         required: false
+      parameters:
+        description: 'Extra Analyser parameters as JSON, e.g. {"WarehouseCode":"EB"}'
+        type: string
+        required: false
       max_records:
         description: "MaxRecordCount"
         type: string
@@ -41,8 +45,13 @@ jobs:
           start=$(jq -r '.inputs.start_date // ""' "$GITHUB_EVENT_PATH")
           end=$(jq -r '.inputs.end_date // ""' "$GITHUB_EVENT_PATH")
           maxr=$(jq -r '.inputs.max_records // "200"' "$GITHUB_EVENT_PATH")
-          params=$(jq -n --arg s "$start" --arg e "$end" \
-            '{} | (if $s != "" then .StartDate = $s else . end)
+          extra=$(jq -r '.inputs.parameters // "{}"' "$GITHUB_EVENT_PATH")
+          echo "$extra" | jq -e 'type == "object"' >/dev/null || {
+            echo "::error::parameters must be a JSON object"
+            exit 1
+          }
+          params=$(jq -n --arg s "$start" --arg e "$end" --argjson x "$extra" \
+            '$x | (if $s != "" then .StartDate = $s else . end)
                 | (if $e != "" then .EndDate = $e else . end)')
           payload=$(jq -n --arg c "$code" --argjson p "$params" --argjson m "$maxr" \
             '{reportCode: $c, parameters: $p, maxRecords: $m}')

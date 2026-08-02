@@ -2,7 +2,15 @@ import { Redirect, useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useMemo, useState } from 'react';
 import { Alert, FlatList, Pressable, Text, View } from 'react-native';
 import type { CertificateState, Verification } from '@prowalco/schema';
-import { TeamGroup, getTeamWorkOrders, listWorkOrders, WorkOrderSummary } from '../../src/api/client';
+import {
+  TeamGroup,
+  WorkOrderRecord,
+  getTeamWorkOrders,
+  listWorkOrderRecords,
+  listWorkOrders,
+  WorkOrderSummary,
+} from '../../src/api/client';
+import { NextJobs } from '../../src/components/NextJobs';
 import { useAuth } from '../../src/auth/AuthContext';
 import { TrashIcon } from '../../src/components/BrandHeader';
 import { GreetingHeader } from '../../src/components/GreetingHeader';
@@ -414,6 +422,9 @@ export default function HomeScreen() {
         contentContainerStyle={{ paddingBottom: 24 }}
         ListHeaderComponent={
           <>
+            {/* Advisory next-job ranking (#107): overdue first, then
+                urgency and proximity from the live location. */}
+            <NextJobs />
             {unallocated.length > 0 ? (
               <>
                 <Text style={{ marginHorizontal: 12, fontWeight: '700', color: colors.ink }}>

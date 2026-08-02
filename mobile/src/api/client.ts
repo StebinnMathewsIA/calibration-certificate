@@ -182,6 +182,81 @@ export async function getTeamWorkOrders(token: string | null): Promise<TeamGroup
   return await rpc<TeamGroup[] | null>('app_team_work_orders', token);
 }
 
+// ---------------------------------------------------------------------------
+// Work-order lifecycle (#95): OUR work-order entity, our states. OnKey is a
+// seed and a write-back adapter, never the source of truth.
+// ---------------------------------------------------------------------------
+
+export type WoState = 'not_started' | 'started' | 'paused' | 'stopped' | 'signed_off';
+
+export interface WoLifecycle {
+  state: WoState;
+  pauseReason: string | null;
+  pauseNote: string | null;
+  /** True when the pause reason bars the technician from resuming. */
+  blocksResume: boolean;
+  startedAt: string | null;
+  pausedAt: string | null;
+  stoppedAt: string | null;
+  pausedSeconds: number;
+}
+
+export interface WorkOrderRecord {
+  id: string;
+  source: string;
+  externalRef: string | null;
+  staffCode: string | null;
+  siteId: string | null;
+  siteName: string | null;
+  customerName: string | null;
+  assetCode: string | null;
+  assetDescription: string | null;
+  workRequired: string | null;
+  statusCode: string | null;
+  statusDescription: string | null;
+  importanceCode: string | null;
+  estimatedDurationMinutes: number | null;
+  completeBy: string | null;
+  requiredBy: string | null;
+  /** WKT "POINT (lon lat)". */
+  gpsLocation: string | null;
+  isDemo: boolean;
+  lifecycle: WoLifecycle | null;
+}
+
+export interface PauseReason {
+  code: string;
+  label: string;
+  blocksResume: boolean;
+  requiresNote: boolean;
+}
+
+export async function listWorkOrderRecords(token: string | null): Promise<WorkOrderRecord[]> {
+  return await rpc<WorkOrderRecord[]>('app_wo_list', token);
+}
+
+export async function listPauseReasons(token: string | null): Promise<PauseReason[]> {
+  return await rpc<PauseReason[]>('app_wo_pause_reasons', token);
+}
+
+/** Apply a lifecycle transition. The state machine is enforced server-side,
+ * so an invalid transition fails loudly rather than corrupting state. */
+export async function transitionWorkOrder(
+  token: string | null,
+  workOrderId: string,
+  event: 'start' | 'pause' | 'stop' | 'sign_off',
+  opts: { reason?: string; note?: string; deviceId?: string; gps?: string } = {},
+): Promise<WorkOrderRecord> {
+  return await rpc<WorkOrderRecord>('app_wo_transition', token, {
+    p_work_order_id: workOrderId,
+    p_event: event,
+    p_reason: opts.reason ?? null,
+    p_note: opts.note ?? null,
+    p_device_id: opts.deviceId ?? null,
+    p_gps: opts.gps ?? null,
+  });
+}
+
 /** One certified proving measure from the register (#70). */
 export interface MeasureRecord {
   id?: number;

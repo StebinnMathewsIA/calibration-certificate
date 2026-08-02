@@ -106,10 +106,12 @@ NOT create work orders or work requests. Consequences:
 - The test-WO factory (#104) is **parked**, and with it the
   rejection-driven repair work order. A rejection produces its
   certificate; raising the repair job stays a human action in OnKey.
-- Testing therefore needs Prowalco to place at least one designated
-  [TEST] work order into an OPEN status and assign it to a test
-  technician, since the seven supplied test WOs sit at Completed and
-  Costing Complete and cannot be re-opened by us.
+- Testing therefore needs open test work orders. Owner decision
+  (2026-08-02): **Prowalco will create test work orders manually in
+  OnKey, for testing purposes only, later in the phase.** We never
+  create them through the API. Until they exist, write-path work is
+  proven in dry-run (the drain logs the exact envelope it would send)
+  and by read-only probes.
 - Everything else in the write path is unaffected: status and queue
   transitions, feedback, labour and spares all act on existing work
   orders.

@@ -26,9 +26,13 @@ from sqlalchemy.orm import Session
 from ..config import Settings
 
 SOAP_NS = "{http://contracts.pragmaproducts.com/onkey/System/v1}"
-# WOE001's own timestamp column (the StartDate/EndDate names are only the
-# query parameters; the output carries the queue-transition time).
+# The export's own timestamp column (StartDate/EndDate are only the query
+# parameter names; the output carries the queue-transition time). The
+# queue join is a left outer one, so a work order that has never been
+# queued has no transition time and falls back to its own LastModifiedOn,
+# which is exactly what the FIELDOPS - WOE where-clause filters on.
 SOURCE_DATE_COLUMN = "WorkOrderQueueStatusChangedOn"
+SOURCE_DATE_FALLBACK = "WorkOrderLastModifiedOn"
 
 # month -> week -> day, mirroring the proven export script.
 _SPLIT_LEVELS = {"month": (31, "week"), "week": (7, "day"), "day": (1, None)}
@@ -53,7 +57,7 @@ def row_content_hash(row: dict) -> str:
 
 
 def parse_start_date(row: dict) -> datetime | None:
-    raw = row.get(SOURCE_DATE_COLUMN)
+    raw = row.get(SOURCE_DATE_COLUMN) or row.get(SOURCE_DATE_FALLBACK)
     if not raw:
         return None
     try:
@@ -155,6 +159,20 @@ class OnKeySoapClient:
             except Exception:  # noqa: BLE001 — logout is best-effort
                 pass
 
+    def _extra_parameters(self) -> dict[str, str]:
+        """Non-optional report parameters beyond the date window. A report
+        that declares a parameter and is not sent one leaves it NULL, so
+        every LIKE against it is false and the export returns zero rows
+        with no error at all. Misconfiguration here looks like silence."""
+        raw = getattr(self._settings, "onkey_export_parameters", "") or ""
+        if not raw.strip():
+            return {}
+        try:
+            parsed = json.loads(raw)
+        except ValueError:
+            return {}
+        return {str(k): str(v) for k, v in parsed.items()} if isinstance(parsed, dict) else {}
+
     def export_window(self, start: datetime, end: datetime) -> list[dict]:
         parameter_type = self._export_client.get_type("ns0:ExportQueryParameter")
         parameter_array = self._export_client.get_type("ns0:ArrayOfExportQueryParameter")
@@ -167,6 +185,10 @@ class OnKeySoapClient:
                 [
                     parameter_type(Name="StartDate", Value=start),
                     parameter_type(Name="EndDate", Value=end),
+                ]
+                + [
+                    parameter_type(Name=name, Value=value)
+                    for name, value in self._extra_parameters().items()
                 ]
             ),
         )

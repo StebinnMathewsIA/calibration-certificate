@@ -59,11 +59,20 @@ class Settings(BaseSettings):
     onkey_base_url: str = ""
     onkey_username: str = ""
     onkey_password: str = ""
-    # WOE001 export sync (SOAP; values from Prowalco's existing export tooling)
+    # Work order export sync (SOAP). FIELDOPS - WOE succeeds WOE001: same
+    # column names for everything the registers read, plus ImportanceCode,
+    # the work order's own status, site name, staff email and asset GPS.
+    # Set ONKEY_REPORT_CODE and ONKEY_DATASET_NAME back to WOE001 to revert.
     onkey_connection: str = "ONKEY"
-    onkey_report_code: str = "WOE001"
-    onkey_dataset_name: str = "WOE001"
+    onkey_report_code: str = "FIELDOPS - WOE"
+    onkey_dataset_name: str = "FIELDOPS - WOE"
     onkey_max_records: int = 5000
+    # FIELDOPS - WOE declares parameters that are NOT optional: omitting one
+    # leaves it NULL, every LIKE against it is false, and the export returns
+    # zero rows with no error. StartDate and EndDate are supplied per window.
+    onkey_export_parameters: str = (
+        '{"BaseStatus": "%", "StaffEmail": "%", "SiteCode": "%", "MinId": "0"}'
+    )
     # Bearer token the sync endpoints require (the scheduled GitHub Actions
     # cron presents it). Empty = sync endpoints disabled.
     onkey_sync_token: str = ""

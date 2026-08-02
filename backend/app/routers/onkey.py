@@ -118,18 +118,37 @@ def probe_report(
     with OnKeySoapClient(settings) as client:
         parameter_type = client._export_client.get_type("ns0:ExportQueryParameter")  # noqa: SLF001
         parameter_array = client._export_client.get_type("ns0:ArrayOfExportQueryParameter")  # noqa: SLF001
-        response = client._export_service.ExportData(  # noqa: SLF001
-            _soapheaders={"SessionId": client._session_id},  # noqa: SLF001
-            ReportCode=body.reportCode,
-            DataSetName=body.dataSetName or body.reportCode,
-            MaxRecordCount=body.maxRecords,
-            Parameters=parameter_array(
-                [parameter_type(Name=k, Value=v) for k, v in body.parameters.items()]
-            ),
-        )
+        try:
+            response = client._export_service.ExportData(  # noqa: SLF001
+                _soapheaders={"SessionId": client._session_id},  # noqa: SLF001
+                ReportCode=body.reportCode,
+                DataSetName=body.dataSetName or body.reportCode,
+                MaxRecordCount=body.maxRecords,
+                Parameters=parameter_array(
+                    [parameter_type(Name=k, Value=v) for k, v in body.parameters.items()]
+                ),
+            )
+        except Exception as exc:  # surfaced so a bad report is diagnosable from the probe
+            raise HTTPException(
+                status_code=502,
+                detail=f"OnKey export raised {type(exc).__name__}: {str(exc)[:400]}",
+            ) from exc
         if getattr(response, "Errors", None):
             raise HTTPException(status_code=502, detail=f"OnKey export failed: {response.Errors}")
-        rows = parse_export_xml(response.DataSet.Data)
+        data = getattr(getattr(response, "DataSet", None), "Data", None)
+        if not data:
+            raise HTTPException(
+                status_code=502,
+                detail="OnKey export returned no DataSet.Data. Check the report's DataSetName "
+                "matches the report code and that Is For Export is ticked.",
+            )
+        try:
+            rows = parse_export_xml(data)
+        except Exception as exc:
+            raise HTTPException(
+                status_code=502,
+                detail=f"Could not parse the export XML: {type(exc).__name__}: {str(exc)[:300]}",
+            ) from exc
 
     inserted = 0
     for row in rows:

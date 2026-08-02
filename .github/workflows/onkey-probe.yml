@@ -1,0 +1,64 @@
+name: onkey-probe
+
+# Runs any Analyser Report once and lands its rows in Supabase for
+# inspection (#105). The response printed here is PII-FREE by design:
+# counts and column names only. Row data never enters this log.
+#
+# Required repository secret: ONKEY_SYNC_TOKEN
+
+on:
+  workflow_dispatch:
+    inputs:
+      report_code:
+        description: "Analyser Report code, e.g. FIELDOPS - WOE"
+        type: string
+        required: true
+      start_date:
+        description: "StartDate parameter (YYYY-MM-DD), blank to omit"
+        type: string
+        required: false
+      end_date:
+        description: "EndDate parameter (YYYY-MM-DD), blank to omit"
+        type: string
+        required: false
+      max_records:
+        description: "MaxRecordCount"
+        type: string
+        default: "200"
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe report
+        run: |
+          if [ -z "${{ secrets.ONKEY_SYNC_TOKEN }}" ]; then
+            echo "::error::Missing repository secret ONKEY_SYNC_TOKEN"
+            exit 1
+          fi
+          # Inputs read from the event payload, never inline-substituted.
+          code=$(jq -r '.inputs.report_code' "$GITHUB_EVENT_PATH")
+          start=$(jq -r '.inputs.start_date // ""' "$GITHUB_EVENT_PATH")
+          end=$(jq -r '.inputs.end_date // ""' "$GITHUB_EVENT_PATH")
+          maxr=$(jq -r '.inputs.max_records // "200"' "$GITHUB_EVENT_PATH")
+          params=$(jq -n --arg s "$start" --arg e "$end" \
+            '{} | (if $s != "" then .StartDate = $s else . end)
+                | (if $e != "" then .EndDate = $e else . end)')
+          payload=$(jq -n --arg c "$code" --argjson p "$params" --argjson m "$maxr" \
+            '{reportCode: $c, parameters: $p, maxRecords: $m}')
+          response=$(curl -sS -m 280 -w "\n%{http_code}" -X POST \
+            -H "Authorization: Bearer ${{ secrets.ONKEY_SYNC_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d "$payload" \
+            "https://prowalco-calibration-api.onrender.com/v1/onkey/probe-report")
+          body=$(echo "$response" | head -n -1)
+          http=$(echo "$response" | tail -n 1)
+          echo "HTTP ${http}"
+          echo "$body"
+          {
+            echo "## Report probe"
+            echo '```json'
+            echo "$body"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          [ "$http" = "200" ]

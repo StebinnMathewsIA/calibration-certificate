@@ -87,6 +87,78 @@ def sync(
     }
 
 
+class ReportProbe(BaseModel):
+    """Run ANY Analyser Report and land its rows in the generic snapshot
+    store (#105). Used to evaluate new reports (e.g. FIELDOPS - WOE)
+    before wiring them into the pipeline."""
+
+    reportCode: str = Field(min_length=1, max_length=64)
+    dataSetName: str | None = Field(default=None, max_length=64)
+    maxRecords: int = Field(default=500, ge=1, le=5000)
+    # Free-form Analyser parameters, e.g. {"StartDate": "2026-07-25"}.
+    parameters: dict[str, str] = Field(default_factory=dict)
+
+
+@router.post("/probe-report")
+def probe_report(
+    body: ReportProbe,
+    authorization: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> dict:
+    """Fetch a report and persist its rows for inspection.
+
+    The RESPONSE is deliberately PII-free (counts and column names only)
+    because it lands in public workflow logs; the rows themselves go to
+    onkey_report_rows, which is service-role only."""
+    _require_sync_token(authorization, settings)
+
+    from ..workorders.onkey_sync import OnKeySoapClient, parse_export_xml, row_content_hash
+
+    with OnKeySoapClient(settings) as client:
+        parameter_type = client._export_client.get_type("ns0:ExportQueryParameter")  # noqa: SLF001
+        parameter_array = client._export_client.get_type("ns0:ArrayOfExportQueryParameter")  # noqa: SLF001
+        response = client._export_service.ExportData(  # noqa: SLF001
+            _soapheaders={"SessionId": client._session_id},  # noqa: SLF001
+            ReportCode=body.reportCode,
+            DataSetName=body.dataSetName or body.reportCode,
+            MaxRecordCount=body.maxRecords,
+            Parameters=parameter_array(
+                [parameter_type(Name=k, Value=v) for k, v in body.parameters.items()]
+            ),
+        )
+        if getattr(response, "Errors", None):
+            raise HTTPException(status_code=502, detail=f"OnKey export failed: {response.Errors}")
+        rows = parse_export_xml(response.DataSet.Data)
+
+    inserted = 0
+    for row in rows:
+        result = db.execute(
+            text(
+                "INSERT INTO onkey_report_rows (report_code, row_hash, data, last_seen_at) "
+                "VALUES (:code, :h, cast(:data as jsonb), now()) "
+                "ON CONFLICT (report_code, row_hash) DO UPDATE SET last_seen_at = now()"
+            ),
+            {
+                "code": body.reportCode,
+                "h": row_content_hash(row),
+                "data": json.dumps(row, default=str),
+            },
+        )
+        inserted += result.rowcount or 0
+    db.commit()
+
+    columns: set[str] = set()
+    for row in rows:
+        columns.update(row.keys())
+    return {
+        "reportCode": body.reportCode,
+        "rowsFetched": len(rows),
+        "rowsStored": inserted,
+        "columns": sorted(columns),
+    }
+
+
 def _roles_summary(db: Session) -> dict:
     rows = db.execute(
         text("SELECT role, count(*) FROM app_roles GROUP BY role")

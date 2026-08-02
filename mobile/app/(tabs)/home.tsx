@@ -10,7 +10,7 @@ import {
   listWorkOrders,
   WorkOrderSummary,
 } from '../../src/api/client';
-import { NextJobs } from '../../src/components/NextJobs';
+import { MyDay } from '../../src/components/MyDay';
 import { useAuth } from '../../src/auth/AuthContext';
 import { TrashIcon } from '../../src/components/BrandHeader';
 import { GreetingHeader } from '../../src/components/GreetingHeader';
@@ -422,9 +422,9 @@ export default function HomeScreen() {
         contentContainerStyle={{ paddingBottom: 24 }}
         ListHeaderComponent={
           <>
-            {/* Advisory next-job ranking (#107): overdue first, then
-                urgency and proximity from the live location. */}
-            <NextJobs />
+            {/* The new work list (#95/#107): our work-order records with
+                our lifecycle, ranked and filterable by state. */}
+            <MyDay />
             {unallocated.length > 0 ? (
               <>
                 <Text style={{ marginHorizontal: 12, fontWeight: '700', color: colors.ink }}>
@@ -434,7 +434,7 @@ export default function HomeScreen() {
               </>
             ) : null}
             <Text style={{ marginHorizontal: 12, marginTop: 4, fontWeight: '700', color: colors.ink }}>
-              My open work orders
+              Verification work (certificates)
             </Text>
           </>
         }

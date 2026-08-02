@@ -261,17 +261,33 @@ export default function WorkOrderLifecycleScreen() {
         ) : null}
         {state === 'stopped' ? (
           <Text style={{ color: colors.muted, fontSize: 12, marginBottom: 8 }}>
-            Work is stopped. Job card sign-off arrives with the next release; the verification
-            flow below is available now.
+            Work is stopped. Job card sign-off arrives with the next release.
           </Text>
         ) : null}
-        {state !== 'not_started' && wo.siteId ? (
-          <Button
-            title="Open site and dispensers"
-            kind="secondary"
-            onPress={() => router.push({ pathname: '/site/[id]', params: { id: wo.siteId! } })}
-          />
-        ) : null}
+      </View>
+
+      {/* The verification launcher now lives INSIDE the job (platform
+          vision): start a certificate without leaving the work order. */}
+      {state === 'started' || state === 'paused' || state === 'stopped' ? (
+        <SectionCard title="Verification">
+          <Text style={{ color: colors.muted, fontSize: 12, marginBottom: 6 }}>
+            Issue an NRCS verification certificate for a dispenser on this site. Standard and
+            high flow are selected from the dispenser's data plate.
+          </Text>
+          {wo.siteId ? (
+            <Button
+              title="Start a verification"
+              onPress={() => router.push({ pathname: '/site/[id]', params: { id: wo.siteId! } })}
+            />
+          ) : (
+            <Text style={{ color: colors.amber, fontSize: 12 }}>
+              This work order has no site on record yet, so dispensers cannot be listed.
+            </Text>
+          )}
+        </SectionCard>
+      ) : null}
+
+      <View style={{ marginHorizontal: 12 }}>
       </View>
     </FormScrollView>
   );

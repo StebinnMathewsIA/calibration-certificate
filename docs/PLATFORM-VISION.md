@@ -81,17 +81,45 @@ Nothing structural. Additions, in order:
 4. Tenant profiles are extracted from Prowalco-specific constants as we
    touch them, not in a big-bang refactor.
 
-## Open questions
+## Scheduling rules (owner, 2026-08-02)
 
-- What determines urgency: complete-by date, importance/SLA class, or
-  both, and does an overdue job always outrank a nearer one?
-- Proximity from the technician's live GPS, from their home base at day
-  start, or both depending on time of day? Straight-line distance for
-  v1, or real travel time?
-- An incomplete job card: does it go to the customer, does it need a
-  client signature, and does it automatically raise follow-up work?
-- Asset management beyond the register: does it include verification
-  due dates driving work creation (dispensers are on an 18-month
-  verification cycle per the repair procedure)?
-- What does company two plausibly look like (industry, asset type,
-  certification), so the seams are cut where variation is real?
+- **Urgency = complete-by date + SLA/importance class.**
+- **Overdue always wins**: any job past its complete-by outranks every
+  job that is not, regardless of distance. Within the overdue tier,
+  most overdue first, then nearest.
+- **Proximity is measured from the technician's live location**, not
+  their home base, so the ranking re-orders as they move.
+- v1 uses straight-line (haversine) distance: no external API, works
+  offline, adequate for ranking. Real travel time is an upgrade behind
+  the same interface if the owner later wants it.
+- Estimated duration (OnKey's EstimatedDurationInMinutes) is a
+  tiebreaker and is shown to the technician, not a hard constraint.
+- The ranking must be **explainable on screen** ("overdue by 2 days",
+  "12 km away, about 45 min") because technicians will not trust a
+  black box, and they always retain the choice.
+
+## Write scope (owner, 2026-08-02): CHANGE ONLY, NO CREATION
+
+We may only modify work orders that already exist and are open. We do
+NOT create work orders or work requests. Consequences:
+
+- The test-WO factory (#104) is **parked**, and with it the
+  rejection-driven repair work order. A rejection produces its
+  certificate; raising the repair job stays a human action in OnKey.
+- Testing therefore needs Prowalco to place at least one designated
+  [TEST] work order into an OPEN status and assign it to a test
+  technician, since the seven supplied test WOs sit at Completed and
+  Costing Complete and cannot be re-opened by us.
+- Everything else in the write path is unaffected: status and queue
+  transitions, feedback, labour and spares all act on existing work
+  orders.
+
+## Deferred by the owner
+
+- **Asset management beyond today's register** is parked. Future
+  intent: write detailed asset information back to OnKey. Verification
+  due dates driving automatic work creation is therefore also parked
+  (it would require creation).
+- Company two's profile: unknown for now, so tenant seams are cut only
+  where Prowalco's own variation already proves them real (compliance
+  types, asset types, workflow and job card, branding and numbering).

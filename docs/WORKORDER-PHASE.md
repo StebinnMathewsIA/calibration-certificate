@@ -119,7 +119,16 @@ reads and writes.
   close-out; rejection issue raises the linked repair WO (#104). Gated
   on the #96 mapping plus DocumentLink.
 
-### Test-WO factory hygiene (#104)
+### Write scope narrowed (owner, 2026-08-02): CHANGE ONLY
+We modify existing open work orders; we do NOT create work orders or
+work requests. #104 (creation and the test-WO factory) is parked, and
+so is the rejection-driven repair WO. The allowlist and dry-run rails
+are unchanged. Because we can no longer mint our own test work orders,
+Prowalco must place at least one designated [TEST] work order into an
+OPEN status, assigned to a test technician, before the lifecycle
+write-back can be proven end to end.
+
+### Test-WO factory hygiene (#104, PARKED per the write-scope decision)
 Created test WOs appear in Prowalco planners' dashboards: unmistakable
 [TEST] marker, designated test staff code and site, a volume cap, a
 verified cleanup path (Action Delete trialled first), and the owner

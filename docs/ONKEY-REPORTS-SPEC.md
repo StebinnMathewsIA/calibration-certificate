@@ -180,11 +180,27 @@ So one van takes about 20 seconds while the unfiltered pull runs past
 server-side when the client gives up, so a timed-out probe can still
 land its rows.
 
-Open question for Prowalco: several vans carry items at zero quantity
-across the board (EB 124 items, NC 61, BW 58, JC 56, all zero). Either
-van stock is genuinely empty or issues are booked off without
-replenishment being captured. If quantity is not trustworthy the picker
-shows the item list without stock levels rather than a wrong number.
+ANSWERED (2026-08-03, owner): **Syspro is the system of record for van
+stock, not OnKey.** That explains the vans carrying items at zero
+quantity across the board (EB 124 items, NC 61, BW 58, JC 56, all zero):
+OnKey's QuantityOnHand is not maintained.
+
+Consequences, and they are load bearing:
+- **Never display OnKey's QuantityOnHand.** A wrong number is worse than
+  no number, because a technician who trusts it drives to a job without
+  the part. OnKey gives the picker item IDENTITY (which items belong to
+  which van, their description, unit, bin, cost, minimum quantity);
+  Syspro gives the QUANTITY.
+- The van register itself stays OnKey's: warehouse codes are what
+  `wrkTaskSpares.WarehouseItemId` points at, so the write path needs
+  them regardless.
+- The join key between the two systems is unproven. Candidates are
+  warehouse code plus stock code matching directly, or OnKey's
+  ExternalReference fields carrying the Syspro keys (WarehouseExternal
+  Reference came back empty on every row; StockItem ExternalReference
+  has not been selected yet and is worth probing).
+
+See docs/SYSPRO-INTEGRATION.md for the connection design.
 
 ### FIELDOPS - STATE (PWR-REF01, part 1)
 Base table `wrkWorkOrderStatuses`. 53 statuses with Code, Description,

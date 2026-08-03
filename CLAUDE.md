@@ -44,8 +44,16 @@ OnKey (Prowalco's asset system) is **simulated** for now behind the
 - **Internal, we own + persist (Supabase, migration 002 + offline mirror):**
   canonical Site + Dispenser records (with `source` onkey/manual and a soft
   `active/retired` lifecycle — never hard-deleted), the per-dispenser
-  **component register** (`dispenser-detail.ts`) OnKey lacks, and the
-  Verification itself.
+  **component register** (`dispenser-detail.ts`), and the Verification itself.
+  - On the component register (corrected 2026-08-03): OnKey DOES have a
+    component table, `astComponents`, with a good structure (parent asset,
+    nested components, PartNumber, Specification, Quantity, and a link to
+    the same StockItems the vans carry). Prowalco does not populate it,
+    confirmed by the owner. So ours stays, and this is a deliberate
+    choice rather than a gap in OnKey. Two consequences: work order
+    close-out cannot carry `FailedComponentId`, since it points at that
+    empty table; and if Prowalco ever populates it, the register should
+    prefill from OnKey instead of being typed in.
 - **Resolution rule:** our stored record → OnKey seed → blank (technician
   enters); every entry writes back to our store and prefills next visit.
 

@@ -313,6 +313,42 @@ Gotcha, and it cost two probes: filtering on `LastModifiedOn` returned
 zero rows with no error. Prefer `Id >= @MinId` on these child tables,
 which also gives keyset paging.
 
+### FIELDOPS - SPARES
+Base table `wrkTaskSpares`, Site Path
+`wrkTaskSpares_ParentId.wrkTasks_ParentId.wrkWorkOrders_SiteId`.
+500 rows across 132 work orders, and every single row carries a
+WarehouseItemId, so the join back to van stock is complete with no gaps.
+
+**Most spares lines are not spares.** Prowalco books travel, vehicle and
+labour through this surface as warehouse items:
+
+| Item | Description | Unit | Lines | Total |
+|---|---|---|---|---|
+| TRA_TECH | Technician Travel Time | km | 145 | 10,281 |
+| LAB_TECH | LABOUR - ON SITE | hrs | 133 | 796 |
+| VEH_TECH | Prowalco Technician Vehicle | km | 112 | 7,535 |
+| EK-650-GREEN | Splash guard green | EA | 5 | 11 |
+
+Physical parts are a minority. This is a job-costing sheet, not a parts
+list, so a parts-only picker would leave a technician unable to record
+most of what the office costs the job on. Those three codes need to be
+prompted rather than searched for, since they appear on nearly every job.
+
+**QuantityRequired is the live field.** QuantityOrdered,
+NettQuantityReceived, NettQuantityUsed, QuantityAvailableToUse and
+QuantityStillToOrder are ALL zero across all 500 rows. Same pattern as
+QuantityOnHand in FIELDOPS - INV, and consistent with Syspro holding
+real stock movement.
+
+**Open question, and it decides where we write.** Labour appears twice:
+LAB_TECH spares lines totalling 796 hours, and
+wrkTaskLabour.NormalTimeInMinutes, both populated. Ask which the office
+bills from. Writing to the wrong one puts a technician's time where
+nobody looks; writing to both risks double counting.
+
+Worth raising later: 10,281 km of technician travel is typed in by hand,
+and the app already captures GPS on every lifecycle transition.
+
 ### Authoring recipe for the remaining reports
 - Header tab: Code, Description, Site PRD, Active, User Right, and
   **Is For Export** ticked (the export service cannot see it otherwise).

@@ -246,6 +246,40 @@ scheduler was using, which do not exist in OnKey.
 Wired in migration 033, but INERT until FIELDOPS - WOE carries
 ImportanceCode: all seeded work orders have importance_code NULL today.
 
+### FIELDOPS - QUEUE (PWR-WO02)
+Base table `wrkWorkOrderQueue`, which is NOT a queue lookup: it is one
+row per status change. 37 columns including old and new status, old and
+new queue user, who changed each and when, Remark, Priority,
+PredecessorId chaining the history, IsLatest marking the current row,
+and its own ExternalReference (currently empty everywhere, and the
+natural home for our write idempotency key).
+
+All ten Elapsed fields are the business-hours SLA clock. Units are
+MINUTES for elapsed time and COUNTS for nights, weekend days and
+holidays, so the office's figure is the raw minutes with those deducted.
+We cannot reproduce it yet: deducting needs Prowalco's working-day
+definition (what hours a working day spans, which days count). Ask for
+the business calendar before showing any SLA number, and until then show
+honest wall clock rather than a figure that disagrees with the office.
+
+The elapsed data also proved DOCARC -> CLC is automated: 298 occurrences
+averaging 12.7 minutes, never once spanning a night. That is why it is
+the most common transition in the system and absent from the target
+register (see migration 036), and it is a machine rather than a person.
+
+### Syspro join key: NOT available from OnKey
+FIELDOPS - INV was amended to select ExternalReference on StockItems, to
+test whether OnKey carries Syspro's stock codes. It did not come back,
+and WarehouseExternalReference behaves identically despite definitely
+being selected. An export cannot distinguish "not selected" from "null
+on every row", but two ExternalReference fields both absent is a pattern.
+
+So OnKey does not hold Syspro's keys, and the join must be warehouse
+code plus stock item code matching directly between the systems. That is
+unverified. Ask Prowalco's IT for a twenty-row sample of InvWarehouse as
+a CSV, separately from the live connection, so the codes can be checked
+while the firewall work is still in progress rather than after it.
+
 ### Authoring recipe for the remaining reports
 - Header tab: Code, Description, Site PRD, Active, User Right, and
   **Is For Export** ticked (the export service cannot see it otherwise).

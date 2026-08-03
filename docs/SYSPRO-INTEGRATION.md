@@ -60,6 +60,28 @@ egress IP. Render publishes fixed outbound addresses for paid services;
 Supabase Edge Functions do not, which is a concrete reason for Render to
 stay in the architecture rather than everything moving to Supabase.
 
+### Measured egress address (2026-08-03)
+
+`74.220.48.29/32`, the address prowalco-calibration-api connects out
+from. Measured by the service reporting its own outbound address
+(`GET /v1/onkey/egress-ip`, workflow `egress-ip.yml`), not read off a
+dashboard: what a dashboard claims and what a packet arrives as are two
+different things, and an allowlist built on the wrong one fails
+silently. Ten samples, each cross-checked against two independent echo
+services, all agreed.
+
+**This proves consistency, not permanence.** The service is on Render's
+FREE plan, which does not guarantee a stable outbound address across
+restarts and redeploys. An allowlist pinned to it is a sync that works
+for weeks and then stops quietly, looking like a Syspro fault rather
+than a networking one. Before this goes live, either:
+- move the service to a paid Render plan, and re-run `egress-ip.yml`
+  after the move because the address may change, or
+- use a tunnel and stop pinning addresses altogether.
+
+Re-run `egress-ip.yml` after any plan, region or service change, and
+send Prowalco's IT the new address BEFORE the change, not after.
+
 ## Open questions, in priority order
 
 1. **Does booking a spare in OnKey already decrement Syspro?** If an

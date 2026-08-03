@@ -349,6 +349,81 @@ nobody looks; writing to both risks double counting.
 Worth raising later: 10,281 km of technician travel is typed in by hand,
 and the app already captures GPS on every lifecycle transition.
 
+### FIELDOPS - ASSET
+Base table `astAssets`. **OnKey's asset register is not an equipment
+inventory.** It is a per-site maintenance checklist: exactly 22 of every
+asset type across 22 sites, covering FUEL DISPENSER, ABOVE GROUND TANK,
+CANOPY STRUCTURE, DECALS and SECURITY GUARD alike. A site has one FUEL
+DISPENSER row because dispensers are a thing maintained there, not
+because it has one dispenser.
+
+Zero assets have a fuel dispenser as parent, so there is no component
+structure hiding in the hierarchy either. SerialNumber,
+ExternalReference, CommissionedOn, SupplierCode and Notes were all
+selected and all came back empty.
+
+Three consequences. Our dispenser register is necessary rather than
+duplication, because OnKey cannot say that a forecourt has four Tatsuno
+dispensers with given serial numbers. There is no serial data at any
+level. And the Syspro bill of materials has no join anchor on the OnKey
+side: linking a physical dispenser to its BOM must run through our own
+register, keyed on the make, model and serial a technician captures.
+
+### FIELDOPS - USERS
+Base table `usrUsers` with `StaffMemberId -> StaffMembers` expanded.
+600 users, every one linked to a staff member with an email, which is
+the mapping needed for `QueueUser` on a status write.
+
+**Administrative gap, not a code problem.** Of 72 technicians holding
+work orders, 66 resolve to an OnKey user and 6 do not; those 6 hold 26
+live work orders between them. One of the 66 has an inactive account.
+Without a user code there is nothing to send as QueueUser, so those
+technicians cannot close jobs from the app until accounts exist. Would
+otherwise surface mid-pilot as "the app does not work for X".
+
+### FIELDOPS - DOC
+SQL mode. `stdRecordFiles` is the attachment table and it is
+polymorphic: `TableId` + `RecordId`, where **TableId 1196 =
+wrkWorkOrders**. `stdRecordFileContent` holds the bytes keyed by
+ParentId, and is deliberately NOT joined: we want metadata, not blobs.
+
+1000 attachments: 928 PDFs averaging 339 KB, 71 JPGs averaging 3.4 MB.
+Naming is conventional, not free-form: `RN_Work completion sign off_<n>
+.pdf` accounts for 843 of them, alongside RN_SHL_WCF, RN_PTW_ALL (permit
+to work) and RN_SHL_JHA (job hazard analysis).
+
+Two findings. Our client-signed job card already has a home: it IS the
+work completion sign off, so it should follow that naming and land where
+the office already looks. And **there are zero verification certificates
+in the entire sample**: no filename contains cert, calib or verif. So
+certificates are not attached to work orders today at all. Attaching one
+is not automating an existing step, it is creating a link that has never
+existed, which makes it a compliance gain rather than an efficiency one.
+
+Prowalco also runs a Boomi document-extraction process over this table
+using the work order code as a subfolder name. Worth asking what it
+feeds before we add a parallel filing convention.
+
+### FIELDOPS - ASS LOC
+Base table `astLocations`, parameters `Code` (Is Like) and `MinId`
+(Is Greater Than).
+
+First probe returned only Code, Description, GeographicDataLocation,
+IsActive and LastModifiedOn, which looked like a dead end. It was not:
+the table also carries **Address1, Address2, Address3, Contact, Email,
+ExternalReference, Notes and a ParentId hierarchy**, they simply had not
+been selected. Those are precisely the fields our site record holds and
+often has blank, and the reason the manual site-edit feature (#60)
+exists.
+
+What IS genuinely empty is GPS: 5 of 2000 locations carry a position,
+against our own register's 2532 sites with only 12 missing. So this
+report is for addresses and contacts, not coordinates.
+
+Lesson worth keeping: an export that returns few columns means little
+until the selected-column list has been checked. Omitted and empty look
+identical from here.
+
 ### Authoring recipe for the remaining reports
 - Header tab: Code, Description, Site PRD, Active, User Right, and
   **Is For Export** ticked (the export service cannot see it otherwise).

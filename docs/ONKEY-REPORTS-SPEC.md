@@ -280,6 +280,39 @@ unverified. Ask Prowalco's IT for a twenty-row sample of InvWarehouse as
 a CSV, separately from the live connection, so the codes can be checked
 while the firewall work is still in progress rather than after it.
 
+### FIELDOPS - TASK and FIELDOPS - LABOUR
+Base tables `wrkTasks` and `wrkTaskLabour`. Neither has a SiteId, so the
+Site Path runs through the parent: labour's is
+`wrkTaskLabour_ParentId.wrkTasks_ParentId.wrkWorkOrders_SiteId`.
+
+**Every work order has exactly one task.** Not one on average: one in
+all 1006 work orders sampled. So the Tasks tab in the phase plan is not
+needed. We look up the single task for a work order and book labour and
+spares against it silently; the technician never meets the concept.
+
+**`ENGRSAPMVER` is our own job, already modelled in OnKey**: "15 monthly
+calibration of all pumps and provide calibration certificate, as per
+scope of work." Alongside it are ENGRSAPM (pump PM plus checklist) and
+ENGRSAPMLD (leak detector PM). 489 of 500 tasks are DEFAULT, so reactive
+work carries a placeholder and contracted preventative work carries a
+real task code.
+
+That means OnKey already knows which work orders are verification work.
+A job carrying ENGRSAPMVER should open on the verification flow rather
+than making the technician find it, and the issued certificate is what
+completes that task.
+
+Labour columns: Id, ParentId (the WorkTaskId), ParentParentCode (the
+work order), StaffCode, TradeCode, NormalTimeInMinutes, Overtime1/2/3
+InMinutes, PerformedOn, RequiredOn, SequenceNumber,
+LabourCostInSiteCurrency. 10,700 minutes of overtime were booked in one
+month, so how Prowalco decides what counts as overtime is worth asking
+before we write to those buckets.
+
+Gotcha, and it cost two probes: filtering on `LastModifiedOn` returned
+zero rows with no error. Prefer `Id >= @MinId` on these child tables,
+which also gives keyset paging.
+
 ### Authoring recipe for the remaining reports
 - Header tab: Code, Description, Site PRD, Active, User Right, and
   **Is For Export** ticked (the export service cannot see it otherwise).

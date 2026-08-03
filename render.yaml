@@ -6,7 +6,15 @@ services:
   - type: web
     name: prowalco-calibration-api
     runtime: docker
-    plan: free
+    # Paid plan is REQUIRED, not a nicety: Prowalco's firewall allowlists
+    # this service's outbound address so the Syspro sync can reach their
+    # SQL Server (docs/SYSPRO-INTEGRATION.md). Free instances do not
+    # guarantee a stable egress address across restarts, and a rotated
+    # address fails the allowlist silently. It also removes the cold
+    # starts that make every OnKey probe wait on a spin-up.
+    # Re-run .github/workflows/egress-ip.yml after ANY plan or region
+    # change and tell Prowalco's IT the new address BEFORE the change.
+    plan: starter
     dockerfilePath: ./backend/Dockerfile
     dockerContext: .
     healthCheckPath: /healthz

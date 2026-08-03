@@ -87,6 +87,37 @@ def sync(
     }
 
 
+@router.get("/egress-ip")
+def egress_ip(
+    authorization: str | None = Header(default=None),
+    settings: Settings = Depends(get_settings),
+) -> dict:
+    """The public address this service connects OUT from.
+
+    Prowalco's IT will allowlist this on their firewall so we can reach
+    the Syspro SQL Server (docs/SYSPRO-INTEGRATION.md). Reading it from
+    the host's own outbound connection is the only trustworthy way to
+    get it: what a dashboard or a docs page claims and what a packet
+    actually arrives as are two different things, and an allowlist built
+    on the wrong one fails silently.
+
+    A host may egress from several addresses, so call this repeatedly:
+    every distinct answer has to be on the allowlist."""
+    _require_sync_token(authorization, settings)
+    import urllib.request
+
+    seen: list[str] = []
+    for url in ("https://api.ipify.org", "https://checkip.amazonaws.com"):
+        try:
+            with urllib.request.urlopen(url, timeout=10) as response:  # noqa: S310
+                value = response.read().decode().strip()
+            if value and value not in seen:
+                seen.append(value)
+        except Exception as exc:  # noqa: BLE001 — report, do not fail the call
+            seen.append(f"{url} failed: {type(exc).__name__}")
+    return {"egressAddresses": seen}
+
+
 class ReportProbe(BaseModel):
     """Run ANY Analyser Report and land its rows in the generic snapshot
     store (#105). Used to evaluate new reports (e.g. FIELDOPS - WOE)

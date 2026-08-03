@@ -1,0 +1,53 @@
+name: egress-ip
+
+# Reports the public address the backend connects OUT from, for the
+# Syspro firewall allowlist (docs/SYSPRO-INTEGRATION.md). Safe to print:
+# it is the address Prowalco's IT are being asked to permit, and it
+# carries no credentials or personal data.
+#
+# Calls repeatedly on purpose. A host can egress from more than one
+# address, and every one of them has to be on the allowlist or the sync
+# fails intermittently, which is far harder to diagnose than failing
+# outright.
+#
+# Required repository secret: ONKEY_SYNC_TOKEN
+
+on:
+  workflow_dispatch:
+    inputs:
+      samples:
+        description: "How many times to ask (catches multiple egress IPs)"
+        type: string
+        default: "8"
+
+jobs:
+  egress:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Collect egress addresses
+        run: |
+          if [ -z "${{ secrets.ONKEY_SYNC_TOKEN }}" ]; then
+            echo "::error::Missing repository secret ONKEY_SYNC_TOKEN"
+            exit 1
+          fi
+          n=$(jq -r '.inputs.samples // "8"' "$GITHUB_EVENT_PATH")
+          : > /tmp/seen.txt
+          for i in $(seq 1 "$n"); do
+            body=$(curl -sS -m 60 \
+              -H "Authorization: Bearer ${{ secrets.ONKEY_SYNC_TOKEN }}" \
+              "https://prowalco-calibration-api.onrender.com/v1/onkey/egress-ip" || true)
+            echo "sample $i: $body"
+            echo "$body" | jq -r '.egressAddresses[]?' >> /tmp/seen.txt || true
+            sleep 3
+          done
+          echo
+          echo "Distinct egress addresses:"
+          sort -u /tmp/seen.txt | tee /tmp/distinct.txt
+          {
+            echo "## Backend egress addresses"
+            echo "Allowlist every address below on the Syspro firewall."
+            echo '```'
+            cat /tmp/distinct.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          [ -s /tmp/distinct.txt ]

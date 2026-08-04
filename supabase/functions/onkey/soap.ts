@@ -70,17 +70,30 @@ export function tagTextAll(xml: string, localName: string): string[] {
 }
 
 /**
- * SOAP 1.2. The .svc root addresses are bound to the WCF
- * HttpsSoap12CustomBinding (confirmed by reading the published WSDL
- * ports), so the envelope namespace is the 2003/05 one and the action
- * travels INSIDE the content type rather than in a SOAPAction header.
- * Sending 1.1 here returns a bare HTTP 415 with no explanation.
+ * SOAP 1.1, posted to the "/basic" endpoint.
+ *
+ * Each service publishes TWO ports (read from the WSDL service block):
+ *
+ *   Authentication.svc        HttpsSoap12CustomBinding, and it carries a
+ *                             wsa10:EndpointReference, so it requires
+ *                             WS-Addressing headers
+ *   Authentication.svc/basic  HttpsSoap11BasicBinding, plain SOAP 1.1
+ *                             with no addressing at all
+ *
+ * We were posting to the first one. A WS-Addressing binding rejects a
+ * message whose action arrives in the Content-Type instead of a
+ * wsa:Action header, and reports it as HTTP 415 with an empty body,
+ * which looks like a media-type fault and is not one. Rather than
+ * implement WS-Addressing for four operations, use the /basic port,
+ * which is exactly what this hand-built client was written for.
+ *
+ * Both bindings declare the same soapAction values.
  */
-const SOAP12_NS = 'http://www.w3.org/2003/05/soap-envelope';
+const SOAP11_NS = 'http://schemas.xmlsoap.org/soap/envelope/';
 
 function envelope(header: string, body: string): string {
   return `<?xml version="1.0" encoding="utf-8"?>
-<s:Envelope xmlns:s="${SOAP12_NS}">
+<s:Envelope xmlns:s="${SOAP11_NS}">
   <s:Header>${header}</s:Header>
   <s:Body>${body}</s:Body>
 </s:Envelope>`;
@@ -94,7 +107,8 @@ async function post(url: string, action: string, xml: string): Promise<string> {
   const res = await fetch(url, {
     method: 'POST',
     headers: {
-      'Content-Type': `application/soap+xml; charset=utf-8; action="${action}"`,
+      'Content-Type': 'text/xml; charset=utf-8',
+      SOAPAction: `"${action}"`,
     },
     body: xml,
   });
@@ -130,8 +144,10 @@ export class OnKeyClient {
 
   constructor(private readonly creds: OnKeyCreds, private readonly capture = false) {}
 
+  /** The SOAP 1.1 basicHttpBinding port. See the envelope note above:
+   * the bare .svc address is the WS-Addressing one and rejects us. */
   private svc(name: string): string {
-    return `${this.creds.baseUrl.replace(/\/$/, '')}/${name}.svc`;
+    return `${this.creds.baseUrl.replace(/\/$/, '')}/${name}.svc/basic`;
   }
 
   private async call(service: string, action: string, xml: string, operation: string): Promise<string> {

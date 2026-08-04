@@ -95,9 +95,36 @@ async function handleSmoke(): Promise<Response> {
 async function handleIntrospect(service: string): Promise<Response> {
   const runId = await startRun('introspect', { service });
   try {
-    const url = `${creds().baseUrl.replace(/\/$/, '')}/${service}.svc?singleWsdl`;
-    const res = await fetch(url);
-    const wsdl = await res.text();
+    // ?singleWsdl inlines every imported schema into one document. For
+    // the larger services that response is big enough that the server
+    // abandons the HTTP/2 stream mid-flight ("stream no longer needed"),
+    // which is why DocumentLinkImport has never been introspected from
+    // anywhere. ?wsdl returns a much smaller root that still carries the
+    // service, ports, bindings and operations, which is what we read.
+    const base = `${creds().baseUrl.replace(/\/$/, '')}/${service}.svc`;
+    const attempts = [`${base}?singleWsdl`, `${base}?wsdl`];
+    let url = '';
+    let wsdl = '';
+    let res: Response | null = null;
+    const failures: string[] = [];
+    for (const candidate of attempts) {
+      try {
+        const r = await fetch(candidate);
+        const text = await r.text();
+        if (text.length > 0) {
+          url = candidate;
+          wsdl = text;
+          res = r;
+          break;
+        }
+        // 200 with an empty body means the .svc does not exist: WCF
+        // answers unknown services that way rather than with a 404.
+        failures.push(`${candidate}: HTTP ${r.status}, empty body`);
+      } catch (err) {
+        failures.push(`${candidate}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+    if (!wsdl) throw new Error(`could not fetch a WSDL. ${failures.join(' | ')}`);
     const operations = [...new Set([...wsdl.matchAll(/<wsdl:operation name="([^"]+)"/g)].map((m) => m[1]))];
     // Which SOAP version the endpoint speaks. A WCF .svc served over
     // wsHttpBinding is SOAP 1.2 (application/soap+xml, action in the
@@ -146,7 +173,8 @@ async function handleIntrospect(service: string): Promise<Response> {
     return json({
       ok: true,
       service,
-      httpStatus: res.status,
+      url,
+      httpStatus: res?.status ?? 0,
       wsdlBytes: wsdl.length,
       soapVersions,
       bindings,

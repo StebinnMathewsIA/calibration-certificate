@@ -42,12 +42,22 @@ async function config<T>(key: string, fallback: T): Promise<T> {
 }
 
 async function startRun(kind: string, detail: Record<string, unknown> = {}): Promise<string> {
-  const { data } = await db
+  const { data, error } = await db
     .from('onkey_sync_runs')
     .insert({ run_kind: kind, detail })
     .select('id')
     .single();
-  return data!.id as string;
+  // Do NOT swallow this. A discarded error here surfaces later as
+  // "cannot read properties of null", which says nothing about the
+  // actual cause (RLS, a missing grant, a wrong key).
+  if (error || !data) {
+    throw new Error(
+      `could not open a sync run: ${error?.message ?? 'no row returned'}` +
+        (error?.hint ? ` (hint: ${error.hint})` : '') +
+        (error?.code ? ` [${error.code}]` : ''),
+    );
+  }
+  return data.id as string;
 }
 
 async function finishRun(id: string, patch: Record<string, unknown>): Promise<void> {

@@ -99,6 +99,15 @@ async function handleIntrospect(service: string): Promise<Response> {
     const res = await fetch(url);
     const wsdl = await res.text();
     const operations = [...new Set([...wsdl.matchAll(/<wsdl:operation name="([^"]+)"/g)].map((m) => m[1]))];
+    // Which SOAP version the endpoint speaks. A WCF .svc served over
+    // wsHttpBinding is SOAP 1.2 (application/soap+xml, action in the
+    // content-type); basicHttpBinding is SOAP 1.1 (text/xml plus a
+    // SOAPAction header). Sending the wrong one returns a bare HTTP 415
+    // with no clue as to why, so read it from the WSDL rather than guess.
+    const soapVersions: string[] = [];
+    if (wsdl.includes('http://schemas.xmlsoap.org/wsdl/soap12/')) soapVersions.push('1.2');
+    if (wsdl.includes('http://schemas.xmlsoap.org/wsdl/soap/')) soapVersions.push('1.1');
+    const bindings = [...new Set([...wsdl.matchAll(/<wsdl:binding name="([^"]+)"/g)].map((m) => m[1]))];
     const types = [...new Set([...wsdl.matchAll(/<xs:complexType name="(Import[^"]+)"/g)].map((m) => m[1]))];
     const fields: Record<string, string[]> = {};
     for (const t of types) {
@@ -107,8 +116,20 @@ async function handleIntrospect(service: string): Promise<Response> {
         fields[t] = [...block[1].matchAll(/<xs:element[^>]*name="([^"]+)"/g)].map((m) => m[1]);
       }
     }
-    await finishRun(runId, { state: 'succeeded', detail: { operations, typeCount: types.length } });
-    return json({ ok: true, service, operations, fields });
+    await finishRun(runId, {
+      state: 'succeeded',
+      detail: { operations, typeCount: types.length, soapVersions, bindings },
+    });
+    return json({
+      ok: true,
+      service,
+      httpStatus: res.status,
+      wsdlBytes: wsdl.length,
+      soapVersions,
+      bindings,
+      operations,
+      fields,
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     await finishRun(runId, { state: 'failed', error: message });

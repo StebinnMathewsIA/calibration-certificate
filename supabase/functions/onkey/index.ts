@@ -25,7 +25,9 @@ function creds(): OnKeyCreds {
   const baseUrl = Deno.env.get('ONKEY_BASE_URL') ?? '';
   const username = Deno.env.get('ONKEY_USERNAME') ?? '';
   const password = Deno.env.get('ONKEY_PASSWORD') ?? '';
-  const connection = Deno.env.get('ONKEY_CONNECTION') ?? '';
+  // Matches the backend default (config.py onkey_connection). The SOAP
+  // Logon puts this in ConnectionName; an empty one is rejected.
+  const connection = Deno.env.get('ONKEY_CONNECTION') ?? 'ONKEY';
   if (!baseUrl || !username || !password) {
     throw new Error(
       'OnKey credentials are not configured: set ONKEY_BASE_URL, ONKEY_USERNAME, ONKEY_PASSWORD, ONKEY_CONNECTION as Edge Function secrets',
@@ -278,8 +280,14 @@ const json = (body: unknown, status = 200) =>
   });
 
 Deno.serve(async (req) => {
-  const secret = Deno.env.get('ONKEY_FUNCTION_SECRET') ?? '';
-  if (!secret || req.headers.get('x-onkey-secret') !== secret) {
+  // ONKEY_SYNC_TOKEN is the shared secret for machine callers of our sync
+  // surface: the GitHub Actions cron already presents it to the Render
+  // endpoints, so reusing it here means ONE secret to rotate rather than
+  // two that must be kept in step. ONKEY_FUNCTION_SECRET still wins if
+  // someone wants the function on its own credential.
+  const secret = Deno.env.get('ONKEY_FUNCTION_SECRET') || Deno.env.get('ONKEY_SYNC_TOKEN') || '';
+  const presented = req.headers.get('x-onkey-secret') ?? '';
+  if (!secret || presented.length !== secret.length || presented !== secret) {
     return json({ ok: false, error: 'unauthorized' }, 401);
   }
   let body: Record<string, unknown> = {};

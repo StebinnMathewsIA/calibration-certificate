@@ -1,0 +1,64 @@
+name: onkey-function
+
+# Calls the Supabase Edge Function that owns OnKey I/O (#105). The
+# shared secret is ONKEY_SYNC_TOKEN, the same one the Render sync
+# endpoints take, so there is one credential to rotate rather than two.
+#
+# The response printed here is PII-FREE by design: smoke returns a
+# session flag, introspect returns operation names, drain returns event
+# counts and states. Row data never enters this log.
+#
+# Actions:
+#   smoke       Logon + LogOff. The first OnKey call ever made from
+#               Supabase's network; proves egress and credentials.
+#   introspect  Fetch a service WSDL and list its operations. This is
+#               how we find out whether DocumentLinkImport is reachable
+#               from here, which Render's network could not answer.
+#   drain       Translate pending domain events to OnKey imports.
+#               DRY-RUN unless onkey_config says otherwise, and the
+#               allowlist is enforced in every mode.
+#
+# Required repository secret: ONKEY_SYNC_TOKEN
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "smoke | introspect | drain"
+        type: string
+        default: "smoke"
+      service:
+        description: "introspect only: service name, e.g. DocumentLinkImport"
+        type: string
+        required: false
+
+jobs:
+  call:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call the OnKey function
+        run: |
+          if [ -z "${{ secrets.ONKEY_SYNC_TOKEN }}" ]; then
+            echo "::error::Missing repository secret ONKEY_SYNC_TOKEN"
+            exit 1
+          fi
+          action=$(jq -r '.inputs.action // "smoke"' "$GITHUB_EVENT_PATH")
+          service=$(jq -r '.inputs.service // ""' "$GITHUB_EVENT_PATH")
+          payload=$(jq -n --arg a "$action" --arg s "$service" \
+            '{action: $a} | (if $s != "" then .service = $s else . end)')
+          response=$(curl -sS -m 280 -w "\n%{http_code}" -X POST \
+            -H "x-onkey-secret: ${{ secrets.ONKEY_SYNC_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d "$payload" \
+            "https://pkaadtgmdouuhgrcshft.supabase.co/functions/v1/onkey")
+          body=$(echo "$response" | head -n -1)
+          http=$(echo "$response" | tail -n 1)
+          echo "HTTP ${http}"
+          echo "$body"
+          {
+            echo "## OnKey function: ${action}"
+            echo '```json'
+            echo "$body"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          [ "$http" = "200" ]

@@ -154,9 +154,23 @@ Logon). Facts that remove the guesswork:
 - Response shapes confirmed: `RecordFailures[{ReferenceId, Message}]`
   and `RecordSuccesses` with Ids; `AsyncImportStatus` enum for the async
   pattern.
-- **DocumentLinkImport.svc**: listed in the registry but its WSDL fetch
-  resets from our sandbox; introspect it from the signing service (same
-  network path as the sync) before building #101/#102 write-back.
+- **DocumentLinkImport.svc**: listed in the registry, and its WSDL
+  cannot be fetched. RESOLVED as a server defect, not a network one
+  (2026-08-04): retried from Supabase's network, a completely different
+  path, and it fails identically with an HTTP/2 stream reset ("stream no
+  longer needed") on BOTH `?singleWsdl` and `?wsdl`, while
+  Authentication.svc on the same connection returns 15 KB cleanly. So
+  "introspect it from the signing service" was never going to work and
+  should not be attempted again.
+
+  What we know without the WSDL: the API guide gives
+  `ImportDocumentLink(RecordId, TableId, ...)`, and FIELDOPS - DOC has
+  since confirmed the polymorphic key from the live data, where
+  **TableId 1196 = wrkWorkOrders**. The remaining unknown is whether the
+  service accepts binary content or only a link to a document store.
+  That is answerable by trial and error against per-record
+  RecordFailures, which is already the agreed method for mandatory
+  columns, and it needs no WSDL.
 - The seven [TEST] work orders are NOT in our mirror: WOE001 only pulls
   open statuses and they sit at Completed / Costing Complete. Testing
   the visible lifecycle needs one flipped to an open status, or a

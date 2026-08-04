@@ -50,9 +50,18 @@ export function tagTextAll(xml: string, localName: string): string[] {
   return out;
 }
 
+/**
+ * SOAP 1.2. The .svc root addresses are bound to the WCF
+ * HttpsSoap12CustomBinding (confirmed by reading the published WSDL
+ * ports), so the envelope namespace is the 2003/05 one and the action
+ * travels INSIDE the content type rather than in a SOAPAction header.
+ * Sending 1.1 here returns a bare HTTP 415 with no explanation.
+ */
+const SOAP12_NS = 'http://www.w3.org/2003/05/soap-envelope';
+
 function envelope(header: string, body: string): string {
   return `<?xml version="1.0" encoding="utf-8"?>
-<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/">
+<s:Envelope xmlns:s="${SOAP12_NS}">
   <s:Header>${header}</s:Header>
   <s:Body>${body}</s:Body>
 </s:Envelope>`;
@@ -66,15 +75,22 @@ async function post(url: string, action: string, xml: string): Promise<string> {
   const res = await fetch(url, {
     method: 'POST',
     headers: {
-      'Content-Type': 'text/xml; charset=utf-8',
-      SOAPAction: action,
+      'Content-Type': `application/soap+xml; charset=utf-8; action="${action}"`,
     },
     body: xml,
   });
   const text = await res.text();
   if (!res.ok || text.includes('<s:Fault') || text.includes('<Fault')) {
     const code = tagText(text, 'ErrorCode') ?? '';
-    const message = tagText(text, 'ErrorMessage') ?? tagText(text, 'faultstring') ?? `HTTP ${res.status}`;
+    // SOAP 1.2 renames faultstring to Reason/Text. Keep the 1.1 name as a
+    // fallback so a mixed response still yields something readable, and
+    // include a body excerpt when the server explains itself in prose
+    // rather than a fault (a 415 has no fault element at all).
+    const message =
+      tagText(text, 'ErrorMessage') ??
+      tagText(text, 'Text') ??
+      tagText(text, 'faultstring') ??
+      `HTTP ${res.status}${text.trim() ? `: ${text.trim().slice(0, 300)}` : ''}`;
     throw new OnKeyFault(code, message, tagText(text, 'ErrorDetail') ?? undefined);
   }
   return text;

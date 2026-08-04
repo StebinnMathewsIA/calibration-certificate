@@ -108,6 +108,15 @@ async function handleIntrospect(service: string): Promise<Response> {
     if (wsdl.includes('http://schemas.xmlsoap.org/wsdl/soap12/')) soapVersions.push('1.2');
     if (wsdl.includes('http://schemas.xmlsoap.org/wsdl/soap/')) soapVersions.push('1.1');
     const bindings = [...new Set([...wsdl.matchAll(/<wsdl:binding name="([^"]+)"/g)].map((m) => m[1]))];
+    // WCF publishes each binding at its OWN address. Posting a SOAP 1.1
+    // envelope to the 1.2 endpoint is exactly the HTTP 415 we hit, so the
+    // port-to-address map is the thing that actually tells us where to
+    // send. Ports are matched with their following address element.
+    const ports = [
+      ...wsdl.matchAll(
+        /<wsdl:port name="([^"]+)"[^>]*binding="[^"]*"\s*>\s*<(?:soap|soap12)12?:address location="([^"]+)"/g,
+      ),
+    ].map((m) => ({ port: m[1], address: m[2] }));
     const types = [...new Set([...wsdl.matchAll(/<xs:complexType name="(Import[^"]+)"/g)].map((m) => m[1]))];
     const fields: Record<string, string[]> = {};
     for (const t of types) {
@@ -127,6 +136,7 @@ async function handleIntrospect(service: string): Promise<Response> {
       wsdlBytes: wsdl.length,
       soapVersions,
       bindings,
+      ports,
       operations,
       fields,
     });

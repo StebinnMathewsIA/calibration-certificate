@@ -125,6 +125,20 @@ async function handleIntrospect(service: string): Promise<Response> {
         fields[t] = [...block[1].matchAll(/<xs:element[^>]*name="([^"]+)"/g)].map((m) => m[1]);
       }
     }
+    // Park the raw WSDL so it can be read properly instead of guessed at
+    // through regexes. A WCF "CustomBinding" can carry a non-XML message
+    // encoder, a required policy, or an addressing requirement, none of
+    // which a summary shows, and all of which produce a bare 415.
+    await db.from('onkey_report_rows').upsert(
+      {
+        report_code: `WSDL:${service}`,
+        row_hash: await sha256Hex(wsdl),
+        data: { service, url, bytes: wsdl.length, wsdl },
+        last_seen_at: new Date().toISOString(),
+      },
+      { onConflict: 'report_code,row_hash' },
+    );
+
     await finishRun(runId, {
       state: 'succeeded',
       detail: { operations, typeCount: types.length, soapVersions, bindings },

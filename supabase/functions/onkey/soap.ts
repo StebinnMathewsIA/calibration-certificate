@@ -11,9 +11,28 @@
  * working Python client, so the port cannot drift silently.
  */
 
+/**
+ * WCF publishes data contracts and service contracts under DIFFERENT
+ * namespaces, and OnKey uses both:
+ *
+ *   schemas.pragmaproducts.com    the xs:schema targetNamespace, so it
+ *                                 qualifies request and response BODIES
+ *   contracts.pragmaproducts.com  the wsdl targetNamespace, so it
+ *                                 qualifies SOAP ACTIONS
+ *
+ * Getting the action wrong does not produce a fault. Under SOAP 1.2 the
+ * action rides inside the Content-Type, so WCF answers a bare HTTP 415
+ * with an empty body, which reads like a media-type problem and is not
+ * one. Both namespaces are taken from the published WSDL; the action
+ * service names carry NO "I" prefix (AuthenticationService, not
+ * IAuthenticationService), whatever the .NET interface is called.
+ */
 const NS_SYS = 'http://schemas.pragmaproducts.com/onkey/System/v1';
 const NS_MM = 'http://schemas.pragmaproducts.com/onkey/MaintenanceManager/v1';
 const NS_COMMON = 'http://schemas.pragmaproducts.com/onkey/v1';
+
+const ACTION_SYS = 'http://contracts.pragmaproducts.com/onkey/System/v1';
+const ACTION_MM = 'http://contracts.pragmaproducts.com/onkey/MaintenanceManager/v1';
 
 export interface OnKeyCreds {
   baseUrl: string;
@@ -142,7 +161,7 @@ export class OnKeyClient {
       <UserName>${xmlEscape(this.creds.username)}</UserName></Credentials>
     </LogonRequest>`;
     const xml = envelope('', body);
-    const res = await post(this.svc('Authentication'), `${NS_SYS}/IAuthenticationService/Logon`, xml);
+    const res = await post(this.svc('Authentication'), `${ACTION_SYS}/AuthenticationService/Logon`, xml);
     const errs = responseErrors(res);
     if (errs.length) throw new OnKeyFault('LogonFailed', errs.join('; '));
     const id = tagText(res, 'SessionId');
@@ -155,7 +174,7 @@ export class OnKeyClient {
     if (!this.sessionId) return;
     try {
       const body = `<LogOffRequest xmlns="${NS_SYS}"><SessionId>${xmlEscape(this.sessionId)}</SessionId></LogOffRequest>`;
-      await post(this.svc('Authentication'), `${NS_SYS}/IAuthenticationService/LogOff`, envelope('', body));
+      await post(this.svc('Authentication'), `${ACTION_SYS}/AuthenticationService/LogOff`, envelope('', body));
     } catch {
       // A failed logoff must never fail the run; the session expires anyway.
     } finally {
@@ -184,7 +203,7 @@ export class OnKeyClient {
       <ReportCode>${xmlEscape(reportCode)}</ReportCode>
     </ExportDataRequest>`;
     const xml = envelope(sessionHeader(this.sessionId!), body);
-    const res = await this.call('Export', `${NS_SYS}/IExportService/ExportData`, xml, 'ExportData');
+    const res = await this.call('Export', `${ACTION_SYS}/ExportService/ExportData`, xml, 'ExportData');
     const errs = responseErrors(res);
     if (errs.length) throw new OnKeyFault('ExportFailed', errs.join('; '));
     return { rows: parseDataSet(res), raw: res };
@@ -222,7 +241,7 @@ export class OnKeyClient {
     const xml = envelope(sessionHeader(this.sessionId!), body);
     const res = await this.call(
       'WorkOrderImport',
-      `${NS_MM}/IWorkOrderImportService/ImportWorkOrderChangeStatusAndQueues`,
+      `${ACTION_MM}/WorkOrderImportService/ImportWorkOrderChangeStatusAndQueues`,
       xml,
       'ImportWorkOrderChangeStatusAndQueues',
     );
@@ -256,7 +275,7 @@ export class OnKeyClient {
     const xml = envelope(sessionHeader(this.sessionId!), body);
     const res = await this.call(
       'WorkOrderImport',
-      `${NS_MM}/IWorkOrderImportService/ImportWorkOrders`,
+      `${ACTION_MM}/WorkOrderImportService/ImportWorkOrders`,
       xml,
       'ImportWorkOrders',
     );

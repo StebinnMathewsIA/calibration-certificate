@@ -156,24 +156,35 @@ A job the technician has started or paused stays on the list whatever the
 office does to its status. Nothing vanishes from under someone with time
 logged against it.
 
-#### Open: what On the way writes to OnKey
+#### Resolved: On the way is ours alone (owner, 2026-08-05)
 OnKey has **no status for travelling**, and Allocated permits exactly one
 forward move, to Work Order Received (`onkey_status_transitions`, and the
 observed data agrees: from ALC the only real transitions are to TBP and
-CPD). So the options are:
+CPD). Rather than overload an existing status and put a wrong statement
+into somebody else's system of record, the owner's decision is that **On
+the way lives in our database only**, and is surfaced to the planning team
+once we take over planning.
 
-- **Ask Prowalco's OnKey administrator for an En Route status**, with
-  transitions ALC to ENR to WOR. Correct and unambiguous for planning;
-  blocks on their configuration change. It would sit at stage 15.
-- **On the way writes Work Order Received**, which literally means the
-  technician has it. Arriving on site becomes app-only, and planning next
-  hears from a pause or a stop. Needs nothing from Prowalco.
-- **Keep today's mapping** (Received means work started) and leave On the
-  way as an app-only state, which planning never sees. This defeats the
-  purpose the owner gave it.
+Migration 043 implements it:
 
-`wo_status_map` holds the event-to-status mapping in a table precisely so
-this is one row of SQL to change once decided.
+```
+not_started -> on_the_way -> started -> paused/resumed -> stopped -> signed_off
+                    \______________________/
+                     (start direct: already on site)
+```
+
+- Accepting is one-way. A technician who sets off and cannot get to the
+  site pauses with a reason, which IS recorded, rather than silently
+  un-accepting. `pause` therefore accepts `on_the_way` as a source state.
+- `start` still accepts `not_started`, because a technician already at the
+  site should not have to claim a journey they did not make.
+- `wo_status_map` carries the event with an EMPTY `onkey_codes` array, so
+  the deliberate silence sits beside the events that do write rather than
+  looking like an oversight.
+- On the list, our state outranks OnKey's: on the way, started and paused
+  sort above everything, because a job being driven to must not be buried
+  among four hundred Allocated ones. Untouched work keeps OnKey's
+  lifecycle order underneath.
 
 ### Sync freshness gate (2026-08-05, after a three-day silent outage)
 The work order sync failed every five minutes for three days without

@@ -97,10 +97,16 @@ export function rankWorkOrders(
     if (distanceKm != null) bits.push(`${distanceKm.toFixed(distanceKm < 10 ? 1 : 0)} km away`);
     if (wo.estimatedDurationMinutes) bits.push(`about ${wo.estimatedDurationMinutes} min`);
 
-    // A job kept on the list only because it is started or paused has no
-    // stage of its own (the office moved it somewhere else). It belongs
-    // with the work in progress, not at the bottom.
-    const stage = wo.statusStage ?? (wo.lifecycle?.state === 'paused' ? 40 : 30);
+    // OUR state outranks OnKey's when the technician has engaged with the
+    // job. Sorting purely on OnKey status would bury the job they are
+    // driving to among 400 other Allocated ones, which is the opposite of
+    // useful. Untouched work keeps OnKey's lifecycle order underneath.
+    const ours = wo.lifecycle?.state;
+    const stage =
+      ours === 'on_the_way' ? 1
+      : ours === 'started' ? 2
+      : ours === 'paused' ? 3
+      : (wo.statusStage ?? 95);
 
     return { wo, score, stage, overdue, distanceKm, why: bits.join(' · ') };
   });

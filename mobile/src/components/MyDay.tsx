@@ -27,6 +27,7 @@ const FILTERS: { key: Filter; label: string }[] = [
 ];
 
 const STATE_BADGE: Record<string, { text: string; tone: 'ok' | 'warn' | 'muted' }> = {
+  on_the_way: { text: 'On the way', tone: 'ok' },
   started: { text: 'In progress', tone: 'ok' },
   paused: { text: 'Paused', tone: 'warn' },
   stopped: { text: 'Stopped', tone: 'ok' },
@@ -37,7 +38,8 @@ const matches = (r: Ranked, f: Filter): boolean => {
   const s = r.wo.lifecycle?.state ?? 'not_started';
   if (f === 'all') return true;
   if (f === 'not_started') return s === 'not_started';
-  if (f === 'active') return s === 'started' || s === 'paused';
+  // Travelling to a job counts as being on it.
+  if (f === 'active') return s === 'on_the_way' || s === 'started' || s === 'paused';
   return s === 'stopped' || s === 'signed_off';
 };
 
@@ -170,10 +172,12 @@ export function MyDay({
         const first = filter === 'all' && i === 0 && !showAll;
         // The list is ordered by status, so say where each group starts.
         // An order nobody can see reads as no order at all.
+        const groupOf = (x: Ranked) =>
+          x.stage <= 3
+            ? (STATE_BADGE[x.wo.lifecycle?.state ?? '']?.text ?? 'In hand')
+            : (x.wo.statusDescription ?? 'Open');
         const groupLabel =
-          i === 0 || shown[i - 1].wo.statusDescription !== r.wo.statusDescription
-            ? (r.wo.statusDescription ?? 'Open')
-            : null;
+          i === 0 || groupOf(shown[i - 1]) !== groupOf(r) ? groupOf(r) : null;
         return (
           <React.Fragment key={r.wo.id}>
           {groupLabel ? (

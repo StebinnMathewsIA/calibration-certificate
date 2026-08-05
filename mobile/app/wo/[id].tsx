@@ -29,6 +29,7 @@ const WO_CACHE_KEY = 'wo:records';
 
 const STATE_LABEL: Record<string, string> = {
   not_started: 'Not started',
+  on_the_way: 'On the way',
   started: 'In progress',
   paused: 'Paused',
   stopped: 'Stopped, ready to sign off',
@@ -37,6 +38,7 @@ const STATE_LABEL: Record<string, string> = {
 
 const STATE_TONE: Record<string, 'ok' | 'warn' | 'bad' | 'muted'> = {
   not_started: 'muted',
+  on_the_way: 'ok',
   started: 'ok',
   paused: 'warn',
   stopped: 'ok',
@@ -128,7 +130,7 @@ export default function WorkOrderLifecycleScreen() {
   }
 
   const apply = async (
-    event: 'start' | 'pause' | 'stop' | 'sign_off',
+    event: 'on_the_way' | 'start' | 'pause' | 'stop' | 'sign_off',
     opts: { reason?: string; note?: string } = {},
   ) => {
     setBusy(true);
@@ -304,7 +306,23 @@ export default function WorkOrderLifecycleScreen() {
 
       <View style={{ marginHorizontal: 12 }}>
         {state === 'not_started' ? (
-          <Button title="Tap to start" onPress={() => void apply('start')} busy={busy} />
+          <>
+            <Button title="On the way" onPress={() => void apply('on_the_way')} busy={busy} />
+            {/* Still offered: a technician already at the site should not
+                have to claim a journey they did not make. */}
+            <Button
+              title="Already here, start work"
+              kind="secondary"
+              onPress={() => void apply('start')}
+              busy={busy}
+            />
+          </>
+        ) : null}
+        {state === 'on_the_way' && !pausing ? (
+          <>
+            <Button title="Arrived, start work" onPress={() => void apply('start')} busy={busy} />
+            <Button title="Cannot get there" kind="secondary" onPress={() => setPausing(true)} />
+          </>
         ) : null}
         {state === 'started' && !pausing ? (
           <>

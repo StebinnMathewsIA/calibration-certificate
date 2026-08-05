@@ -187,7 +187,18 @@ export async function getTeamWorkOrders(token: string | null): Promise<TeamGroup
 // seed and a write-back adapter, never the source of truth.
 // ---------------------------------------------------------------------------
 
-export type WoState = 'not_started' | 'started' | 'paused' | 'stopped' | 'signed_off';
+/** 'on_the_way' is OURS ALONE (migration 043): the technician has
+ * accepted the job and is travelling. Nothing is written to OnKey for it,
+ * because OnKey has no travelling status and inventing a meaning for an
+ * existing one would put a wrong statement into their system of record.
+ * It is surfaced to planning when we own planning. */
+export type WoState =
+  | 'not_started'
+  | 'on_the_way'
+  | 'started'
+  | 'paused'
+  | 'stopped'
+  | 'signed_off';
 
 export interface WoLifecycle {
   state: WoState;
@@ -195,6 +206,7 @@ export interface WoLifecycle {
   pauseNote: string | null;
   /** True when the pause reason bars the technician from resuming. */
   blocksResume: boolean;
+  onTheWayAt: string | null;
   startedAt: string | null;
   pausedAt: string | null;
   stoppedAt: string | null;
@@ -255,7 +267,7 @@ export async function listPauseReasons(token: string | null): Promise<PauseReaso
 export async function transitionWorkOrder(
   token: string | null,
   workOrderId: string,
-  event: 'start' | 'pause' | 'stop' | 'sign_off',
+  event: 'on_the_way' | 'start' | 'pause' | 'stop' | 'sign_off',
   opts: { reason?: string; note?: string; deviceId?: string; gps?: string } = {},
 ): Promise<WorkOrderRecord> {
   return await rpc<WorkOrderRecord>('app_wo_transition', token, {

@@ -11,6 +11,7 @@ import {
   getMyTechnician,
   getWhoami,
   listTechnicians,
+  TechnicianOption,
   patchMyTechnician,
   setViewAs,
 } from '../src/api/client';
@@ -65,7 +66,7 @@ export default function ProfileScreen() {
   const [addBusy, setAddBusy] = useState(false);
   // Role + view-as (#71).
   const [whoami, setWhoami] = useState<Whoami | null>(null);
-  const [techList, setTechList] = useState<{ staffCode: string; name: string | null }[]>([]);
+  const [techList, setTechList] = useState<TechnicianOption[]>([]);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerFilter, setPickerFilter] = useState('');
   const [switching, setSwitching] = useState(false);
@@ -427,20 +428,39 @@ export default function ProfileScreen() {
                 })
                 .slice(0, 12)
                 .map((t) => (
-                  <Text
+                  <View
                     key={t.staffCode}
-                    onPress={() => (switching ? undefined : void switchViewAs(t.staffCode))}
                     style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 8,
                       paddingVertical: 8,
                       borderTopWidth: 1,
                       borderColor: colors.line,
-                      color: colors.blueText,
-                      fontSize: 14,
                     }}
                   >
-                    {t.name ?? t.staffCode}{' '}
-                    <Text style={{ color: colors.muted, fontSize: 12 }}>({t.staffCode})</Text>
-                  </Text>
+                    <Text
+                      onPress={() => (switching ? undefined : void switchViewAs(t.staffCode))}
+                      style={{ flex: 1, color: colors.blueText, fontSize: 14 }}
+                    >
+                      {t.name ?? t.staffCode}{' '}
+                      <Text style={{ color: colors.muted, fontSize: 12 }}>({t.staffCode})</Text>
+                    </Text>
+                    {/* The count is why the list is in this order; without it
+                        the ordering looks arbitrary. Defaulted because a
+                        device may still hold a cached list from before the
+                        field existed. */}
+                    <Text
+                      style={{
+                        color: (t.openWorkOrders ?? 0) > 0 ? colors.ink : colors.muted,
+                        fontSize: 12,
+                        fontWeight: (t.openWorkOrders ?? 0) > 0 ? '700' : '400',
+                        fontVariant: ['tabular-nums'],
+                      }}
+                    >
+                      {t.openWorkOrders ?? 0} open
+                    </Text>
+                  </View>
                 ))}
             </View>
           ) : null}

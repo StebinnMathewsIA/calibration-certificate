@@ -85,14 +85,20 @@ export async function getWhoami(token: string | null): Promise<Whoami> {
   return await rpc<Whoami>('app_whoami', token);
 }
 
-/** Technician picker for role holders; null for everyone else. */
+/** Technician picker for role holders; null for everyone else. Ordered by
+ * open work descending, because the picker is opened to look at someone
+ * who HAS work and 29 of the 98 technicians have none. */
+export interface TechnicianOption {
+  staffCode: string;
+  name: string | null;
+  /** Same definition of open the technician's own list uses. */
+  openWorkOrders: number;
+}
+
 export async function listTechnicians(
   token: string | null,
-): Promise<{ staffCode: string; name: string | null }[] | null> {
-  return await rpc<{ staffCode: string; name: string | null }[] | null>(
-    'app_list_technicians',
-    token,
-  );
+): Promise<TechnicianOption[] | null> {
+  return await rpc<TechnicianOption[] | null>('app_list_technicians', token);
 }
 
 /** Select (or clear, with null) the technician whose world the role holder

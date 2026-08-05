@@ -61,6 +61,40 @@ reads and writes.
   shared-secret header (JWT verification off); the secret lives in the
   Edge secrets and inside the cron job definition, nowhere else.
 
+
+**A1 STATUS 2026-08-05: the ladder is climbed except the real send.**
+Proven end to end from Supabase's network, not Render's:
+- Edge Function deployed (it never had been; the project had zero
+  functions) and authenticated with ONKEY_SYNC_TOKEN, reusing the secret
+  the Render endpoints already take rather than minting a second one.
+- `smoke`: Logon and LogOff succeed. First OnKey call ever made from
+  Supabase.
+- `introspect`: WSDLs fetch and parse (Authentication 15 KB,
+  WorkOrderImport 109 KB with all 19 operations), and the raw document
+  is parked in onkey_report_rows so bindings can be read rather than
+  guessed at.
+- `drain` dry-run: an allowlisted event logs the exact
+  ImportWorkOrderChangeStatusAndQueues envelope and sends nothing; a
+  real customer work order dead-letters with the reason. The refusal
+  half is what makes it a control, so it is tested deliberately.
+
+Six defects stood in the way, none findable by reading the code: never
+deployed; auth checked a secret that does not exist; the first database
+error was discarded and surfaced as a null dereference; service_role had
+no grants; requests went to the WS-Addressing port instead of /basic;
+and SOAP actions used the schema namespace with an invented "I" prefix
+instead of the service-contract namespace.
+
+Assignment is confirmed possible: ImportWorkOrder carries StaffCode, and
+carries no status or queue fields, so assignment and status change are
+cleanly separate operations that map one-to-one onto our event kinds.
+
+REMAINING for a real send: every test work order sits at Completed or
+Costing Complete, and the transition register offers no direct route
+back to the technician start. Prowalco to set ONE of them to ALC or TBP
+in the OnKey UI (owner decision 2026-08-05, in preference to us walking
+it through the APO/APR approval chain with four live writes).
+
 ### Workstream A1: SOAP skeleton and first proof (days, starts first)
 1. Migration: enable pg_cron and pg_net; `onkey_outbox` (domain events:
    kind, schemaVersion, payload, target wo_code, event uuid, state

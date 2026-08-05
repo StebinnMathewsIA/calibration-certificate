@@ -126,10 +126,20 @@ class OnKeySoapClient:
         self._export_client = None
 
     def __enter__(self) -> "OnKeySoapClient":
-        from zeep import Client  # imported lazily: only the sync path needs it
+        from zeep import Client, Settings  # imported lazily: only the sync path needs it
+
+        # OnKey returns the WHOLE dataset as one escaped text node inside
+        # <Data>. libxml2 caps a single text node at 10 MB, so a wide
+        # report fails with "Text node too long, try XML_PARSE_HUGE" even
+        # though the response is perfectly valid. WOE001 was narrow enough
+        # to stay under it; FIELDOPS - WOE has 65 columns and is not.
+        # xml_huge_tree lifts the cap. It applies to BOTH clients, since
+        # the export response is the large one but the setting is
+        # per-client.
+        zeep_settings = Settings(xml_huge_tree=True)
 
         base = self._settings.onkey_base_url.rstrip("/")
-        auth_client = Client(f"{base}/Authentication.svc?singleWsdl")
+        auth_client = Client(f"{base}/Authentication.svc?singleWsdl", settings=zeep_settings)
         self._auth_service = auth_client.create_service(
             f"{SOAP_NS}AuthenticationService_HttpsSoap11BasicBinding",
             f"{base}/Authentication.svc/basic",
@@ -145,7 +155,7 @@ class OnKeySoapClient:
             raise RuntimeError(f"OnKey login failed: {response.Errors}")
         self._session_id = response.SessionId
 
-        self._export_client = Client(f"{base}/Export.svc?singleWsdl")
+        self._export_client = Client(f"{base}/Export.svc?singleWsdl", settings=zeep_settings)
         self._export_service = self._export_client.create_service(
             f"{SOAP_NS}ExportService_HttpsSoap11BasicBinding",
             f"{base}/Export.svc/basic",

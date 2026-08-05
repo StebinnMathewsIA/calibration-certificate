@@ -214,6 +214,13 @@ export interface WorkOrderRecord {
   workRequired: string | null;
   statusCode: string | null;
   statusDescription: string | null;
+  /** Position in the technician's job lifecycle, lower is earlier
+   * (Allocated 10, Received 20, Resumed 30, Paused 40, spares 50/55,
+   * documents 60, Stopped 70, Signed 80, Submitted 90). Null means the
+   * status is not a technician's business; those are filtered out
+   * server-side, so a null here is a job kept on the list only because
+   * it is started or paused. */
+  statusStage: number | null;
   importanceCode: string | null;
   /** SLA class name from OnKey's importance register, e.g. SLA-Urgent. */
   importanceDescription: string | null;

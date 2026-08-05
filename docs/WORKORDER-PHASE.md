@@ -126,6 +126,55 @@ it through the APO/APR approval chain with four live writes).
   dead-letter counts, replacing the visibility the GitHub cron logs
   provided.
 
+### Owner decisions on the work list (2026-08-05)
+
+Answered directly by the owner, and implemented in migration 042 unless
+noted:
+
+1. **A phone holds only that technician's own work orders.** Not the
+   branch, not the company. Managers still see everyone through view-as.
+2. **The list starts at Allocated.** To be Planned is the planner's
+   business, not the technician's. `onkey_statuses.technician_stage` is
+   the ordinal: Allocated 10, Work Order Received 20, Resumed 30, Paused
+   40, Incomplete for Spares 50, SCT Despatched 55, Documents Outstanding
+   60, Stopped 70, Signed 80, Submitted 90. NULL means not the
+   technician's business, which is most of the register. Numbers are
+   spaced by ten so a new status slots in without renumbering.
+3. **Order is by status, then urgency inside a status.** The existing
+   overdue/importance/distance ranking becomes the tiebreak.
+4. **Completed work stays for the day only.** "A new day has a new plan."
+   Cut at local midnight in Africa/Johannesburg, not UTC, or a job
+   finished at 21:00 would vanish at 02:00 their time.
+5. **OnKey learns of progress as it happens**, not at sign-off: each
+   lifecycle action queues its status change immediately on the existing
+   outbox. NOT YET BUILT; this is the next piece.
+6. **There is an On the way step.** The technician accepts the job and is
+   travelling, and planning needs to see that, so that if the job has been
+   reallocated they can call the technician who is already driving to it.
+
+A job the technician has started or paused stays on the list whatever the
+office does to its status. Nothing vanishes from under someone with time
+logged against it.
+
+#### Open: what On the way writes to OnKey
+OnKey has **no status for travelling**, and Allocated permits exactly one
+forward move, to Work Order Received (`onkey_status_transitions`, and the
+observed data agrees: from ALC the only real transitions are to TBP and
+CPD). So the options are:
+
+- **Ask Prowalco's OnKey administrator for an En Route status**, with
+  transitions ALC to ENR to WOR. Correct and unambiguous for planning;
+  blocks on their configuration change. It would sit at stage 15.
+- **On the way writes Work Order Received**, which literally means the
+  technician has it. Arriving on site becomes app-only, and planning next
+  hears from a pause or a stop. Needs nothing from Prowalco.
+- **Keep today's mapping** (Received means work started) and leave On the
+  way as an app-only state, which planning never sees. This defeats the
+  purpose the owner gave it.
+
+`wo_status_map` holds the event-to-status mapping in a table precisely so
+this is one row of SQL to change once decided.
+
 ### Sync freshness gate (2026-08-05, after a three-day silent outage)
 The work order sync failed every five minutes for three days without
 telling anybody: the export threw behind a bare 500, the raw rows landed

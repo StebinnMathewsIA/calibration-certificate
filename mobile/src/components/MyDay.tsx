@@ -168,9 +168,30 @@ export function MyDay({
       {shown.map((r, i) => {
         const badge = STATE_BADGE[r.wo.lifecycle?.state ?? 'not_started'];
         const first = filter === 'all' && i === 0 && !showAll;
+        // The list is ordered by status, so say where each group starts.
+        // An order nobody can see reads as no order at all.
+        const groupLabel =
+          i === 0 || shown[i - 1].wo.statusDescription !== r.wo.statusDescription
+            ? (r.wo.statusDescription ?? 'Open')
+            : null;
         return (
+          <React.Fragment key={r.wo.id}>
+          {groupLabel ? (
+            <Text
+              style={{
+                color: colors.muted,
+                fontSize: 11,
+                fontWeight: '700',
+                textTransform: 'uppercase',
+                letterSpacing: 0.5,
+                marginTop: i === 0 ? 0 : 10,
+                marginBottom: 4,
+              }}
+            >
+              {groupLabel}
+            </Text>
+          ) : null}
           <Pressable
-            key={r.wo.id}
             onPress={() => router.push({ pathname: '/wo/[id]', params: { id: r.wo.id } })}
             style={{
               borderWidth: first ? 1.5 : 1,
@@ -203,6 +224,7 @@ export function MyDay({
               {[r.wo.externalRef, r.why].filter(Boolean).join(' · ')}
             </Text>
           </Pressable>
+          </React.Fragment>
         );
       })}
 

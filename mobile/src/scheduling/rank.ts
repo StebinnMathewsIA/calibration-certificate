@@ -15,8 +15,10 @@ import { parseWktPoint } from '../components/MiniMap';
 
 export interface Ranked {
   wo: WorkOrderRecord;
-  /** Lower sorts first. */
+  /** Lower sorts first, WITHIN a status group. */
   score: number;
+  /** Status group this job sits in; the outer sort key. */
+  stage: number;
   overdue: boolean;
   /** Kilometres from the technician, when both positions are known. */
   distanceKm: number | null;
@@ -95,10 +97,19 @@ export function rankWorkOrders(
     if (distanceKm != null) bits.push(`${distanceKm.toFixed(distanceKm < 10 ? 1 : 0)} km away`);
     if (wo.estimatedDurationMinutes) bits.push(`about ${wo.estimatedDurationMinutes} min`);
 
-    return { wo, score, overdue, distanceKm, why: bits.join(' · ') };
+    // A job kept on the list only because it is started or paused has no
+    // stage of its own (the office moved it somewhere else). It belongs
+    // with the work in progress, not at the bottom.
+    const stage = wo.statusStage ?? (wo.lifecycle?.state === 'paused' ? 40 : 30);
+
+    return { wo, score, stage, overdue, distanceKm, why: bits.join(' · ') };
   });
 
+  // Status decides the order, urgency decides it inside a status. Owner
+  // rule, 2026-08-05: the technician works down the list in lifecycle
+  // order, Allocated first, so what planning has just given them is at
+  // the top rather than buried under jobs they have already stopped.
   return ranked
     .filter((r) => r.wo.lifecycle?.state !== 'signed_off')
-    .sort((a, b) => a.score - b.score);
+    .sort((a, b) => a.stage - b.stage || a.score - b.score);
 }

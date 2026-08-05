@@ -446,10 +446,20 @@ export default function ProfileScreen() {
                       {t.name ?? t.staffCode}{' '}
                       <Text style={{ color: colors.muted, fontSize: 12 }}>({t.staffCode})</Text>
                     </Text>
-                    {/* The count is why the list is in this order; without it
-                        the ordering looks arbitrary. Defaulted because a
-                        device may still hold a cached list from before the
-                        field existed. */}
+                    {/* The counts are why the list is in this order; without
+                        them the ordering looks arbitrary. Defaulted because a
+                        device may still hold a cached list from before these
+                        fields existed. */}
+                    {(t.testWorkOrders ?? 0) > 0 ? (
+                      <Badge
+                        text={
+                          (t.writableTestWorkOrders ?? 0) > 0
+                            ? `${t.writableTestWorkOrders} test, writable`
+                            : `${t.testWorkOrders} test, read only`
+                        }
+                        tone={(t.writableTestWorkOrders ?? 0) > 0 ? 'ok' : 'muted'}
+                      />
+                    ) : null}
                     <Text
                       style={{
                         color: (t.openWorkOrders ?? 0) > 0 ? colors.ink : colors.muted,

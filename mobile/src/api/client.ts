@@ -93,6 +93,12 @@ export interface TechnicianOption {
   name: string | null;
   /** Same definition of open the technician's own list uses. */
   openWorkOrders: number;
+  /** [TEST] work orders they hold. These sort to the top so the owner can
+   * become one and drive the real flow. */
+  testWorkOrders: number;
+  /** Of those, how many the write allowlist actually permits sending to
+   * OnKey. Reported separately because the two disagree today. */
+  writableTestWorkOrders: number;
 }
 
 export async function listTechnicians(

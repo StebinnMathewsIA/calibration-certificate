@@ -11,7 +11,10 @@ import { useFocusEffect } from 'expo-router';
 import { Alert, Text, TextInput, View } from 'react-native';
 import {
   PauseReason,
+  WoDivergence,
   WorkOrderRecord,
+  acknowledgeDivergence,
+  listDivergence,
   listPauseReasons,
   listWorkOrderRecords,
   transitionWorkOrder,
@@ -27,6 +30,26 @@ import { rejectedTransitions } from '../../src/sync/outbox';
  * fetch the list itself, so a failed request left it on "Loading..."
  * forever under a list that had rendered from cache. */
 const WO_CACHE_KEY = 'wo:records';
+
+/** Said plainly, because the technician may be standing on the forecourt
+ * when they read it. */
+const DIVERGENCE_TITLE: Record<string, string> = {
+  recalled_while_in_hand: 'Planning has taken this back',
+  closed_while_in_hand: 'The office has closed this',
+  write_not_reflected: 'The office has not received your update',
+  write_dead_lettered: 'Your update could not be sent',
+};
+
+const DIVERGENCE_BODY: Record<string, string> = {
+  recalled_while_in_hand:
+    'The planning team moved this job off you after you picked it up. Call the office before you carry on, or before you drive any further.',
+  closed_while_in_hand:
+    'This job was closed in OnKey while you still had it open. Anything you record now may not be counted. Call the office.',
+  write_not_reflected:
+    'We sent your status change to OnKey and it is still not showing there. The office may not know where this job stands.',
+  write_dead_lettered:
+    'Your status change could not be delivered to OnKey after several attempts. The office does not have it.',
+};
 
 const STATE_LABEL: Record<string, string> = {
   not_started: 'Not started',
@@ -77,6 +100,9 @@ export default function WorkOrderLifecycleScreen() {
   // acted, the screen showed it applied, and it did not stick. Saying
   // nothing would leave them believing the office knows.
   const [rejected, setRejected] = useState<{ event: string; error: string }[]>([]);
+  // The office moved this job while the technician holds it. Detected on
+  // sync (migration 047), where the register is actually fresh.
+  const [divergence, setDivergence] = useState<WoDivergence | null>(null);
 
   const load = useCallback(() => {
     setLoadState((s) => (s === 'ready' ? s : 'loading'));
@@ -92,6 +118,11 @@ export default function WorkOrderLifecycleScreen() {
       });
     fetchThrough('wo:pause-reasons', () => listPauseReasons(accessToken))
       .then(setReasons)
+      .catch(() => {});
+    fetchThrough('wo:divergence', () => listDivergence(accessToken), {
+      onFresh: (list) => setDivergence(list.find((d) => d.workOrderId === id) ?? null),
+    })
+      .then((list) => setDivergence(list.find((d) => d.workOrderId === id) ?? null))
       .catch(() => {});
     setRejected(
       rejectedTransitions()
@@ -244,6 +275,27 @@ export default function WorkOrderLifecycleScreen() {
         ) : null}
         <MiniMap gpsWkt={wo.gpsLocation} address={wo.siteName ?? undefined} />
       </SectionCard>
+
+      {divergence ? (
+        <SectionCard title={DIVERGENCE_TITLE[divergence.kind] ?? 'Changed by the office'}>
+          <Text style={{ color: colors.ink, fontSize: 14 }}>
+            {DIVERGENCE_BODY[divergence.kind] ?? divergence.detail}
+          </Text>
+          <Text style={{ color: colors.muted, fontSize: 12, marginTop: 6 }}>
+            OnKey now shows {divergence.onkeyStatus ?? 'no status'}. Noticed{' '}
+            {divergence.detectedAt.slice(0, 16).replace('T', ' ')}.
+          </Text>
+          <Button
+            title="I have seen this"
+            kind="secondary"
+            onPress={() => {
+              void acknowledgeDivergence(accessToken, wo.id)
+                .then(() => setDivergence(null))
+                .catch(() => setDivergence(null));
+            }}
+          />
+        </SectionCard>
+      ) : null}
 
       {rejected.length > 0 ? (
         <SectionCard title="Not accepted by the office">

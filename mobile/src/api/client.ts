@@ -264,6 +264,37 @@ export async function listWorkOrderRecords(token: string | null): Promise<WorkOr
   return await rpc<WorkOrderRecord[]>('app_wo_list', token);
 }
 
+/** Where our lifecycle and OnKey disagree on the technician's own work
+ * (migration 047). The planner writes too, and Allocated to To be Planned
+ * fired 49 times in a few days, so this is normal traffic that has to be
+ * shown rather than resolved silently in either direction. */
+export interface WoDivergence {
+  workOrderId: string;
+  reference: string | null;
+  kind:
+    | 'recalled_while_in_hand'
+    | 'closed_while_in_hand'
+    | 'write_not_reflected'
+    | 'write_dead_lettered';
+  ourState: string;
+  onkeyStatus: string | null;
+  detail: string;
+  detectedAt: string;
+}
+
+export async function listDivergence(token: string | null): Promise<WoDivergence[]> {
+  return await rpc<WoDivergence[]>('app_wo_divergence', token);
+}
+
+export async function acknowledgeDivergence(
+  token: string | null,
+  workOrderId: string,
+): Promise<WoDivergence[]> {
+  return await rpc<WoDivergence[]>('app_wo_ack_divergence', token, {
+    p_work_order_id: workOrderId,
+  });
+}
+
 export async function listPauseReasons(token: string | null): Promise<PauseReason[]> {
   return await rpc<PauseReason[]>('app_wo_pause_reasons', token);
 }

@@ -25,13 +25,17 @@ export default function WorkOrderScreen() {
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState({ make: 'Tatsuno', model: '', serialNumber: '', saApprovalNumber: '' });
   const [scanning, setScanning] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
+    setLoadError(null);
     try {
       const b = await fetchThrough(`workorder:${id}`, () => getWorkOrder(accessToken, id));
       setBundle(b);
     } catch (err) {
-      Alert.alert('Could not load work order', err instanceof Error ? err.message : String(err));
+      // Not just an alert: an alert leaves the screen on "Loading..."
+      // forever once it is dismissed, with nothing to act on.
+      setLoadError(err instanceof Error ? err.message : String(err));
     }
   }, [accessToken, id]);
 
@@ -41,7 +45,22 @@ export default function WorkOrderScreen() {
     }, [load]),
   );
 
-  if (!bundle) return <Text style={{ padding: 16 }}>Loading…</Text>;
+  if (!bundle) {
+    if (!loadError) return <Text style={{ padding: 16 }}>Loading…</Text>;
+    return (
+      <FormScrollView>
+        <SectionCard title="Could not load this work order">
+          <Text style={{ color: colors.ink, fontSize: 14 }}>
+            Check your signal and try again. If it keeps failing, the work order may have been
+            reassigned or closed in OnKey.
+          </Text>
+          <Text style={{ color: colors.muted, fontSize: 12, marginTop: 6 }}>{loadError}</Text>
+          <Button title="Try again" onPress={() => void load()} />
+          <Button title="Go back" kind="secondary" onPress={() => router.back()} />
+        </SectionCard>
+      </FormScrollView>
+    );
+  }
 
   const active = bundle.dispensers.filter((d) => d.status !== 'retired');
   const retired = bundle.dispensers.filter((d) => d.status === 'retired');

@@ -57,6 +57,9 @@ export default function RootLayout() {
         <Stack.Screen name="index" options={{ title: 'Prowalco Calibration' }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="workorder/[id]" options={{ title: 'Work order' }} />
+        {/* My day pushes wo/[id]. Without this line the header showed the
+            raw route name, "wo/[id]", to the technician. */}
+        <Stack.Screen name="wo/[id]" options={{ title: 'Work order' }} />
         <Stack.Screen name="site/[id]" options={{ title: 'Site' }} />
         <Stack.Screen name="dispenser/[id]/identity" options={{ title: 'Dispenser identity' }} />
         <Stack.Screen name="dispenser/[id]/register" options={{ title: 'Components' }} />

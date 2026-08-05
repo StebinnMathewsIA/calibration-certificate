@@ -503,10 +503,22 @@ _PULL_MODES = ("incremental", "backfill")
 
 
 def _health(db: Session, settings: Settings) -> dict:
-    """Durable answer to 'is the work list current', read from
-    onkey_sync_runs rather than process memory. The scheduled workflow
-    fails the job on stale=true, which is what turns a silent outage into
-    a red run somebody sees."""
+    """Durable answer to 'is the work list current'. The scheduled workflow
+    fails the job on stale=true, which is what turns a silent outage into a
+    red run somebody sees.
+
+    Freshness is measured on the REGISTER, not on whole runs. A pull walks
+    the window newest-first and derives after every chunk, so the work list
+    is current one chunk in while the run itself has minutes to go. Judging
+    by completed runs called a healthy sync stale for as long as it took to
+    finish. Every derive writes updated_at = now() unconditionally, so
+    max(updated_at) moves whether or not any row changed, which is exactly
+    the heartbeat wanted.
+
+    Caveat: mode=derive rebuilds registers from stored rows and would also
+    move it. That is a manual operator action, never scheduled, so it
+    cannot mask an outage on its own; onkey_sync_runs below is what says
+    whether OnKey was actually reachable."""
     last_run = db.execute(
         text(
             """
@@ -533,14 +545,18 @@ def _health(db: Session, settings: Settings) -> dict:
     minutes = None
     if last_success is not None:
         minutes = round((now - last_success).total_seconds() / 60, 1)
-    # No successful run on record is itself stale: either the service has
-    # never synced or the table was reset. Both need a human.
-    stale = minutes is None or minutes > settings.onkey_stale_after_minutes
     register_rows = db.execute(text("SELECT count(*) FROM onkey_workorders")).scalar() or 0
     register_updated = db.execute(text("SELECT max(updated_at) FROM onkey_workorders")).scalar()
+    refresh_minutes = None
+    if register_updated is not None:
+        refresh_minutes = round((now - register_updated).total_seconds() / 60, 1)
+    # A register that has never been derived is stale by definition: either
+    # the service has never synced or the store was reset. Both need a human.
+    stale = refresh_minutes is None or refresh_minutes > settings.onkey_stale_after_minutes
     return {
         "stale": stale,
         "staleAfterMinutes": settings.onkey_stale_after_minutes,
+        "minutesSinceRefresh": refresh_minutes,
         "minutesSinceSuccess": minutes,
         "lastSuccessAt": last_success.isoformat() if last_success else None,
         "lastRun": {

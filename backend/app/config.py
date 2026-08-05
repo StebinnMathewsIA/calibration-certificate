@@ -82,9 +82,13 @@ class Settings(BaseSettings):
     onkey_backfill_start: str = "2024-01-01"
     # /v1/onkey/status calls the sync stale once this many minutes have
     # passed with no successful run, and the scheduled workflow fails on
-    # that flag. The cron ticks every 5 minutes, so anything past this is
-    # several consecutive failures, not one slow export.
-    onkey_stale_after_minutes: int = 30
+    # that flag. Sized for the CURRENT trigger, not the declared one: the
+    # workflow says every 5 minutes but GitHub actually fires it every 1
+    # to 3 hours, so a tighter threshold would be red permanently and
+    # therefore ignored. Drop this to 30 once the Vault secret in
+    # migration 040 is in place and pg_cron drives the pull, since pg_cron
+    # does honour its interval.
+    onkey_stale_after_minutes: int = 180
 
     # Device binding (#51). Enforcement is flag-gated for a safe rollout:
     # off (default) verifies+audits device signatures when present but never

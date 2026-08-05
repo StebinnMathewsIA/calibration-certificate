@@ -20,7 +20,12 @@ import { useAuth } from '../../src/auth/AuthContext';
 import { Badge, Button, SectionCard, colors, fonts } from '../../src/components/ui';
 import { FormScrollView } from '../../src/components/FormScrollView';
 import { MiniMap } from '../../src/components/MiniMap';
-import { fetchThrough } from '../../src/db/cache';
+import { fetchThrough, readCache, writeCache } from '../../src/db/cache';
+
+/** Same cache key My day reads. The two MUST agree: this screen used to
+ * fetch the list itself, so a failed request left it on "Loading..."
+ * forever under a list that had rendered from cache. */
+const WO_CACHE_KEY = 'wo:records';
 
 const STATE_LABEL: Record<string, string> = {
   not_started: 'Not started',
@@ -60,11 +65,24 @@ export default function WorkOrderLifecycleScreen() {
   const [chosenReason, setChosenReason] = useState<PauseReason | null>(null);
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
+  // "No record yet" and "the request failed" and "it is not in your list"
+  // are three different things. Collapsing them into a null work order is
+  // what put a technician on a blank Loading screen with no way forward.
+  const [loadState, setLoadState] = useState<'loading' | 'ready' | 'missing' | 'error'>('loading');
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const load = useCallback(() => {
-    listWorkOrderRecords(accessToken)
-      .then((list) => setWo(list.find((w) => w.id === id) ?? null))
-      .catch(() => {});
+    setLoadState((s) => (s === 'ready' ? s : 'loading'));
+    fetchThrough<WorkOrderRecord[]>(WO_CACHE_KEY, () => listWorkOrderRecords(accessToken))
+      .then((list) => {
+        const found = list.find((w) => w.id === id) ?? null;
+        setWo(found);
+        setLoadState(found ? 'ready' : 'missing');
+      })
+      .catch((err) => {
+        setLoadError(err instanceof Error ? err.message : String(err));
+        setLoadState('error');
+      });
     fetchThrough('wo:pause-reasons', () => listPauseReasons(accessToken))
       .then(setReasons)
       .catch(() => {});
@@ -79,7 +97,35 @@ export default function WorkOrderLifecycleScreen() {
   const state = wo?.lifecycle?.state ?? 'not_started';
   const elapsed = useMemo(() => (wo ? elapsedLabel(wo) : null), [wo]);
 
-  if (!wo) return <Text style={{ padding: 16, color: colors.muted }}>Loading…</Text>;
+  if (loadState === 'loading') {
+    return <Text style={{ padding: 16, color: colors.muted }}>Loading…</Text>;
+  }
+
+  if (loadState !== 'ready' || !wo) {
+    return (
+      <FormScrollView>
+        <SectionCard
+          title={loadState === 'missing' ? 'Not in your work list' : 'Could not load your work'}
+        >
+          <Text style={{ color: colors.ink, fontSize: 14 }}>
+            {loadState === 'missing'
+              ? 'This work order is not in the list on this device. It may have been reassigned, closed, or issued to a different technician since the list was last synced.'
+              : 'Your work orders could not be fetched. Check your signal and try again.'}
+          </Text>
+          {loadError ? (
+            <Text style={{ color: colors.muted, fontSize: 12, marginTop: 6 }}>{loadError}</Text>
+          ) : null}
+          <Text
+            style={{ color: colors.muted, fontSize: 12, marginTop: 6, fontFamily: fonts.mono }}
+          >
+            {id}
+          </Text>
+          <Button title="Try again" onPress={load} />
+          <Button title="Back to my day" kind="secondary" onPress={() => router.back()} />
+        </SectionCard>
+      </FormScrollView>
+    );
+  }
 
   const apply = async (
     event: 'start' | 'pause' | 'stop' | 'sign_off',
@@ -102,6 +148,16 @@ export default function WorkOrderLifecycleScreen() {
       }
       const updated = await transitionWorkOrder(accessToken, wo.id, event, { ...opts, gps });
       setWo(updated);
+      // Write the new state straight into the list My day reads, so its
+      // badge changes the moment you go back rather than on the next
+      // background refresh.
+      const cached = readCache<WorkOrderRecord[]>(WO_CACHE_KEY);
+      if (cached) {
+        writeCache(
+          WO_CACHE_KEY,
+          cached.map((w) => (w.id === updated.id ? updated : w)),
+        );
+      }
       setPausing(false);
       setChosenReason(null);
       setNote('');

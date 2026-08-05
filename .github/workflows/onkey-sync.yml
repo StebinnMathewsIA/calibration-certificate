@@ -1,8 +1,17 @@
 name: onkey-sync
 
-# Drives the OnKey FIELDOPS - WOE incremental sync (#47) every 5 minutes and
-# doubles as the keep-alive for the Render instance. Content-hash dedupe
-# server-side means each run writes only the delta.
+# Drives the OnKey FIELDOPS - WOE incremental sync (#47) and doubles as the
+# keep-alive for the Render instance. Content-hash dedupe server-side means
+# each run writes only the delta.
+#
+# THE SCHEDULE BELOW IS NOT HONOURED. It asks for every 5 minutes; measured
+# over 2026-08-04/05 GitHub actually fired it every 1 to 3 hours (15:34,
+# 13:24, 11:45, 09:44, 07:07, 04:23, 01:06 ...). High-frequency schedules
+# get dropped under load and no setting changes that. Migration 040 moves
+# the real trigger to Supabase pg_cron, which does keep its interval; this
+# workflow stays as the freshness MONITOR and the Render keep-alive. The
+# sync endpoint is single-flight, so both triggers can run without
+# colliding.
 #
 # The sync now runs in a background thread server-side, so HTTP 200 on the
 # trigger only proves the request was accepted. This job therefore asserts
@@ -93,13 +102,14 @@ jobs:
             exit 1
           fi
 
+          refresh=$(echo "$status" | jq -r '.health.minutesSinceRefresh // "never"')
           minutes=$(echo "$status" | jq -r '.health.minutesSinceSuccess // "never"')
           rows=$(echo "$status" | jq -r '.health.workOrders.rows')
           updated=$(echo "$status" | jq -r '.health.workOrders.lastUpdatedAt // "never"')
-          echo "last success ${minutes} minutes ago; register ${rows} rows, updated ${updated}"
+          echo "register refreshed ${refresh} minutes ago (${rows} rows, ${updated}); last full run succeeded ${minutes} minutes ago"
 
           if [ "$stale" = "true" ]; then
             err=$(echo "$status" | jq -r '.health.lastRun.error // "no error recorded"')
-            echo "::error::OnKey sync is stale (last success ${minutes} minutes ago). Last run: ${err}"
+            echo "::error::OnKey work list is stale (register refreshed ${refresh} minutes ago). Last run: ${err}"
             exit 1
           fi

@@ -37,8 +37,56 @@ _sync_lock = threading.Lock()
 _sync_state: dict = {"running": False, "last": None}
 
 
+def _record_run(
+    mode: str,
+    state: str,
+    started_at: datetime,
+    *,
+    rows_fetched: int = 0,
+    rows_inserted: int = 0,
+    detail: dict | None = None,
+    error: str | None = None,
+) -> None:
+    """Write the run to onkey_sync_runs on its own session.
+
+    The in-memory _sync_state is lost whenever Render restarts, so it
+    cannot answer 'when did a sync last succeed'. That question is the
+    whole alert: the three-day outage was invisible precisely because
+    nothing durable recorded the failures. A separate session is used so
+    a failed run's poisoned transaction cannot swallow its own record."""
+    db = SessionLocal()
+    try:
+        db.execute(
+            text(
+                """
+                INSERT INTO onkey_sync_runs (
+                    id, run_kind, state, rows_fetched, rows_inserted,
+                    detail, error, started_at, finished_at)
+                VALUES (
+                    gen_random_uuid(), :kind, :state, :fetched, :inserted,
+                    CAST(:detail AS jsonb), :error, :started, now())
+                """
+            ),
+            {
+                "kind": mode,
+                "state": state,
+                "fetched": rows_fetched,
+                "inserted": rows_inserted,
+                "detail": json.dumps(detail or {}),
+                "error": error,
+                "started": started_at,
+            },
+        )
+        db.commit()
+    except Exception:  # noqa: BLE001 — bookkeeping must never fail a sync
+        db.rollback()
+    finally:
+        db.close()
+
+
 def _run_sync_background(settings: Settings, mode: str, state: dict, running_flag: dict) -> None:
     db = SessionLocal()
+    started_at = datetime.now(timezone.utc)
     try:
         summary = run_sync(db, settings, mode)
         state["last"] = {
@@ -51,13 +99,27 @@ def _run_sync_background(settings: Settings, mode: str, state: dict, running_fla
             "window": {"start": summary.window_start, "end": summary.window_end},
             "finishedAt": datetime.now(timezone.utc).isoformat(),
         }
+        _record_run(
+            mode,
+            "succeeded",
+            started_at,
+            rows_fetched=summary.rows_fetched,
+            rows_inserted=summary.rows_inserted,
+            detail={
+                "rowsRefreshed": summary.rows_refreshed,
+                "registers": summary.registers,
+                "window": {"start": summary.window_start, "end": summary.window_end},
+            },
+        )
     except Exception as exc:  # noqa: BLE001 — reported via /status
+        message = f"{type(exc).__name__}: {str(exc)[:500]}"
         state["last"] = {
             "ok": False,
             "mode": mode,
-            "error": f"{type(exc).__name__}: {str(exc)[:500]}",
+            "error": message,
             "finishedAt": datetime.now(timezone.utc).isoformat(),
         }
+        _record_run(mode, "failed", started_at, error=message)
     finally:
         db.close()
         running_flag["running"] = False
@@ -430,4 +492,67 @@ def status(
         "columns": sorted(sample.keys()) if isinstance(sample, dict) else [],
         "sync": {"running": _sync_state["running"], "last": _sync_state["last"]},
         "backfill": {"running": _backfill_state["running"], "last": _backfill_state["last"]},
+        "health": _health(db, settings),
+    }
+
+
+# Modes that pull from OnKey. 'derive' only rebuilds registers from rows
+# already stored, so a run of it says nothing about whether OnKey is
+# reachable and must not count as a successful sync.
+_PULL_MODES = ("incremental", "backfill")
+
+
+def _health(db: Session, settings: Settings) -> dict:
+    """Durable answer to 'is the work list current', read from
+    onkey_sync_runs rather than process memory. The scheduled workflow
+    fails the job on stale=true, which is what turns a silent outage into
+    a red run somebody sees."""
+    last_run = db.execute(
+        text(
+            """
+            SELECT run_kind, state, error, finished_at
+              FROM onkey_sync_runs
+             WHERE run_kind = ANY(:modes)
+             ORDER BY started_at DESC
+             LIMIT 1
+            """
+        ),
+        {"modes": list(_PULL_MODES)},
+    ).mappings().first()
+    last_success = db.execute(
+        text(
+            """
+            SELECT max(finished_at)
+              FROM onkey_sync_runs
+             WHERE run_kind = ANY(:modes) AND state = 'succeeded'
+            """
+        ),
+        {"modes": list(_PULL_MODES)},
+    ).scalar()
+    now = datetime.now(timezone.utc)
+    minutes = None
+    if last_success is not None:
+        minutes = round((now - last_success).total_seconds() / 60, 1)
+    # No successful run on record is itself stale: either the service has
+    # never synced or the table was reset. Both need a human.
+    stale = minutes is None or minutes > settings.onkey_stale_after_minutes
+    register_rows = db.execute(text("SELECT count(*) FROM onkey_workorders")).scalar() or 0
+    register_updated = db.execute(text("SELECT max(updated_at) FROM onkey_workorders")).scalar()
+    return {
+        "stale": stale,
+        "staleAfterMinutes": settings.onkey_stale_after_minutes,
+        "minutesSinceSuccess": minutes,
+        "lastSuccessAt": last_success.isoformat() if last_success else None,
+        "lastRun": {
+            "mode": last_run["run_kind"],
+            "state": last_run["state"],
+            "error": last_run["error"],
+            "finishedAt": last_run["finished_at"].isoformat() if last_run["finished_at"] else None,
+        }
+        if last_run
+        else None,
+        "workOrders": {
+            "rows": register_rows,
+            "lastUpdatedAt": register_updated.isoformat() if register_updated else None,
+        },
     }

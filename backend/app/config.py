@@ -80,6 +80,11 @@ class Settings(BaseSettings):
     # makes unchanged rows no-ops, so only the delta is written.
     onkey_sync_window_days: int = 35
     onkey_backfill_start: str = "2024-01-01"
+    # /v1/onkey/status calls the sync stale once this many minutes have
+    # passed with no successful run, and the scheduled workflow fails on
+    # that flag. The cron ticks every 5 minutes, so anything past this is
+    # several consecutive failures, not one slow export.
+    onkey_stale_after_minutes: int = 30
 
     # Device binding (#51). Enforcement is flag-gated for a safe rollout:
     # off (default) verifies+audits device signatures when present but never

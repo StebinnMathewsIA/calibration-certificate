@@ -276,14 +276,114 @@ export async function transitionWorkOrder(
   event: 'on_the_way' | 'start' | 'pause' | 'stop' | 'sign_off',
   opts: { reason?: string; note?: string; deviceId?: string; gps?: string } = {},
 ): Promise<WorkOrderRecord> {
-  return await rpc<WorkOrderRecord>('app_wo_transition', token, {
-    p_work_order_id: workOrderId,
-    p_event: event,
-    p_reason: opts.reason ?? null,
-    p_note: opts.note ?? null,
-    p_device_id: opts.deviceId ?? null,
-    p_gps: opts.gps ?? null,
-  });
+  // The moment the technician tapped, captured HERE rather than server-side,
+  // because the server may only hear about it hours later.
+  const occurredAt = new Date().toISOString();
+  try {
+    return await rpc<WorkOrderRecord>('app_wo_transition', token, {
+      p_work_order_id: workOrderId,
+      p_event: event,
+      p_reason: opts.reason ?? null,
+      p_note: opts.note ?? null,
+      p_device_id: opts.deviceId ?? null,
+      p_gps: opts.gps ?? null,
+      p_occurred_at: occurredAt,
+    });
+  } catch (err) {
+    // Only a network failure queues. A server that answered and refused
+    // (the job was recalled, the state is wrong) is a real answer and must
+    // reach the technician now, not sit in a queue pretending to be fine.
+    if (!isNetworkError(err)) throw err;
+    enqueueWrite('woTransition', {
+      workOrderId,
+      event,
+      reason: opts.reason ?? null,
+      note: opts.note ?? null,
+      deviceId: opts.deviceId ?? null,
+      gps: opts.gps ?? null,
+      occurredAt,
+    });
+    return applyTransitionLocally(workOrderId, event, opts, occurredAt);
+  }
+}
+
+/** Optimistic local apply, mirroring app_wo_transition's state machine so
+ * the screen and the cached list agree with what the server will do when
+ * the queue drains. Deliberately a narrow copy: it moves the state and the
+ * timestamps and nothing else. */
+function applyTransitionLocally(
+  workOrderId: string,
+  event: 'on_the_way' | 'start' | 'pause' | 'stop' | 'sign_off',
+  opts: { reason?: string; note?: string },
+  occurredAt: string,
+): WorkOrderRecord {
+  const list = readCache<WorkOrderRecord[]>('wo:records') ?? [];
+  const found = list.find((w) => w.id === workOrderId);
+  if (!found) throw new ApiError(0, 'This work order is not on this device yet.');
+
+  const prev: WoLifecycle = found.lifecycle ?? {
+    state: 'not_started',
+    pauseReason: null,
+    pauseNote: null,
+    blocksResume: false,
+    onTheWayAt: null,
+    startedAt: null,
+    pausedAt: null,
+    stoppedAt: null,
+    pausedSeconds: 0,
+  };
+  const secondsSince = (iso: string | null): number =>
+    iso ? Math.max(0, Math.round((Date.parse(occurredAt) - Date.parse(iso)) / 1000)) : 0;
+
+  let next: WoLifecycle;
+  switch (event) {
+    case 'on_the_way':
+      next = { ...prev, state: 'on_the_way', onTheWayAt: occurredAt };
+      break;
+    case 'start':
+      next =
+        prev.state === 'paused'
+          ? {
+              ...prev,
+              state: 'started',
+              pausedSeconds: prev.pausedSeconds + secondsSince(prev.pausedAt),
+              pausedAt: null,
+              pauseReason: null,
+              pauseNote: null,
+              blocksResume: false,
+            }
+          : { ...prev, state: 'started', startedAt: prev.startedAt ?? occurredAt };
+      break;
+    case 'pause':
+      next = {
+        ...prev,
+        state: 'paused',
+        pausedAt: occurredAt,
+        pauseReason: opts.reason ?? null,
+        pauseNote: opts.note ?? null,
+      };
+      break;
+    case 'stop':
+      next = {
+        ...prev,
+        state: 'stopped',
+        stoppedAt: occurredAt,
+        pausedSeconds:
+          prev.pausedSeconds + (prev.state === 'paused' ? secondsSince(prev.pausedAt) : 0),
+        pausedAt: null,
+      };
+      break;
+    case 'sign_off':
+      next = { ...prev, state: 'signed_off' };
+      break;
+  }
+
+  const updated: WorkOrderRecord = { ...found, lifecycle: next };
+  writeCache(
+    'wo:records',
+    list.map((w) => (w.id === workOrderId ? updated : w)),
+  );
+  return updated;
 }
 
 /** One certified proving measure from the register (#70). */

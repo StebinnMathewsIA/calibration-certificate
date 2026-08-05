@@ -11,6 +11,7 @@
  */
 import { db } from '../db/database';
 import { ApiError, request } from '../api/http';
+import { rpc } from '../api/supabaseRpc';
 
 export type OutboxKind =
   | 'upsertSite'
@@ -19,7 +20,8 @@ export type OutboxKind =
   | 'retireDispenser'
   | 'saveDispenserDetail'
   | 'patchMyTechnician'
-  | 'addMeasure';
+  | 'addMeasure'
+  | 'woTransition';
 
 interface OutboxRow {
   id: number;
@@ -81,20 +83,52 @@ async function perform(token: string | null, kind: OutboxKind, p: any): Promise<
         body: JSON.stringify(p.body),
       });
       return;
+    case 'woTransition':
+      // Straight to the RPC, unlike the rest: the lifecycle lives in
+      // Supabase, not behind a Render endpoint. p_occurred_at carries the
+      // moment the technician actually tapped, so a job started at 08:42
+      // offline is not recorded as having started when the signal came
+      // back.
+      await rpc('app_wo_transition', token, {
+        p_work_order_id: p.workOrderId,
+        p_event: p.event,
+        p_reason: p.reason ?? null,
+        p_note: p.note ?? null,
+        p_device_id: p.deviceId ?? null,
+        p_gps: p.gps ?? null,
+        p_occurred_at: p.occurredAt ?? null,
+      });
+      return;
   }
+}
+
+/** The work order an item acts on, for ordering. Only lifecycle events
+ * need it: the rest are independent upserts. */
+function targetOf(kind: OutboxKind, p: any): string | null {
+  return kind === 'woTransition' ? String(p.workOrderId) : null;
 }
 
 /** Replays queued writes oldest-first. Stops at the first NETWORK failure
  * (still offline); drops items the server has answered (2xx, or 409 =
- * already applied on a previous attempt). Other server rejections stay
- * queued with the error recorded, but do not block later items. */
+ * already applied on a previous attempt).
+ *
+ * A server rejection is recorded and skipped rather than retried forever,
+ * EXCEPT that a rejected lifecycle event blocks every later event for the
+ * SAME work order. Those are a sequence, not independent upserts: if start
+ * is rejected because planning recalled the job, replaying the stop behind
+ * it would write a finish for work that never officially began. Other work
+ * orders are unaffected. */
 export async function drainOutbox(token: string | null): Promise<void> {
   const rows = db.getAllSync<OutboxRow>(
     'SELECT id, kind, payload_json FROM outbox ORDER BY id',
   );
+  const stuck = new Set<string>();
   for (const row of rows) {
+    const payload = JSON.parse(row.payload_json);
+    const target = targetOf(row.kind, payload);
+    if (target && stuck.has(target)) continue;
     try {
-      await perform(token, row.kind, JSON.parse(row.payload_json));
+      await perform(token, row.kind, payload);
       db.runSync('DELETE FROM outbox WHERE id = ?', [row.id]);
     } catch (err) {
       if (err instanceof ApiError) {
@@ -105,10 +139,28 @@ export async function drainOutbox(token: string | null): Promise<void> {
             JSON.stringify(err.detail).slice(0, 500),
             row.id,
           ]);
+          if (target) stuck.add(target);
         }
         continue;
       }
       return; // network is down — retry the whole tail later
     }
   }
+}
+
+/** Lifecycle events the server has rejected, for the screen to surface.
+ * A silent queue that never drains is worse than an error: the technician
+ * believes the office knows something it does not. */
+export function rejectedTransitions(): { workOrderId: string; event: string; error: string }[] {
+  const rows = db.getAllSync<{ payload_json: string; last_error: string | null }>(
+    "SELECT payload_json, last_error FROM outbox WHERE kind = 'woTransition' AND attempts > 0",
+  );
+  return rows.map((r) => {
+    const p = JSON.parse(r.payload_json);
+    return {
+      workOrderId: String(p.workOrderId),
+      event: String(p.event),
+      error: r.last_error ?? 'rejected',
+    };
+  });
 }

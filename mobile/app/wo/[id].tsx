@@ -21,6 +21,7 @@ import { Badge, Button, SectionCard, colors, fonts } from '../../src/components/
 import { FormScrollView } from '../../src/components/FormScrollView';
 import { MiniMap } from '../../src/components/MiniMap';
 import { fetchThrough, readCache, writeCache } from '../../src/db/cache';
+import { rejectedTransitions } from '../../src/sync/outbox';
 
 /** Same cache key My day reads. The two MUST agree: this screen used to
  * fetch the list itself, so a failed request left it on "Loading..."
@@ -72,6 +73,10 @@ export default function WorkOrderLifecycleScreen() {
   // what put a technician on a blank Loading screen with no way forward.
   const [loadState, setLoadState] = useState<'loading' | 'ready' | 'missing' | 'error'>('loading');
   const [loadError, setLoadError] = useState<string | null>(null);
+  // A lifecycle action the server has refused on replay. The technician
+  // acted, the screen showed it applied, and it did not stick. Saying
+  // nothing would leave them believing the office knows.
+  const [rejected, setRejected] = useState<{ event: string; error: string }[]>([]);
 
   const load = useCallback(() => {
     setLoadState((s) => (s === 'ready' ? s : 'loading'));
@@ -88,6 +93,11 @@ export default function WorkOrderLifecycleScreen() {
     fetchThrough('wo:pause-reasons', () => listPauseReasons(accessToken))
       .then(setReasons)
       .catch(() => {});
+    setRejected(
+      rejectedTransitions()
+        .filter((r) => r.workOrderId === id)
+        .map((r) => ({ event: r.event, error: r.error })),
+    );
   }, [accessToken, id]);
 
   useFocusEffect(
@@ -234,6 +244,25 @@ export default function WorkOrderLifecycleScreen() {
         ) : null}
         <MiniMap gpsWkt={wo.gpsLocation} address={wo.siteName ?? undefined} />
       </SectionCard>
+
+      {rejected.length > 0 ? (
+        <SectionCard title="Not accepted by the office">
+          <Text style={{ color: colors.ink, fontSize: 13 }}>
+            {rejected.length === 1 ? 'An action was' : 'Actions were'} recorded on this device but
+            refused when it reached the server. The office does not have{' '}
+            {rejected.length === 1 ? 'it' : 'them'}.
+          </Text>
+          {rejected.map((r, i) => (
+            <Text key={i} style={{ color: colors.red, fontSize: 12, marginTop: 4 }}>
+              {r.event.replaceAll('_', ' ')}: {r.error}
+            </Text>
+          ))}
+          <Text style={{ color: colors.muted, fontSize: 12, marginTop: 6 }}>
+            Call the office before carrying on. This usually means the job was reassigned or
+            closed while you were offline.
+          </Text>
+        </SectionCard>
+      ) : null}
 
       {state === 'paused' && wo.lifecycle?.pauseReason ? (
         <SectionCard title="Paused">

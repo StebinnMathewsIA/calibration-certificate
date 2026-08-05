@@ -72,7 +72,16 @@ def sync(
         ).start()
         return {"mode": "backfill", "accepted": True, "note": "running in background — poll /v1/onkey/status"}
 
-    summary = run_sync(db, settings, mode)
+    try:
+        summary = run_sync(db, settings, mode)
+    except Exception as exc:  # surfaced: a bare 500 here hid a 3-day outage
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                f"sync failed in {type(exc).__name__}: {str(exc)[:600]} "
+                f"[report={settings.onkey_report_code}]"
+            ),
+        ) from exc
     return {
         "mode": summary.mode,
         "window": {"start": summary.window_start, "end": summary.window_end},

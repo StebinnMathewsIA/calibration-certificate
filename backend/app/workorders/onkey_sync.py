@@ -52,6 +52,14 @@ def parse_export_xml(xml_data: str) -> list[dict]:
     return rows
 
 
+def _param_date(value: datetime) -> str:
+    """An Analyser DateTime parameter, as the report expects it.
+
+    Naive ISO seconds. Anything carrying a timezone offset is refused
+    with E5044, which says nothing about the cause."""
+    return value.replace(tzinfo=None).strftime("%Y-%m-%dT%H:%M:%S")
+
+
 def row_content_hash(row: dict) -> str:
     return hashlib.sha256(json.dumps(row, sort_keys=True, default=str).encode()).hexdigest()
 
@@ -193,8 +201,13 @@ class OnKeySoapClient:
             MaxRecordCount=self._settings.onkey_max_records,
             Parameters=parameter_array(
                 [
-                    parameter_type(Name="StartDate", Value=start),
-                    parameter_type(Name="EndDate", Value=end),
+                    # Dates go as PLAIN STRINGS, no timezone suffix. Value
+                    # is a string field, so a datetime gets serialised as
+                    # an offset-aware ISO stamp ("...+00:00") which the
+                    # Analyser rejects with a bare E5044. The probe calls
+                    # that work send strings, and this matches them.
+                    parameter_type(Name="StartDate", Value=_param_date(start)),
+                    parameter_type(Name="EndDate", Value=_param_date(end)),
                 ]
                 + [
                     parameter_type(Name=name, Value=value)

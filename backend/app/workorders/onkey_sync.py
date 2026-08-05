@@ -503,8 +503,18 @@ def derive_registers(db: Session) -> dict:
 
 def run_sync(db: Session, settings: Settings, mode: str) -> SyncSummary:
     """mode 'incremental': rolling window (delta via content-hash dedupe);
-    mode 'backfill': everything since ONKEY_BACKFILL_START."""
+    mode 'backfill': everything since ONKEY_BACKFILL_START;
+    mode 'derive': no export at all, just rebuild the registers from rows
+    already in onkey_woe001."""
     end = datetime.now().replace(hour=23, minute=59, second=59, microsecond=0)
+    if mode == "derive":
+        # The registers are a pure function of the raw snapshot table, so
+        # they can always be rebuilt without touching OnKey. Needed
+        # because export runs long enough to outlive a client timeout,
+        # which leaves raw rows landed and the registers stale.
+        summary = SyncSummary(mode=mode, window_start="", window_end="")
+        summary.registers = derive_registers(db)
+        return summary
     if mode == "backfill":
         start = datetime.fromisoformat(settings.onkey_backfill_start)
     elif mode == "incremental":

@@ -55,7 +55,7 @@ def _require_sync_token(authorization: str | None, settings: Settings) -> None:
 
 @router.post("/sync")
 def sync(
-    mode: str = Query(default="incremental", pattern="^(incremental|backfill)$"),
+    mode: str = Query(default="incremental", pattern="^(incremental|backfill|derive)$"),
     authorization: str | None = Header(default=None),
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),

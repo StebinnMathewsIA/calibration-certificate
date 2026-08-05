@@ -238,6 +238,15 @@ completed, then frozen into class 2).
   account (UserName/ConnectionName/rights) from Prowalco; zeep import
   client alongside the existing export client; EVERY import call refuses
   any work order not in `ONKEY_WRITE_ALLOWLIST`; every write audited.
+  RESOLVED 2026-08-04: the seven [TEST] codes are confirmed and now
+  live in migration 038 as the write allowlist. The "[TEST]#" prefix IS
+  part of the stored code, not a display decoration, so the allowlist
+  matches the full string. They are:
+  [TEST]#S00034215, [TEST]#FMC0064304, [TEST]#7067490, [TEST]#7067483,
+  [TEST]#S00033395, [TEST]#7067561, [TEST]#7067605.
+  All sit at Completed or Costing Complete, so exercising the visible
+  lifecycle against one still needs Prowalco to move it to an open
+  status. That ask stands.
   Confirm the exact [TEST] WO codes, the status/queue model (the test
   list shows Completed and Costing Complete states we do not sync
   today), and obtain the Interface Tool Import Templates for the

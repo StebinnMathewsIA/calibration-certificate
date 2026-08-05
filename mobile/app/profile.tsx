@@ -81,7 +81,14 @@ export default function ProfileScreen() {
           if (cancelled) return;
           setWhoami(w);
           if (w.role) {
-            fetchThrough('technicians:list', () => listTechnicians(accessToken))
+            // onFresh, or the picker shows the order and counts from the
+            // LAST visit: the cached copy paints instantly and the
+            // revalidated one would otherwise only reach the cache. This
+            // list changes whenever work is allocated, so a visit-old copy
+            // is routinely wrong.
+            fetchThrough('technicians:list', () => listTechnicians(accessToken), {
+              onFresh: (l) => !cancelled && setTechList(l ?? []),
+            })
               .then((l) => !cancelled && setTechList(l ?? []))
               .catch(() => {});
           }
@@ -395,7 +402,19 @@ export default function ProfileScreen() {
           <Button
             title={pickerOpen ? 'Close technician list' : 'Choose a technician…'}
             kind="secondary"
-            onPress={() => setPickerOpen(!pickerOpen)}
+            onPress={() => {
+              const opening = !pickerOpen;
+              setPickerOpen(opening);
+              // Opening the picker is the moment the order and the counts
+              // matter, so go to the network rather than trusting cache.
+              if (opening) {
+                fetchThrough('technicians:list', () => listTechnicians(accessToken), {
+                  force: true,
+                })
+                  .then((l) => setTechList(l ?? []))
+                  .catch(() => {});
+              }
+            }}
           />
           <Button
             title="Certificate archive search"

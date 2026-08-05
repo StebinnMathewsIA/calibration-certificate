@@ -126,6 +126,34 @@ it through the APO/APR approval chain with four live writes).
   dead-letter counts, replacing the visibility the GitHub cron logs
   provided.
 
+### Sync freshness gate (2026-08-05, after a three-day silent outage)
+The work order sync failed every five minutes for three days without
+telling anybody: the export threw behind a bare 500, the raw rows landed
+but the registers were never derived, and the work list quietly aged
+while forty red workflow runs went unread. Root causes were the libxml2
+text-node cap on the 65-column export, timezone-aware Analyser date
+parameters, and deriving registers only after the final chunk so a run
+that outlived its caller left them untouched. All three are fixed;
+registers are now derived after every chunk and the pull runs in a
+background thread.
+
+The reporting half matters as much as the fix:
+- Every incremental and backfill run is recorded in `onkey_sync_runs`,
+  succeeded or failed, on its own session. Process memory is lost on
+  each Render restart and could never answer "when did a sync last
+  succeed".
+- `/v1/onkey/status` returns a `health` block: minutes since the last
+  success, the last run's error, register rows and last update, and a
+  `stale` flag (`ONKEY_STALE_AFTER_MINUTES`, default 30). Derive runs are
+  excluded, since they touch no OnKey and prove no connectivity.
+- `onkey-sync.yml` fails the job on `health.stale`. The trigger is
+  asynchronous, so each five-minute run polices the previous one; a
+  stale reading is re-polled for three minutes before going red. A
+  failing scheduled workflow emails the repository owner, which is the
+  cheapest path from outage to human. When the Insights card lands it
+  should read the same `health` block rather than inventing a second
+  definition of current.
+
 ### Workstream B: device lifecycle (no dependencies, parallel)
 - #95: start/pause/resume/stop machine on OUR work-order entity (own
   uuid, source flag, OnKey code as external_ref), offline-first,

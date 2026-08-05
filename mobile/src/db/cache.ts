@@ -22,14 +22,41 @@ export function writeCache<T>(key: string, value: T): void {
 
 /** Stale-while-revalidate (Arch v2 phase 2, #66): a cached copy returns
  * INSTANTLY — screens never wait on the network once the mirror is synced —
- * while a background refresh updates the cache for the next open (the sync
- * engine keeps the mirror fresh anyway). Only a cold key awaits the network,
- * and network failure on a cold key surfaces to the caller. */
-export async function fetchThrough<T>(key: string, fetcher: () => Promise<T>): Promise<T> {
+ * while a background refresh updates the cache. Only a cold key awaits the
+ * network, and network failure on a cold key surfaces to the caller.
+ *
+ * `opts.onFresh` is how a screen stays current WITHIN one visit. Without
+ * it the revalidated value only reached the cache, so the technician saw
+ * it on the next open: one whole visit behind the planner. Pass it and
+ * the list updates in place the moment the network answers. It fires only
+ * when the fresh value actually differs, so it costs no render otherwise.
+ *
+ * `opts.force` skips the cached copy and awaits the network, for an
+ * explicit pull-to-refresh. It still falls back to cache when offline, so
+ * refreshing at a dead forecourt does not empty the screen. */
+export async function fetchThrough<T>(
+  key: string,
+  fetcher: () => Promise<T>,
+  opts: { onFresh?: (fresh: T) => void; force?: boolean } = {},
+): Promise<T> {
   const cached = readCache<T>(key);
+  if (opts.force) {
+    try {
+      const fresh = await fetcher();
+      writeCache(key, fresh);
+      return fresh;
+    } catch (err) {
+      if (cached !== null) return cached;
+      throw err;
+    }
+  }
   if (cached !== null) {
+    const before = JSON.stringify(cached);
     fetcher()
-      .then((fresh) => writeCache(key, fresh))
+      .then((fresh) => {
+        writeCache(key, fresh);
+        if (opts.onFresh && JSON.stringify(fresh) !== before) opts.onFresh(fresh);
+      })
       .catch(() => {});
     return cached;
   }

@@ -81,14 +81,16 @@ class Settings(BaseSettings):
     onkey_sync_window_days: int = 35
     onkey_backfill_start: str = "2024-01-01"
     # /v1/onkey/status calls the sync stale once this many minutes have
-    # passed with no successful run, and the scheduled workflow fails on
-    # that flag. Sized for the CURRENT trigger, not the declared one: the
-    # workflow says every 5 minutes but GitHub actually fires it every 1
-    # to 3 hours, so a tighter threshold would be red permanently and
-    # therefore ignored. Drop this to 30 once the Vault secret in
-    # migration 040 is in place and pg_cron drives the pull, since pg_cron
-    # does honour its interval.
-    onkey_stale_after_minutes: int = 180
+    # passed with no register refresh, and the scheduled workflow fails on
+    # that flag. 30 is right now that pg_cron drives the pull every minute
+    # (migration 041) and actually honours its interval; GitHub's schedule,
+    # which fired every 1 to 3 hours, is only the monitor.
+    onkey_stale_after_minutes: int = 30
+    # The fast lane. Technicians are on site and need the planner's latest
+    # assignment, so the routine pull is a NARROW window run every minute
+    # rather than the 35-day sweep run occasionally. Two days covers a
+    # weekend of changes with a few hundred rows.
+    onkey_recent_window_days: int = 2
 
     # Device binding (#51). Enforcement is flag-gated for a safe rollout:
     # off (default) verifies+audits device signatures when present but never

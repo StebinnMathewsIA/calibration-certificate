@@ -35,6 +35,12 @@ _backfill_lock = threading.Lock()
 _backfill_state: dict = {"running": False, "last": None}
 _sync_lock = threading.Lock()
 _sync_state: dict = {"running": False, "last": None}
+# The fast lane gets its OWN single-flight guard. Sharing the wide sweep's
+# lock would starve it: the 35-day sweep runs for many minutes and every
+# once-a-minute recent kick inside that span would be refused, which is
+# exactly the staleness the fast lane exists to remove.
+_recent_lock = threading.Lock()
+_recent_state: dict = {"running": False, "last": None}
 
 
 def _record_run(
@@ -139,7 +145,7 @@ def _require_sync_token(authorization: str | None, settings: Settings) -> None:
 
 @router.post("/sync")
 def sync(
-    mode: str = Query(default="incremental", pattern="^(incremental|backfill|derive)$"),
+    mode: str = Query(default="incremental", pattern="^(recent|incremental|backfill|derive)$"),
     authorization: str | None = Header(default=None),
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
@@ -156,27 +162,29 @@ def sync(
         ).start()
         return {"mode": "backfill", "accepted": True, "note": "running in background — poll /v1/onkey/status"}
 
-    if mode == "incremental":
-        with _sync_lock:
-            if _sync_state["running"]:
+    if mode in ("incremental", "recent"):
+        lock = _sync_lock if mode == "incremental" else _recent_lock
+        state = _sync_state if mode == "incremental" else _recent_state
+        with lock:
+            if state["running"]:
                 return {
                     "mode": mode,
                     "accepted": False,
-                    "reason": "a sync is already running",
-                    "last": _sync_state["last"],
+                    "reason": f"a {mode} sync is already running",
+                    "last": state["last"],
                 }
-            _sync_state["running"] = True
+            state["running"] = True
         threading.Thread(
             target=_run_sync_background,
-            args=(settings, mode, _sync_state, _sync_state),
+            args=(settings, mode, state, state),
             daemon=True,
-            name="onkey-sync",
+            name=f"onkey-{mode}",
         ).start()
         return {
             "mode": mode,
             "accepted": True,
             "note": "running in background — poll /v1/onkey/status",
-            "last": _sync_state["last"],
+            "last": state["last"],
         }
 
     try:
@@ -490,6 +498,7 @@ def status(
         "rows": total,
         "lastSeenAt": last_seen.isoformat() if last_seen else None,
         "columns": sorted(sample.keys()) if isinstance(sample, dict) else [],
+        "recent": {"running": _recent_state["running"], "last": _recent_state["last"]},
         "sync": {"running": _sync_state["running"], "last": _sync_state["last"]},
         "backfill": {"running": _backfill_state["running"], "last": _backfill_state["last"]},
         "health": _health(db, settings),
@@ -499,7 +508,7 @@ def status(
 # Modes that pull from OnKey. 'derive' only rebuilds registers from rows
 # already stored, so a run of it says nothing about whether OnKey is
 # reachable and must not count as a successful sync.
-_PULL_MODES = ("incremental", "backfill")
+_PULL_MODES = ("recent", "incremental", "backfill")
 
 
 def _health(db: Session, settings: Settings) -> dict:

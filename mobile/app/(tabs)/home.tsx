@@ -70,6 +70,10 @@ export default function HomeScreen() {
   // archive drafts for closed work orders; they are no longer a second
   // work list on screen.
   const [myDayCount, setMyDayCount] = useState<number | null>(null);
+  // Bumped by the header refresh button. My day owns the work list, so the
+  // button has to reach it: refreshing used to reload everything EXCEPT
+  // the list the technician was looking at.
+  const [refreshSignal, setRefreshSignal] = useState(0);
 
   const loadLocal = useCallback(() => {
     // Every verification on this device that has not fully synced — drafts
@@ -252,7 +256,10 @@ export default function HomeScreen() {
       <GreetingHeader
         openWorkOrders={myDayCount ?? 0}
         checking={myDayCount === null}
-        onRefresh={load}
+        onRefresh={() => {
+          setRefreshSignal((n) => n + 1);
+          void load();
+        }}
         refreshing={refreshing}
       />
       <SyncBanner onQueueDrained={loadLocal} />
@@ -370,7 +377,7 @@ export default function HomeScreen() {
                 work list on Home. A second section used to repeat the same
                 jobs grouped by OnKey status, counted differently, and
                 opened a different screen. */}
-            <MyDay onCount={setMyDayCount} />
+            <MyDay onCount={setMyDayCount} refreshSignal={refreshSignal} />
             {inProgress.length > 0 ? (
               <Text
                 style={{

@@ -502,7 +502,12 @@ def derive_registers(db: Session) -> dict:
 
 
 def run_sync(db: Session, settings: Settings, mode: str) -> SyncSummary:
-    """mode 'incremental': rolling window (delta via content-hash dedupe);
+    """mode 'recent': the fast lane, a narrow window (default 2 days) run
+    every minute so a technician on site sees the planner's latest
+    assignment;
+    mode 'incremental': the wide 35-day sweep, the safety net for changes
+    the narrow window's date filter cannot see (a reassignment that moves
+    WorkOrderLastModifiedOn but not the queue transition time);
     mode 'backfill': everything since ONKEY_BACKFILL_START;
     mode 'derive': no export at all, just rebuild the registers from rows
     already in onkey_woe001."""
@@ -521,8 +526,12 @@ def run_sync(db: Session, settings: Settings, mode: str) -> SyncSummary:
         start = (end - timedelta(days=settings.onkey_sync_window_days)).replace(
             hour=0, minute=0, second=0, microsecond=0
         )
+    elif mode == "recent":
+        start = (end - timedelta(days=settings.onkey_recent_window_days)).replace(
+            hour=0, minute=0, second=0, microsecond=0
+        )
     else:
-        raise ValueError("mode must be 'incremental' or 'backfill'")
+        raise ValueError("mode must be 'recent', 'incremental' or 'backfill'")
 
     summary = SyncSummary(mode=mode, window_start=start.isoformat(), window_end=end.isoformat())
     columns: set[str] = set()

@@ -41,7 +41,14 @@ const matches = (r: Ranked, f: Filter): boolean => {
   return s === 'stopped' || s === 'signed_off';
 };
 
-export function MyDay({ onCount }: { onCount?: (n: number) => void } = {}) {
+export function MyDay({
+  onCount,
+  refreshSignal = 0,
+}: {
+  onCount?: (n: number) => void;
+  /** Bumped by Home's refresh button to force a network read. */
+  refreshSignal?: number;
+} = {}) {
   const { accessToken } = useAuth();
   const router = useRouter();
   const [ranked, setRanked] = useState<Ranked[] | null>(null);
@@ -54,39 +61,56 @@ export function MyDay({ onCount }: { onCount?: (n: number) => void } = {}) {
     onCountRef.current = onCount;
   }, [onCount]);
 
-  const load = useCallback(async () => {
-    let here: { latitude: number; longitude: number } | null = null;
-    try {
-      const perm = await Location.getForegroundPermissionsAsync();
-      if (perm.granted) {
-        const fix = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.Balanced,
-        });
-        here = { latitude: fix.coords.latitude, longitude: fix.coords.longitude };
+  const load = useCallback(
+    async (force = false) => {
+      let here: { latitude: number; longitude: number } | null = null;
+      try {
+        const perm = await Location.getForegroundPermissionsAsync();
+        if (perm.granted) {
+          const fix = await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.Balanced,
+          });
+          here = { latitude: fix.coords.latitude, longitude: fix.coords.longitude };
+        }
+      } catch {
+        // Ranking still works on urgency alone without a fix.
       }
-    } catch {
-      // Ranking still works on urgency alone without a fix.
-    }
-    try {
-      const list = await fetchThrough<WorkOrderRecord[]>('wo:records', () =>
-        listWorkOrderRecords(accessToken),
-      );
-      setRanked(rankWorkOrders(list, here));
-      // The greeting's count comes from HERE, not from a second query.
-      // Home used to count OnKey's open statuses while this list counted
-      // our work-order records, so the header said 2 above a list of 4.
-      onCountRef.current?.(list.length);
-    } catch {
-      setRanked([]);
-      onCountRef.current?.(0);
-    }
-  }, [accessToken]);
+      const apply = (list: WorkOrderRecord[]) => {
+        setRanked(rankWorkOrders(list, here));
+        // The greeting's count comes from HERE, not from a second query.
+        // Home used to count OnKey's open statuses while this list counted
+        // our work-order records, so the header said 2 above a list of 4.
+        onCountRef.current?.(list.length);
+      };
+      try {
+        const list = await fetchThrough<WorkOrderRecord[]>(
+          'wo:records',
+          () => listWorkOrderRecords(accessToken),
+          // The cached list paints immediately; `onFresh` repaints the
+          // moment the server answers, so a planner's change lands in the
+          // same visit rather than the next one.
+          { force, onFresh: apply },
+        );
+        apply(list);
+      } catch {
+        setRanked([]);
+        onCountRef.current?.(0);
+      }
+    },
+    [accessToken],
+  );
 
   useFocusEffect(
     useCallback(() => {
       void load();
     }, [load]),
   );
+
+  // The header refresh button drives this, so pulling to refresh actually
+  // goes to the network instead of re-reading the same cache.
+  useEffect(() => {
+    if (refreshSignal) void load(true);
+  }, [refreshSignal, load]);
 
   const counts = useMemo(() => {
     const c: Record<Filter, number> = { all: 0, not_started: 0, active: 0, done: 0 };

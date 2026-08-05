@@ -230,6 +230,34 @@ async function handleExport(body: Record<string, unknown>): Promise<Response> {
   }
 }
 
+/** Give up after this many tries. Without a ceiling a permanently
+ * rejected event blocks its work order forever, because the head-of-line
+ * rule below never lets the next one past. */
+const MAX_ATTEMPTS = 5;
+
+/** Failure disposition. Retries back off 1, 2, 4, 8 minutes and then the
+ * row dead-letters, which RELEASES the work order: the queue must not be
+ * frozen by something that is never going to succeed. A dead letter is a
+ * visible question for a human, not a silent drop. */
+function retryOrGiveUp(
+  ev: Record<string, any>,
+  message: string,
+  failures?: unknown[],
+): Record<string, unknown> {
+  const attempts = (ev.attempts ?? 0) + 1;
+  const giveUp = attempts >= MAX_ATTEMPTS;
+  return {
+    state: giveUp ? 'dead_letter' : 'failed',
+    attempts,
+    record_failures: failures?.length ? failures : null,
+    last_error: giveUp ? `gave up after ${attempts} attempts: ${message}` : message,
+    not_before: giveUp
+      ? null
+      : new Date(Date.now() + 2 ** (attempts - 1) * 60_000).toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+}
+
 /** Domain event -> OnKey import. The ADAPTER: replacing OnKey means
  * replacing this function, nothing else. */
 async function handleDrain(limit: number): Promise<Response> {
@@ -237,14 +265,36 @@ async function handleDrain(limit: number): Promise<Response> {
   const allowlist = await config<string[]>('write_allowlist', []);
   const runId = await startRun('drain', { dryRun, limit });
 
-  const { data: events } = await db
+  // pending AND failed: a failed row is retried until MAX_ATTEMPTS, then
+  // dead-lettered. not_before carries the backoff, so a row that has just
+  // failed is skipped rather than hammered.
+  const nowIso = new Date().toISOString();
+  const { data: candidates } = await db
     .from('onkey_outbox')
     .select('*')
-    .eq('state', 'pending')
+    .in('state', ['pending', 'failed'])
+    .or(`not_before.is.null,not_before.lte.${nowIso}`)
+    // seq before created_at: the hops of one lifecycle event must land in
+    // order (pause for spares is WPA then LSI), and they share a timestamp.
     .order('created_at', { ascending: true })
+    .order('seq', { ascending: true })
     .limit(limit);
 
-  if (!events?.length) {
+  // Head-of-line per work order. These are a SEQUENCE, not independent
+  // upserts: sending a stop after its start was refused would record a
+  // finish for work OnKey never saw begin. One stuck work order must not
+  // stall any other, so the block is per wo_code, and dead-lettering a row
+  // releases it (that row is no longer a candidate).
+  const events: Record<string, any>[] = [];
+  const seenCode = new Set<string>();
+  for (const ev of candidates ?? []) {
+    const code = ev.wo_code ?? '';
+    if (code && seenCode.has(code)) continue;
+    if (code) seenCode.add(code);
+    events.push(ev);
+  }
+
+  if (!events.length) {
     await finishRun(runId, { state: 'succeeded', detail: { drained: 0, dryRun } });
     return json({ ok: true, drained: 0, dryRun });
   }
@@ -259,7 +309,10 @@ async function handleDrain(limit: number): Promise<Response> {
         await db
           .from('onkey_outbox')
           .update({
-            state: 'dead_letter',
+            // 'blocked', not 'dead_letter': WE declined to send this. It
+            // was never offered to OnKey and never refused by it, and that
+            // difference is what someone triaging needs to see.
+            state: 'blocked',
             last_error: `work order ${ev.wo_code} is not in the write allowlist`,
             updated_at: new Date().toISOString(),
           })
@@ -276,30 +329,32 @@ async function handleDrain(limit: number): Promise<Response> {
 
       try {
         const result = await execute(client, ev, planned);
+        // No read-back here, deliberately. The only status we hold is our
+        // own mirror, refreshed by the export every couple of minutes, so
+        // checking it right after a write would see the OLD status and
+        // conclude the write failed. Divergence is reconciled on the next
+        // sync instead, where the data is actually fresh.
         await db
           .from('onkey_outbox')
-          .update({
-            state: result.failures.length ? 'failed' : 'sent',
-            attempts: (ev.attempts ?? 0) + 1,
-            record_failures: result.failures.length ? result.failures : null,
-            onkey_record_ids: result.successes,
-            last_error: result.failures.map((f) => f.message).join('; ') || null,
-            sent_at: result.failures.length ? null : new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          })
+          .update(
+            result.failures.length
+              ? retryOrGiveUp(ev, result.failures.map((f) => f.message).join('; '), result.failures)
+              : {
+                  state: 'sent',
+                  attempts: (ev.attempts ?? 0) + 1,
+                  record_failures: null,
+                  onkey_record_ids: result.successes,
+                  last_error: null,
+                  not_before: null,
+                  sent_at: new Date().toISOString(),
+                  updated_at: new Date().toISOString(),
+                },
+          )
           .eq('id', ev.id);
         results.push({ id: ev.id, failures: result.failures, successes: result.successes });
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        await db
-          .from('onkey_outbox')
-          .update({
-            state: 'failed',
-            attempts: (ev.attempts ?? 0) + 1,
-            last_error: message,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', ev.id);
+        await db.from('onkey_outbox').update(retryOrGiveUp(ev, message)).eq('id', ev.id);
         results.push({ id: ev.id, error: message });
       }
     }

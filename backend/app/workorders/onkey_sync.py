@@ -540,6 +540,15 @@ def run_sync(db: Session, settings: Settings, mode: str) -> SyncSummary:
             summary.rows_refreshed += refreshed
             for row in chunk.values():
                 columns.update(row.keys())
+            # Derive after EVERY chunk, not once at the end. Chunks run
+            # newest-first, so the current window reaches the registers
+            # within the first one and the work list is current even if
+            # the run is cut short. Deriving only at the end meant a run
+            # that outlived its caller landed raw rows and left the
+            # registers untouched: the export looked fine and the app
+            # stayed stale. Idempotent upserts, so repeating is free.
+            summary.registers = derive_registers(db)
     summary.columns = sorted(columns)
-    summary.registers = derive_registers(db)
+    if not summary.registers:
+        summary.registers = derive_registers(db)
     return summary

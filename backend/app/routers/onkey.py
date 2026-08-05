@@ -3,12 +3,17 @@
 free-tier Render instance awake. Guarded by ONKEY_SYNC_TOKEN (empty token
 disables the endpoints entirely).
 
-The incremental window is small and runs inline. Backfill spans years and
-outlives Render's HTTP proxy window, so it runs in a background thread: the
-endpoint returns 202 immediately and /status reports progress."""
+BOTH modes run in a background thread and /status reports progress. The
+incremental window used to run inline, which was fine for the narrow
+WOE001 report; the 65-column FIELDOPS - WOE export outlives any sensible
+client timeout, and a caller hanging up aborted the run before the
+registers were derived. Raw rows landed, the registers stayed stale, and
+nothing said so for three days. mode=derive rebuilds the registers from
+rows already stored, without touching OnKey."""
 import hmac
 import json
 import threading
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -22,27 +27,44 @@ from ..workorders.onkey_sync import derive_registers, run_sync
 
 router = APIRouter(prefix="/v1/onkey", tags=["onkey"])
 
-# Single-flight guard + last outcome for the background backfill.
+# Single-flight guard + last outcome, per mode. Both incremental and
+# backfill run in the background: a 65-column export outlives any
+# sensible client timeout, and a caller hanging up used to abort the run
+# before the registers were derived.
 _backfill_lock = threading.Lock()
 _backfill_state: dict = {"running": False, "last": None}
+_sync_lock = threading.Lock()
+_sync_state: dict = {"running": False, "last": None}
+
+
+def _run_sync_background(settings: Settings, mode: str, state: dict, running_flag: dict) -> None:
+    db = SessionLocal()
+    try:
+        summary = run_sync(db, settings, mode)
+        state["last"] = {
+            "ok": True,
+            "mode": summary.mode,
+            "rowsFetched": summary.rows_fetched,
+            "rowsInserted": summary.rows_inserted,
+            "rowsRefreshed": summary.rows_refreshed,
+            "registers": summary.registers,
+            "window": {"start": summary.window_start, "end": summary.window_end},
+            "finishedAt": datetime.now(timezone.utc).isoformat(),
+        }
+    except Exception as exc:  # noqa: BLE001 — reported via /status
+        state["last"] = {
+            "ok": False,
+            "mode": mode,
+            "error": f"{type(exc).__name__}: {str(exc)[:500]}",
+            "finishedAt": datetime.now(timezone.utc).isoformat(),
+        }
+    finally:
+        db.close()
+        running_flag["running"] = False
 
 
 def _run_backfill_background(settings: Settings) -> None:
-    db = SessionLocal()
-    try:
-        summary = run_sync(db, settings, "backfill")
-        _backfill_state["last"] = {
-            "ok": True,
-            "rowsFetched": summary.rows_fetched,
-            "rowsInserted": summary.rows_inserted,
-            "columns": summary.columns,
-            "window": {"start": summary.window_start, "end": summary.window_end},
-        }
-    except Exception as exc:  # noqa: BLE001 — reported via /status
-        _backfill_state["last"] = {"ok": False, "error": str(exc)[:500]}
-    finally:
-        db.close()
-        _backfill_state["running"] = False
+    _run_sync_background(settings, "backfill", _backfill_state, _backfill_state)
 
 
 def _require_sync_token(authorization: str | None, settings: Settings) -> None:
@@ -71,6 +93,29 @@ def sync(
             target=_run_backfill_background, args=(settings,), daemon=True, name="onkey-backfill"
         ).start()
         return {"mode": "backfill", "accepted": True, "note": "running in background — poll /v1/onkey/status"}
+
+    if mode == "incremental":
+        with _sync_lock:
+            if _sync_state["running"]:
+                return {
+                    "mode": mode,
+                    "accepted": False,
+                    "reason": "a sync is already running",
+                    "last": _sync_state["last"],
+                }
+            _sync_state["running"] = True
+        threading.Thread(
+            target=_run_sync_background,
+            args=(settings, mode, _sync_state, _sync_state),
+            daemon=True,
+            name="onkey-sync",
+        ).start()
+        return {
+            "mode": mode,
+            "accepted": True,
+            "note": "running in background — poll /v1/onkey/status",
+            "last": _sync_state["last"],
+        }
 
     try:
         summary = run_sync(db, settings, mode)
@@ -383,5 +428,6 @@ def status(
         "rows": total,
         "lastSeenAt": last_seen.isoformat() if last_seen else None,
         "columns": sorted(sample.keys()) if isinstance(sample, dict) else [],
+        "sync": {"running": _sync_state["running"], "last": _sync_state["last"]},
         "backfill": {"running": _backfill_state["running"], "last": _backfill_state["last"]},
     }

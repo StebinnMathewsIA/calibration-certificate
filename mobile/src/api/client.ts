@@ -325,6 +325,11 @@ export async function transitionWorkOrder(
     // (the job was recalled, the state is wrong) is a real answer and must
     // reach the technician now, not sit in a queue pretending to be fine.
     if (!isNetworkError(err)) throw err;
+    // Compute the local result BEFORE queueing. It can throw (the work
+    // order is not on this device), and queueing first would leave a write
+    // on its way to the server behind an error the technician reads as
+    // "that did not happen".
+    const updated = applyTransitionLocally(workOrderId, event, opts, occurredAt);
     enqueueWrite('woTransition', {
       workOrderId,
       event,
@@ -334,7 +339,8 @@ export async function transitionWorkOrder(
       gps: opts.gps ?? null,
       occurredAt,
     });
-    return applyTransitionLocally(workOrderId, event, opts, occurredAt);
+    commitTransitionLocally(workOrderId, updated);
+    return updated;
   }
 }
 
@@ -409,12 +415,18 @@ function applyTransitionLocally(
       break;
   }
 
-  const updated: WorkOrderRecord = { ...found, lifecycle: next };
+  // Pure up to here: nothing is written until the caller has also queued
+  // the write, so the cache and the queue cannot disagree.
+  return { ...found, lifecycle: next };
+}
+
+/** Land the optimistic result once the write is safely queued. */
+function commitTransitionLocally(workOrderId: string, updated: WorkOrderRecord): void {
+  const list = readCache<WorkOrderRecord[]>('wo:records') ?? [];
   writeCache(
     'wo:records',
     list.map((w) => (w.id === workOrderId ? updated : w)),
   );
-  return updated;
 }
 
 /** One certified proving measure from the register (#70). */

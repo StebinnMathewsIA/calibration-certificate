@@ -265,36 +265,21 @@ async function handleDrain(limit: number): Promise<Response> {
   const allowlist = await config<string[]>('write_allowlist', []);
   const runId = await startRun('drain', { dryRun, limit });
 
-  // pending AND failed: a failed row is retried until MAX_ATTEMPTS, then
-  // dead-lettered. not_before carries the backoff, so a row that has just
-  // failed is skipped rather than hammered.
-  const nowIso = new Date().toISOString();
-  const { data: candidates } = await db
-    .from('onkey_outbox')
-    .select('*')
-    .in('state', ['pending', 'failed'])
-    .or(`not_before.is.null,not_before.lte.${nowIso}`)
-    // seq before created_at: the hops of one lifecycle event must land in
-    // order (pause for spares is WPA then LSI), and they share a timestamp.
-    .order('created_at', { ascending: true })
-    .order('seq', { ascending: true })
-    .limit(limit);
+  // Head selection lives in SQL (onkey_outbox_next), not here. Doing it in
+  // TypeScript produced two bugs. Filtering to eligible rows FIRST meant a
+  // head in retry backoff dropped out of the list and promoted its own
+  // successor, so hop 2 could reach OnKey without hop 1: reproduced live
+  // with WPA backing off and LSI sailing past it. And applying the limit
+  // before the per-work-order reduction let one work order with a long
+  // queue fill the page and starve every other. The SQL picks the true
+  // head per work order from ALL unfinished rows, backoff included, then
+  // applies eligibility and only then the limit.
+  const { data: events, error: nextError } = await db.rpc('onkey_outbox_next', {
+    p_limit: limit,
+  });
+  if (nextError) throw new Error(nextError.message);
 
-  // Head-of-line per work order. These are a SEQUENCE, not independent
-  // upserts: sending a stop after its start was refused would record a
-  // finish for work OnKey never saw begin. One stuck work order must not
-  // stall any other, so the block is per wo_code, and dead-lettering a row
-  // releases it (that row is no longer a candidate).
-  const events: Record<string, any>[] = [];
-  const seenCode = new Set<string>();
-  for (const ev of candidates ?? []) {
-    const code = ev.wo_code ?? '';
-    if (code && seenCode.has(code)) continue;
-    if (code) seenCode.add(code);
-    events.push(ev);
-  }
-
-  if (!events.length) {
+  if (!events?.length) {
     await finishRun(runId, { state: 'succeeded', detail: { drained: 0, dryRun } });
     return json({ ok: true, drained: 0, dryRun });
   }

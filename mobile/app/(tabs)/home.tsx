@@ -4,9 +4,7 @@ import { Alert, FlatList, Pressable, Text, View } from 'react-native';
 import type { CertificateState, Verification } from '@prowalco/schema';
 import {
   TeamGroup,
-  WorkOrderRecord,
   getTeamWorkOrders,
-  listWorkOrderRecords,
   listWorkOrders,
   WorkOrderSummary,
 } from '../../src/api/client';
@@ -44,23 +42,7 @@ function resumePath(state: CertificateState): string {
   return '/verification/[id]/results';
 }
 
-const recordWorkOrderId = (r: repo.CertificateRecord): string | undefined =>
-  (r.form as Partial<Verification>).workOrderId;
-
-/** Home section order for open work orders — owner-defined OnKey statuses
- * (#55). Work orders with any other/no statusDetail land in "Open". */
-const OPEN_SECTION_ORDER = [
-  'To be Planned',
-  'Allocated',
-  'Incomplete for Spares',
-  'Work Order Received',
-  'Referral',
-  'Work Resumed',
-];
-
-type HomeListItem = { kind: 'header'; title: string } | { kind: 'wo'; wo: WorkOrderSummary };
-
-/** Editable pre-signing states — the only ones that may be deleted (#41). */
+/** Editable pre-signing states, the only ones that may be deleted (#41). */
 const isDraftState = (s: CertificateState) => s === 'DRAFT' || s === 'READY_TO_SIGN';
 
 /** "Last saved" readout (#40): relative while recent, absolute after a day. */
@@ -83,6 +65,11 @@ export default function HomeScreen() {
   const [inProgress, setInProgress] = useState<repo.CertificateRecord[]>([]);
   const [archivedCount, setArchivedCount] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
+  // Reported by My day so the greeting can never contradict the list under
+  // it. The OnKey summaries in `workOrders` are still fetched, but only to
+  // archive drafts for closed work orders; they are no longer a second
+  // work list on screen.
+  const [myDayCount, setMyDayCount] = useState<number | null>(null);
 
   const loadLocal = useCallback(() => {
     // Every verification on this device that has not fully synced — drafts
@@ -186,50 +173,6 @@ export default function HomeScreen() {
     );
   };
 
-  // In-progress items grouped under their work order (#30); anything whose
-  // work order is not displayed (no id, or no longer assigned) stays in the
-  // fallback section so it never disappears.
-  const byWorkOrder = useMemo(() => {
-    const m = new Map<string, repo.CertificateRecord[]>();
-    for (const r of inProgress) {
-      const woId = recordWorkOrderId(r);
-      if (!woId) continue;
-      m.set(woId, [...(m.get(woId) ?? []), r]);
-    }
-    return m;
-  }, [inProgress]);
-
-  const unallocated = useMemo(() => {
-    const displayed = new Set(workOrders.map((w) => w.id));
-    return inProgress.filter((r) => {
-      const woId = recordWorkOrderId(r);
-      return !woId || !displayed.has(woId);
-    });
-  }, [inProgress, workOrders]);
-
-  // Section per OnKey status in the owner-defined order (#55); anything with
-  // an unknown/missing statusDetail (e.g. the simulated provider) lands in a
-  // plain "Open" section so nothing disappears.
-  const sectionedItems = useMemo<HomeListItem[]>(() => {
-    const items: HomeListItem[] = [];
-    const leftovers = new Set(workOrders.map((w) => w.id));
-    for (const title of OPEN_SECTION_ORDER) {
-      const inSection = workOrders.filter((w) => w.statusDetail === title);
-      if (inSection.length === 0) continue;
-      items.push({ kind: 'header', title });
-      for (const wo of inSection) {
-        items.push({ kind: 'wo', wo });
-        leftovers.delete(wo.id);
-      }
-    }
-    const rest = workOrders.filter((w) => leftovers.has(w.id));
-    if (rest.length > 0) {
-      if (items.length > 0) items.push({ kind: 'header', title: 'Open' });
-      for (const wo of rest) items.push({ kind: 'wo', wo });
-    }
-    return items;
-  }, [workOrders]);
-
   if (!loading && !identity) return <Redirect href="/" />;
 
   const inProgressCard = (item: repo.CertificateRecord, nested: boolean) => {
@@ -307,8 +250,8 @@ export default function HomeScreen() {
   return (
     <View style={styles.screen}>
       <GreetingHeader
-        openWorkOrders={workOrders.length}
-        checking={refreshing && workOrders.length === 0}
+        openWorkOrders={myDayCount ?? 0}
+        checking={myDayCount === null}
         onRefresh={load}
         refreshing={refreshing}
       />
@@ -415,78 +358,41 @@ export default function HomeScreen() {
           ) : null}
           </View>
         }
-        data={sectionedItems}
-        keyExtractor={(x) => (x.kind === 'header' ? `h:${x.title}` : x.wo.id)}
+        data={inProgress}
+        keyExtractor={(x) => x.id}
         // The in-flow tab bar reserves its own space now (#45) — only a
         // small breathing gap is needed.
         contentContainerStyle={{ paddingBottom: 24 }}
         ListHeaderComponent={
           <>
-            {/* The new work list (#95/#107): our work-order records with
-                our lifecycle, ranked and filterable by state. */}
-            <MyDay />
-            {unallocated.length > 0 ? (
-              <>
-                <Text style={{ marginHorizontal: 12, fontWeight: '700', color: colors.ink }}>
-                  In progress on this device
-                </Text>
-                {unallocated.map((item) => inProgressCard(item, false))}
-              </>
+            {/* The work list (#95/#107): our work-order records with our
+                lifecycle, ranked and filterable by state. This is the ONLY
+                work list on Home. A second section used to repeat the same
+                jobs grouped by OnKey status, counted differently, and
+                opened a different screen. */}
+            <MyDay onCount={setMyDayCount} />
+            {inProgress.length > 0 ? (
+              <Text
+                style={{
+                  marginHorizontal: 12,
+                  marginTop: 4,
+                  fontWeight: '700',
+                  color: colors.ink,
+                  fontSize: 16,
+                }}
+              >
+                Certificates in progress on this device
+              </Text>
             ) : null}
-            <Text style={{ marginHorizontal: 12, marginTop: 4, fontWeight: '700', color: colors.ink }}>
-              Verification work (certificates)
-            </Text>
           </>
         }
-        renderItem={({ item }) =>
-          item.kind === 'header' ? (
-            // One section per OnKey status, in the owner-defined order (#55).
-            <Text
-              style={{
-                marginHorizontal: 12,
-                marginTop: 14,
-                marginBottom: 2,
-                fontSize: 13,
-                fontWeight: '700',
-                color: colors.muted,
-                textTransform: 'uppercase',
-                letterSpacing: 0.5,
-              }}
-            >
-              {item.title}
-            </Text>
-          ) : (
-            <>
-              <Pressable
-                onPress={() =>
-                  router.push({ pathname: '/workorder/[id]', params: { id: item.wo.id } })
-                }
-              >
-                <View style={[styles.card, { flexDirection: 'row', alignItems: 'center' }]}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ fontWeight: '700', color: colors.ink }}>{item.wo.reference}</Text>
-                    <Text style={{ color: colors.muted, fontSize: 12 }}>
-                      {item.wo.site.customerName} · {item.wo.site.siteName}
-                    </Text>
-                    <Text style={{ color: colors.muted, fontSize: 11 }}>
-                      {item.wo.dispenserIds.length} dispenser(s)
-                      {item.wo.scheduledDate ? ` · due ${item.wo.scheduledDate}` : ''}
-                    </Text>
-                  </View>
-                  <Badge
-                    text={(item.wo.statusDetail ?? item.wo.status).replaceAll('_', ' ')}
-                    tone="muted"
-                  />
-                </View>
-              </Pressable>
-              {(byWorkOrder.get(item.wo.id) ?? []).map((r) => inProgressCard(r, true))}
-            </>
-          )
-        }
+        renderItem={({ item }) => inProgressCard(item, false)}
         ListEmptyComponent={
-          <Text style={{ textAlign: 'center', color: colors.muted, marginTop: 20 }}>
-            No open work orders. Pull refresh when online.
-          </Text>
+          myDayCount === 0 ? (
+            <Text style={{ textAlign: 'center', color: colors.muted, marginTop: 20 }}>
+              No open work orders. Pull refresh when online.
+            </Text>
+          ) : null
         }
       />
     </View>

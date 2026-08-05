@@ -8,7 +8,7 @@
  */
 import { useRouter } from 'expo-router';
 import * as Location from 'expo-location';
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
 import { Pressable, Text, View } from 'react-native';
 import { WorkOrderRecord, listWorkOrderRecords } from '../api/client';
@@ -41,12 +41,18 @@ const matches = (r: Ranked, f: Filter): boolean => {
   return s === 'stopped' || s === 'signed_off';
 };
 
-export function MyDay() {
+export function MyDay({ onCount }: { onCount?: (n: number) => void } = {}) {
   const { accessToken } = useAuth();
   const router = useRouter();
   const [ranked, setRanked] = useState<Ranked[] | null>(null);
   const [filter, setFilter] = useState<Filter>('all');
   const [showAll, setShowAll] = useState(false);
+  // Held in a ref so an inline callback from the parent cannot re-create
+  // `load` on every render and put useFocusEffect in a loop.
+  const onCountRef = useRef(onCount);
+  useEffect(() => {
+    onCountRef.current = onCount;
+  }, [onCount]);
 
   const load = useCallback(async () => {
     let here: { latitude: number; longitude: number } | null = null;
@@ -66,8 +72,13 @@ export function MyDay() {
         listWorkOrderRecords(accessToken),
       );
       setRanked(rankWorkOrders(list, here));
+      // The greeting's count comes from HERE, not from a second query.
+      // Home used to count OnKey's open statuses while this list counted
+      // our work-order records, so the header said 2 above a list of 4.
+      onCountRef.current?.(list.length);
     } catch {
       setRanked([]);
+      onCountRef.current?.(0);
     }
   }, [accessToken]);
 
@@ -94,9 +105,8 @@ export function MyDay() {
 
   return (
     <View style={{ marginHorizontal: 12, marginBottom: 12 }}>
-      <Text style={{ fontWeight: '700', color: colors.ink, fontSize: 16 }}>My day</Text>
-      <Text style={{ color: colors.muted, fontSize: 11, marginTop: 2, marginBottom: 8 }}>
-        Overdue work first, then urgency and how close you are. Start any job you like.
+      <Text style={{ fontWeight: '700', color: colors.ink, fontSize: 16, marginBottom: 8 }}>
+        My day
       </Text>
 
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>

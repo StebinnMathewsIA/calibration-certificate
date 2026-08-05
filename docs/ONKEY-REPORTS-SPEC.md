@@ -424,6 +424,21 @@ Lesson worth keeping: an export that returns few columns means little
 until the selected-column list has been checked. Omitted and empty look
 identical from here.
 
+### Filter trap: square brackets in a code
+
+The [TEST] work orders are invisible to any `Is Like` filter unless the
+bracket is escaped, because T-SQL LIKE treats `[...]` as a character
+class. `LIKE '[TEST]#FMC0057772'` means "one character from T, E or S
+followed by #FMC0057772", which matches nothing, and the report returns
+zero rows with no error.
+
+The literal form is `[[]TEST]#FMC0057772`. Confirmed: the unescaped
+probe stored 0 rows, the escaped one returned the full 5-row history.
+
+This matters beyond the test set: any code containing a bracket has the
+same problem, and it presents as "the record does not exist" rather than
+"the filter cannot express its name".
+
 ### Authoring recipe for the remaining reports
 - Header tab: Code, Description, Site PRD, Active, User Right, and
   **Is For Export** ticked (the export service cannot see it otherwise).

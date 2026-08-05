@@ -314,6 +314,28 @@ async function handleDrain(limit: number): Promise<Response> {
 
       try {
         const result = await execute(client, ev, planned);
+        // Every answer OnKey gives about a status change is register data.
+        // A refusal names the COMPLETE valid set for that source status
+        // ("restricted to Completed, Work Paused, ..."), which is better
+        // evidence than the export our own register was built from, and
+        // that register is already known to be missing 10 of 25 observed
+        // transitions. Folding it in here means the register improves as
+        // the system runs, with no probing campaign and no risk.
+        if (ev.kind === 'status_change') {
+          const from = ev.payload?.fromStatus ?? null;
+          const to = ev.payload?.stateCode ?? null;
+          if (from && to) {
+            if (result.failures.length) {
+              await db.rpc('onkey_learn_from_rejection', {
+                p_from: from,
+                p_to: to,
+                p_message: result.failures.map((f) => f.message).join('; '),
+              });
+            } else {
+              await db.rpc('onkey_learn_from_success', { p_from: from, p_to: to });
+            }
+          }
+        }
         // No read-back here, deliberately. The only status we hold is our
         // own mirror, refreshed by the export every couple of minutes, so
         // checking it right after a write would see the OLD status and

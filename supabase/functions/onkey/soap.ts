@@ -235,25 +235,39 @@ export class OnKeyClient {
       remark?: string;
       referenceId: number;
     }[],
-    includeSuccesses = true,
+    // No IncludeRecordSuccesses on this request: it is not in the schema
+    // for ImportWorkOrdersStatusAndQueueRequest, unlike ImportWorkOrders.
   ): Promise<ImportResult> {
     await this.logon();
+    // Element names and ORDER are taken from the WSDL, not guessed. The
+    // first live write was rejected with "Expected to find node type
+    // 'Element' with name 'ImportWorkOrdersStatusAndQueueRequest'", and
+    // reading the schema then showed the builder was wrong four ways:
+    // the request element name, the records wrapper (not <Records>), an
+    // IncludeRecordSuccesses element that does not exist in this request,
+    // and the field order.
+    //
+    // Order matters because the type is an xs:sequence, and ReferenceId
+    // comes first because ImportWorkOrderChangeStatusAndQueue extends
+    // ImportItemBase and a complexContent extension emits the base type's
+    // elements ahead of its own. The rest are alphabetical in the schema:
+    // Priority, QueueUser, Remark, UserDefinedStateCode, WorkOrderCode,
+    // WorkOrderId.
     const items = records
       .map(
         (r) => `<ImportWorkOrderChangeStatusAndQueue>
         <ReferenceId>${r.referenceId}</ReferenceId>
-        <WorkOrderCode>${xmlEscape(r.workOrderCode)}</WorkOrderCode>
-        ${r.userDefinedStateCode ? `<UserDefinedStateCode>${xmlEscape(r.userDefinedStateCode)}</UserDefinedStateCode>` : ''}
-        ${r.queueUser ? `<QueueUser>${xmlEscape(r.queueUser)}</QueueUser>` : ''}
         ${r.priority ? `<Priority>${xmlEscape(r.priority)}</Priority>` : ''}
+        ${r.queueUser ? `<QueueUser>${xmlEscape(r.queueUser)}</QueueUser>` : ''}
         ${r.remark ? `<Remark>${xmlEscape(r.remark)}</Remark>` : ''}
+        ${r.userDefinedStateCode ? `<UserDefinedStateCode>${xmlEscape(r.userDefinedStateCode)}</UserDefinedStateCode>` : ''}
+        <WorkOrderCode>${xmlEscape(r.workOrderCode)}</WorkOrderCode>
       </ImportWorkOrderChangeStatusAndQueue>`,
       )
       .join('');
-    const body = `<ImportWorkOrderChangeStatusAndQueuesRequest xmlns="${NS_MM}">
-      <IncludeRecordSuccesses>${includeSuccesses}</IncludeRecordSuccesses>
-      <Records>${items}</Records>
-    </ImportWorkOrderChangeStatusAndQueuesRequest>`;
+    const body = `<ImportWorkOrdersStatusAndQueueRequest xmlns="${NS_MM}">
+      <ImportWorkOrderChangeStatusAndQueueRecords>${items}</ImportWorkOrderChangeStatusAndQueueRecords>
+    </ImportWorkOrdersStatusAndQueueRequest>`;
     const xml = envelope(sessionHeader(this.sessionId!), body);
     const res = await this.call(
       'WorkOrderImport',

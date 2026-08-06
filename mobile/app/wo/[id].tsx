@@ -106,7 +106,16 @@ export default function WorkOrderLifecycleScreen() {
 
   const load = useCallback(() => {
     setLoadState((s) => (s === 'ready' ? s : 'loading'));
-    fetchThrough<WorkOrderRecord[]>(WO_CACHE_KEY, () => listWorkOrderRecords(accessToken))
+    fetchThrough<WorkOrderRecord[]>(WO_CACHE_KEY, () => listWorkOrderRecords(accessToken), {
+      // Without onFresh the revalidated record only reached the cache, so a
+      // status the office changed (or a sign-off applied through the job
+      // card) showed up one visit late.
+      onFresh: (list) => {
+        const found = list.find((w) => w.id === id) ?? null;
+        setWo(found);
+        setLoadState(found ? 'ready' : 'missing');
+      },
+    })
       .then((list) => {
         const found = list.find((w) => w.id === id) ?? null;
         setWo(found);
@@ -415,9 +424,26 @@ export default function WorkOrderLifecycleScreen() {
           <Button title="Resume" onPress={() => void apply('start')} busy={busy} />
         ) : null}
         {state === 'stopped' ? (
-          <Text style={{ color: colors.muted, fontSize: 12, marginBottom: 8 }}>
-            Work is stopped. Job card sign-off arrives with the next release.
-          </Text>
+          <Button
+            title="Job card and sign-off"
+            onPress={() => router.push({ pathname: '/jobcard/[id]', params: { id: wo.id } })}
+          />
+        ) : null}
+        {state === 'signed_off' ? (
+          <Button
+            title="View job card"
+            kind="secondary"
+            onPress={() => router.push({ pathname: '/jobcard/[id]', params: { id: wo.id } })}
+          />
+        ) : null}
+        {/* Reachable before stopping too: technicians fill the card in as
+            they go, and only the SIGNING needs the work stopped. */}
+        {state === 'started' || state === 'paused' ? (
+          <Button
+            title="Job card"
+            kind="secondary"
+            onPress={() => router.push({ pathname: '/jobcard/[id]', params: { id: wo.id } })}
+          />
         ) : null}
       </View>
 

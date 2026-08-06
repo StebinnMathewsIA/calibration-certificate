@@ -1,0 +1,439 @@
+/**
+ * Job card capture and sign-off (#105). The end of a technician's job:
+ * what was done, what it cost, and the client's signature accepting it.
+ *
+ * Two decisions worth knowing while reading this.
+ *
+ * DISTANCE IS ONE FLAT NUMBER (owner decision). It becomes two OnKey lines,
+ * VEH_TECH and TRA_TECH, because that is how the real data is booked: 127
+ * of the 128 work orders carrying both had identical quantities. Making the
+ * technician type it twice to satisfy somebody else's data model would be
+ * the app serving OnKey rather than the person on the forecourt.
+ *
+ * LABOUR IS PREFILLED, NOT ASSUMED. The lifecycle timer knows the net
+ * working minutes with pauses removed, measured on the technician's own
+ * clock, so the normal-rate field starts there. It stays editable: the
+ * timer is evidence, not a decision, and overtime is a judgement the
+ * technician makes.
+ */
+import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
+import * as Sharing from 'expo-sharing';
+import React, { useCallback, useState } from 'react';
+import { Alert, StyleSheet, Text, TextInput, View } from 'react-native';
+import {
+  ChargeItem,
+  JobCardBundle,
+  JobCardPart,
+  getJobCard,
+  saveJobCard,
+  signJobCard,
+} from '../../src/api/client';
+import { useAuth } from '../../src/auth/AuthContext';
+import { Badge, Button, SectionCard, colors, fonts } from '../../src/components/ui';
+import { FormScrollView } from '../../src/components/FormScrollView';
+import { readCache } from '../../src/db/cache';
+import { JobCard } from '../../src/pdf/jobCardHtml';
+import { renderJobCardPdf } from '../../src/pdf/renderPdf';
+import { voSignatureCacheKey } from '../../src/profile/profileStore';
+
+// StyleSheet.create, not a bare object: it types fontVariant as
+// FontVariant[] rather than widening it to string[], which TextInput rejects.
+const styles = StyleSheet.create({
+  numField: {
+    borderWidth: 1,
+    borderColor: colors.line,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    color: colors.ink,
+    backgroundColor: '#fff',
+    fontSize: 16,
+    fontVariant: ['tabular-nums'],
+  },
+});
+const numField = styles.numField;
+
+/** Bundle to printable document. Tasks are empty for now: OnKey's task
+ * table is where they live and we do not sync it yet, and the template
+ * already prints nothing rather than the 31 blank rows the original had. */
+const toJobCard = (b: JobCardBundle): JobCard => ({
+  workOrderCode: b.workOrderCode ?? '',
+  siteCode: b.document.siteCode ?? '',
+  siteName: b.siteName ?? '',
+  siteAddress: b.document.siteAddress,
+  sitePhone: b.document.sitePhone,
+  oilCompany: b.document.oilCompany,
+  assetCode: b.document.assetCode,
+  assetDescription: b.document.assetDescription,
+  importance: b.document.importance,
+  requester: b.document.customerName,
+  workRequired: b.workRequired,
+  workPerformed: b.jobCard?.workPerformed ?? null,
+  visits: b.document.visits,
+  lines: b.document.lines,
+  tasks: [],
+  technicianName: b.document.technicianName ?? '',
+  clientName: b.jobCard?.clientName ?? null,
+  signedAt: b.jobCard?.signedAt ?? null,
+});
+
+/** Empty means zero, not NaN. A technician clearing a field to retype it
+ * must not produce a saved value of NaN. */
+const toNum = (s: string): number => {
+  const n = Number(String(s).replace(',', '.').trim());
+  return Number.isFinite(n) && n >= 0 ? n : 0;
+};
+
+export default function JobCardScreen() {
+  const { id } = useLocalSearchParams<{ id: string }>();
+  const router = useRouter();
+  const { accessToken, identity } = useAuth();
+
+  const [bundle, setBundle] = useState<JobCardBundle | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [km, setKm] = useState('');
+  const [hours, setHours] = useState('');
+  const [ot15, setOt15] = useState('');
+  const [ot20, setOt20] = useState('');
+  const [parts, setParts] = useState<JobCardPart[]>([]);
+  const [partCode, setPartCode] = useState('');
+  const [partQty, setPartQty] = useState('');
+  const [performed, setPerformed] = useState('');
+  const [clientName, setClientName] = useState('');
+  const [busy, setBusy] = useState(false);
+  // Set the moment the technician edits anything. A background refresh may
+  // update the header (signed, lifecycle) at any time, but it must never
+  // reach into fields somebody is typing into. A ref, not state: it must not
+  // re-run the focus effect and refetch on the first keystroke.
+  const dirty = React.useRef(false);
+  const touch = <T,>(set: (v: T) => void) => (v: T) => {
+    dirty.current = true;
+    set(v);
+  };
+
+  const seedFields = useCallback((b: JobCardBundle) => {
+    const jc = b.jobCard;
+    setKm(jc && jc.distanceKm ? String(jc.distanceKm) : '');
+    // Prefill from the measured working time only when the technician has
+    // not already entered something. Overwriting their number with ours on
+    // every screen open would be maddening.
+    setHours(
+      jc && jc.labourHours
+        ? String(jc.labourHours)
+        : b.workedMinutes
+          ? (b.workedMinutes / 60).toFixed(1)
+          : '',
+    );
+    setOt15(jc && jc.labourOt15Hours ? String(jc.labourOt15Hours) : '');
+    setOt20(jc && jc.labourOt20Hours ? String(jc.labourOt20Hours) : '');
+    setParts(jc?.parts ?? []);
+    setPerformed(jc?.workPerformed ?? '');
+    setClientName(jc?.clientName ?? '');
+  }, []);
+
+  const load = useCallback(() => {
+    getJobCard(accessToken, String(id), {
+      // The cached copy renders instantly; when the network answers with
+      // something different the header follows it, and the fields only if
+      // they are still untouched.
+      onFresh: (fresh) => {
+        setBundle(fresh);
+        if (!dirty.current) seedFields(fresh);
+      },
+    })
+      .then((b) => {
+        setBundle(b);
+        if (!dirty.current) seedFields(b);
+      })
+      .catch((err) => setLoadError(err instanceof Error ? err.message : String(err)));
+  }, [accessToken, id, seedFields]);
+
+  useFocusEffect(useCallback(() => load(), [load]));
+
+  type SaveBody = Parameters<typeof saveJobCard>[2];
+
+  const persist = useCallback(
+    (over: Partial<SaveBody> = {}) => {
+      void saveJobCard(accessToken, String(id), {
+        distanceKm: toNum(km),
+        labourHours: toNum(hours),
+        labourOt15Hours: toNum(ot15),
+        labourOt20Hours: toNum(ot20),
+        parts,
+        workPerformed: performed,
+        ...over,
+      }).catch(() => {});
+    },
+    [accessToken, id, km, hours, ot15, ot20, parts, performed],
+  );
+
+  if (loadError) {
+    return (
+      <FormScrollView>
+        <SectionCard title="Could not open the job card">
+          <Text style={{ color: colors.ink, fontSize: 14 }}>{loadError}</Text>
+          <Button title="Try again" onPress={load} />
+          <Button title="Go back" kind="secondary" onPress={() => router.back()} />
+        </SectionCard>
+      </FormScrollView>
+    );
+  }
+  if (!bundle) return <Text style={{ padding: 16, color: colors.muted }}>Loading…</Text>;
+
+  const signed = bundle.jobCard?.state === 'signed';
+  const labour: ChargeItem[] = bundle.chargeItems.filter((c) => c.kind === 'labour');
+  const canSign =
+    !signed &&
+    bundle.lifecycleState === 'stopped' &&
+    performed.trim().length > 0 &&
+    clientName.trim().length > 0;
+
+  const addPart = () => {
+    const code = partCode.trim().toUpperCase();
+    const qty = toNum(partQty);
+    if (!code || qty <= 0) {
+      Alert.alert('Part needs a code and a quantity', 'Enter the stock code and how many.');
+      return;
+    }
+    const next = [...parts, { itemCode: code, description: code, quantity: qty, unit: 'EA' }];
+    setParts(next);
+    setPartCode('');
+    setPartQty('');
+    persist({ parts: next });
+  };
+
+  const sign = async () => {
+    // The client's signature is captured on the shared signature screen and
+    // left in the cache under a job-card key, so it never mixes with the
+    // VO's own saved signature.
+    const clientSig = readCache<string>(`jobcard-sign:${id}`);
+    if (!clientSig) {
+      router.push({
+        pathname: '/signature',
+        params: {
+          cacheKey: `jobcard-sign:${id}`,
+          title: 'Client signature',
+          hint: 'Hand the phone to the client. Signing accepts the work recorded on this job card.',
+        },
+      });
+      return;
+    }
+    setBusy(true);
+    try {
+      await signJobCard(accessToken, String(id), {
+        clientName: clientName.trim(),
+        clientSignature: clientSig,
+        techSignature: readCache<string>(voSignatureCacheKey(identity?.subject ?? '')) ?? undefined,
+      });
+      Alert.alert('Job card signed', 'The work order has been signed off.');
+      router.back();
+    } catch (err) {
+      Alert.alert('Could not sign', err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /** The signed document, rendered on-device and handed to the client. The
+   * costing lines come from the server, built by the same function that
+   * queues them to OnKey, so the client is shown what is actually booked. */
+  const share = async () => {
+    if (!bundle) return;
+    setBusy(true);
+    try {
+      const { uri } = await renderJobCardPdf(toJobCard(bundle), {
+        customerSignatureSvg: bundle.jobCard?.clientSignature ?? undefined,
+        technicianSignatureSvg: bundle.jobCard?.techSignature ?? undefined,
+      });
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(uri, { mimeType: 'application/pdf', UTI: 'com.adobe.pdf' });
+      } else {
+        Alert.alert('Job card ready', uri);
+      }
+    } catch (err) {
+      Alert.alert('Could not build the job card', err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <FormScrollView>
+      <SectionCard title={bundle.workOrderCode ?? 'Job card'}>
+        <Text style={{ color: colors.muted, fontSize: 12 }}>{bundle.siteName}</Text>
+        {signed ? (
+          <View style={{ marginTop: 6 }}>
+            <Badge text="Signed" tone="ok" />
+            <Text style={{ color: colors.muted, fontSize: 12, marginTop: 4 }}>
+              Signed by {bundle.jobCard?.clientName} on{' '}
+              {bundle.jobCard?.signedAt?.slice(0, 16).replace('T', ' ')}. A signed job card
+              cannot be changed.
+            </Text>
+            <Button title="Job card document" onPress={() => void share()} busy={busy} />
+          </View>
+        ) : bundle.lifecycleState !== 'stopped' ? (
+          <Text style={{ color: colors.amber, fontSize: 12, marginTop: 6 }}>
+            Stop the job before signing it off. You can fill this in now and sign later.
+          </Text>
+        ) : null}
+      </SectionCard>
+
+      <SectionCard title="Travel">
+        <Text style={{ color: colors.muted, fontSize: 12, marginBottom: 6 }}>
+          Distance for this visit. Entered once, and booked to OnKey as both vehicle and travel.
+        </Text>
+        <TextInput
+          style={numField}
+          value={km}
+          onChangeText={touch(setKm)}
+          onBlur={() => persist()}
+          editable={!signed}
+          keyboardType="decimal-pad"
+          placeholder="0"
+          accessibilityLabel="Distance in kilometres"
+        />
+        <Text style={{ color: colors.muted, fontSize: 11, marginTop: 3 }}>km</Text>
+      </SectionCard>
+
+      <SectionCard title="Labour">
+        {bundle.workedMinutes > 0 ? (
+          <Text style={{ color: colors.muted, fontSize: 12, marginBottom: 6 }}>
+            Timed at {Math.floor(bundle.workedMinutes / 60)} h {bundle.workedMinutes % 60} min,
+            pauses removed. Adjust if that is not what you want billed.
+          </Text>
+        ) : null}
+        {labour.map((c) => {
+          const [val, set] =
+            c.itemCode === 'LAB_TECH'
+              ? [hours, setHours]
+              : c.itemCode === 'LAB(1.5)_TECH'
+                ? [ot15, setOt15]
+                : [ot20, setOt20];
+          return (
+            <View key={c.itemCode} style={{ marginBottom: 8 }}>
+              <Text style={{ color: colors.ink, fontSize: 13, marginBottom: 3 }}>
+                {c.description}
+              </Text>
+              <TextInput
+                style={numField}
+                value={val}
+                onChangeText={touch(set)}
+                onBlur={() => persist()}
+                editable={!signed}
+                keyboardType="decimal-pad"
+                placeholder="0"
+                accessibilityLabel={c.description}
+              />
+              <Text style={{ color: colors.muted, fontSize: 11, marginTop: 3 }}>{c.unit}</Text>
+            </View>
+          );
+        })}
+      </SectionCard>
+
+      <SectionCard title="Parts used">
+        {parts.map((p, i) => (
+          <View
+            key={`${p.itemCode}-${i}`}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 5 }}
+          >
+            <Text style={{ flex: 1, color: colors.ink, fontSize: 13, fontFamily: fonts.mono }}>
+              {p.itemCode}
+            </Text>
+            <Text style={{ color: colors.ink, fontSize: 13 }}>
+              {p.quantity} {p.unit}
+            </Text>
+            {!signed ? (
+              <Text
+                onPress={() => {
+                  const next = parts.filter((_, j) => j !== i);
+                  setParts(next);
+                  persist({ parts: next });
+                }}
+                accessibilityRole="button"
+                accessibilityLabel={`Remove ${p.itemCode}`}
+                style={{ color: colors.red, fontSize: 13, paddingHorizontal: 6 }}
+              >
+                &#10007;
+              </Text>
+            ) : null}
+          </View>
+        ))}
+        {parts.length === 0 ? (
+          <Text style={{ color: colors.muted, fontSize: 12 }}>No parts used.</Text>
+        ) : null}
+        {!signed ? (
+          <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+            <TextInput
+              style={[numField, { flex: 2 }]}
+              value={partCode}
+              onChangeText={touch(setPartCode)}
+              autoCapitalize="characters"
+              placeholder="Stock code"
+              accessibilityLabel="Stock code"
+            />
+            <TextInput
+              style={[numField, { flex: 1 }]}
+              value={partQty}
+              onChangeText={touch(setPartQty)}
+              keyboardType="decimal-pad"
+              placeholder="Qty"
+              accessibilityLabel="Quantity"
+            />
+            <Button title="Add" onPress={addPart} />
+          </View>
+        ) : null}
+      </SectionCard>
+
+      <SectionCard title="Work performed">
+        <TextInput
+          style={{
+            borderWidth: 1,
+            borderColor: colors.line,
+            borderRadius: 10,
+            padding: 10,
+            minHeight: 110,
+            color: colors.ink,
+            backgroundColor: '#fff',
+            fontSize: 14,
+          }}
+          multiline
+          textAlignVertical="top"
+          value={performed}
+          onChangeText={touch(setPerformed)}
+          onBlur={() => persist()}
+          editable={!signed}
+          placeholder="What you did on site, in the client's words as much as your own."
+          accessibilityLabel="Work performed"
+        />
+      </SectionCard>
+
+      {!signed ? (
+        <SectionCard title="Accepted by client">
+          <TextInput
+            style={numField}
+            value={clientName}
+            onChangeText={touch(setClientName)}
+            placeholder="Name of the person accepting the work"
+            accessibilityLabel="Client name"
+          />
+          <Text style={{ color: colors.muted, fontSize: 12, marginTop: 8 }}>
+            {readCache<string>(`jobcard-sign:${id}`)
+              ? 'Signature captured. Signing seals the job card and signs off the work order.'
+              : 'Signing opens the signature pad for the client.'}
+          </Text>
+          <Button
+            title={readCache<string>(`jobcard-sign:${id}`) ? 'Sign off' : 'Capture client signature'}
+            onPress={() => void sign()}
+            busy={busy}
+            disabled={!canSign}
+          />
+          {!canSign ? (
+            <Text style={{ color: colors.muted, fontSize: 11, marginTop: 4 }}>
+              Needs the work stopped, a description of the work performed, and the client's name.
+            </Text>
+          ) : null}
+        </SectionCard>
+      ) : null}
+    </FormScrollView>
+  );
+}

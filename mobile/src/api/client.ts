@@ -8,7 +8,7 @@ import type {
   WorkOrderSeed,
 } from '@prowalco/schema';
 import { analysisResponseSchema, signResponseSchema } from '@prowalco/schema';
-import { readCache, writeCache } from '../db/cache';
+import { fetchThrough, readCache, writeCache } from '../db/cache';
 import { enqueueWrite } from '../sync/outbox';
 import { ApiError, isNetworkError, request } from './http';
 import { rpc } from './supabaseRpc';
@@ -299,6 +299,154 @@ export async function acknowledgeDivergence(
   return await rpc<WoDivergence[]>('app_wo_ack_divergence', token, {
     p_work_order_id: workOrderId,
   });
+}
+
+// ---------------------------------------------------------------------------
+// Job card (#105): what the technician records at the end of a job and what
+// the client signs. Modelled on Prowalco's "Work completion sign off".
+// ---------------------------------------------------------------------------
+
+export interface JobCardPart {
+  itemCode: string;
+  description: string;
+  quantity: number;
+  unit: string;
+}
+
+/** Charge codes come from the register, never hard-coded here: if Prowalco
+ * adds a Sunday rate it is a row in onkey_charge_items, not a release. */
+export interface ChargeItem {
+  itemCode: string;
+  description: string;
+  unit: string;
+  kind: 'distance' | 'labour';
+}
+
+export interface JobCardState {
+  distanceKm: number;
+  labourHours: number;
+  labourOt15Hours: number;
+  labourOt20Hours: number;
+  parts: JobCardPart[];
+  workPerformed: string | null;
+  clientName: string | null;
+  clientSignature: string | null;
+  techSignature: string | null;
+  state: 'draft' | 'signed';
+  signedAt: string | null;
+}
+
+/** The parts of the printed job card the capture screen does not need:
+ * addresses, the asset, the visits, and the costing lines exactly as they
+ * will be booked to OnKey (built server-side by job_card_lines, so the
+ * client signs for what is actually sent). */
+export interface JobCardDocument {
+  siteCode: string | null;
+  siteAddress: string | null;
+  sitePhone: string | null;
+  oilCompany: string | null;
+  customerName: string | null;
+  assetCode: string | null;
+  assetDescription: string | null;
+  importance: string | null;
+  technicianName: string | null;
+  visits: { startedAt: string | null; completedAt: string | null; workingMinutes: number | null }[];
+  lines: { itemCode: string; description: string; quantity: number; unit: string }[];
+}
+
+export interface JobCardBundle {
+  workOrderId: string;
+  workOrderCode: string | null;
+  siteName: string | null;
+  lifecycleState: WoState;
+  /** Net working minutes we measured, pauses removed, on the technician's
+   * own clock. Prefills the labour hours so nobody guesses. */
+  workedMinutes: number;
+  workRequired: string | null;
+  chargeItems: ChargeItem[];
+  jobCard: JobCardState | null;
+  document: JobCardDocument;
+}
+
+const jobCardKey = (workOrderId: string) => `jobcard:${workOrderId}`;
+
+export async function getJobCard(
+  token: string | null,
+  workOrderId: string,
+  opts: { onFresh?: (fresh: JobCardBundle) => void; force?: boolean } = {},
+): Promise<JobCardBundle> {
+  return await fetchThrough(
+    jobCardKey(workOrderId),
+    () => rpc<JobCardBundle>('app_job_card_get', token, { p_work_order_id: workOrderId }),
+    opts,
+  );
+}
+
+export async function saveJobCard(
+  token: string | null,
+  workOrderId: string,
+  body: {
+    distanceKm: number;
+    labourHours: number;
+    labourOt15Hours: number;
+    labourOt20Hours: number;
+    parts: JobCardPart[];
+    workPerformed: string;
+  },
+): Promise<void> {
+  const args = {
+    p_work_order_id: workOrderId,
+    p_distance_km: body.distanceKm,
+    p_labour_hours: body.labourHours,
+    p_labour_ot15: body.labourOt15Hours,
+    p_labour_ot20: body.labourOt20Hours,
+    p_parts: body.parts,
+    p_work_performed: body.workPerformed,
+  };
+  try {
+    // Both RPCs return the whole bundle, so the cache is refreshed from the
+    // write itself. Without this the next read served the pre-save copy and
+    // the technician's own entry appeared to have been lost.
+    writeCache(jobCardKey(workOrderId), await rpc<JobCardBundle>('app_job_card_save', token, args));
+  } catch (err) {
+    // Autosave must never interrupt a technician mid-forecourt. Only a
+    // network failure queues; a refusal (the card is already signed) is a
+    // real answer and reaches the caller.
+    if (!isNetworkError(err)) throw err;
+    enqueueWrite('jobCardSave', { args });
+  }
+}
+
+export async function signJobCard(
+  token: string | null,
+  workOrderId: string,
+  body: { clientName: string; clientSignature: string; techSignature?: string },
+): Promise<void> {
+  const args = {
+    p_work_order_id: workOrderId,
+    p_client_name: body.clientName,
+    p_client_signature: body.clientSignature,
+    p_tech_signature: body.techSignature ?? null,
+    p_occurred_at: new Date().toISOString(),
+  };
+  try {
+    writeCache(jobCardKey(workOrderId), await rpc<JobCardBundle>('app_job_card_sign', token, args));
+  } catch (err) {
+    if (!isNetworkError(err)) throw err;
+    enqueueWrite('jobCardSign', { args });
+  }
+  // Signing moves the lifecycle to signed_off SERVER-side, inside the RPC,
+  // so the cached work order would otherwise still offer "Job card and
+  // sign-off" on the screen behind. Mirror it locally on both paths: the
+  // queued write will do exactly the same thing when it drains.
+  try {
+    commitTransitionLocally(
+      workOrderId,
+      applyTransitionLocally(workOrderId, 'sign_off', {}, args.p_occurred_at),
+    );
+  } catch {
+    // The work order is not on this device. Nothing to keep in step.
+  }
 }
 
 export async function listPauseReasons(token: string | null): Promise<PauseReason[]> {

@@ -3,6 +3,7 @@ import * as Print from 'expo-print';
 import type { RejectionCertificate, Verification } from '@prowalco/schema';
 import { sha256HexOfBase64 } from '../lib/bytes';
 import { certificateHtml } from './certificateHtml';
+import { JobCard, jobCardHtml } from './jobCardHtml';
 import { rejectionHtml } from './rejectionHtml';
 
 export interface RenderedPdf {
@@ -39,6 +40,24 @@ export async function renderCertificatePdf(
 export async function renderRejectionPdf(rejection: RejectionCertificate): Promise<RenderedPdf> {
   const { uri } = await Print.printToFileAsync({
     html: rejectionHtml(rejection),
+    width: 595,
+    height: 842,
+  });
+  const base64 = await FileSystem.readAsStringAsync(uri, {
+    encoding: FileSystem.EncodingType.Base64,
+  });
+  return { uri, base64, sha256: sha256HexOfBase64(base64) };
+}
+
+/** Renders the job card (#105), A4 portrait. The client's drawn signature
+ * is embedded here, so the document the technician shares is the document
+ * the client actually signed. */
+export async function renderJobCardPdf(
+  job: JobCard,
+  signatures: { customerSignatureSvg?: string; technicianSignatureSvg?: string } = {},
+): Promise<RenderedPdf> {
+  const { uri } = await Print.printToFileAsync({
+    html: jobCardHtml(job, signatures),
     width: 595,
     height: 842,
   });

@@ -21,7 +21,9 @@ export type OutboxKind =
   | 'saveDispenserDetail'
   | 'patchMyTechnician'
   | 'addMeasure'
-  | 'woTransition';
+  | 'woTransition'
+  | 'jobCardSave'
+  | 'jobCardSign';
 
 interface OutboxRow {
   id: number;
@@ -83,6 +85,12 @@ async function perform(token: string | null, kind: OutboxKind, p: any): Promise<
         body: JSON.stringify(p.body),
       });
       return;
+    case 'jobCardSave':
+      await rpc('app_job_card_save', token, p.args);
+      return;
+    case 'jobCardSign':
+      await rpc('app_job_card_sign', token, p.args);
+      return;
     case 'woTransition':
       // Straight to the RPC, unlike the rest: the lifecycle lives in
       // Supabase, not behind a Render endpoint. p_occurred_at carries the
@@ -105,7 +113,14 @@ async function perform(token: string | null, kind: OutboxKind, p: any): Promise<
 /** The work order an item acts on, for ordering. Only lifecycle events
  * need it: the rest are independent upserts. */
 function targetOf(kind: OutboxKind, p: any): string | null {
-  return kind === 'woTransition' ? String(p.workOrderId) : null;
+  if (kind === 'woTransition') return String(p.workOrderId);
+  // Job card writes belong to the SAME per-work-order sequence: a sign
+  // must not overtake the save that put the content there, and neither
+  // may pass a lifecycle event the server rejected.
+  if (kind === 'jobCardSave' || kind === 'jobCardSign') {
+    return String(p.args?.p_work_order_id ?? '');
+  }
+  return null;
 }
 
 /** Replays queued writes oldest-first. Stops at the first NETWORK failure

@@ -60,6 +60,7 @@ export default function RootLayout() {
         {/* My day pushes wo/[id]. Without this line the header showed the
             raw route name, "wo/[id]", to the technician. */}
         <Stack.Screen name="wo/[id]" options={{ title: 'Work order' }} />
+        <Stack.Screen name="jobcard/[id]" options={{ title: 'Job card' }} />
         <Stack.Screen name="site/[id]" options={{ title: 'Site' }} />
         <Stack.Screen name="dispenser/[id]/identity" options={{ title: 'Dispenser identity' }} />
         <Stack.Screen name="dispenser/[id]/register" options={{ title: 'Components' }} />

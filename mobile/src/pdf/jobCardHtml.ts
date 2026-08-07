@@ -113,29 +113,29 @@ export interface JobCardOptions {
   technicianSignatureSvg?: string;
 }
 
-/** The site rules printed on the original in 5pt. VERBATIM, on the owner's
- * instruction (2026-08-07): this is Prowalco's HSE undertaking and not mine
- * to reword.
+/** The site rules printed on the original in 5pt: Prowalco's HSE
+ * undertaking, so the wording is theirs and not ours to edit at will.
  *
- * That includes three things I had quietly changed and have now put back,
- * because a controlled document is not improved by an unannounced edit:
+ * DO NOT "restore" the original text here. Three defects in it were
+ * corrected on the owner's instruction (#108), having first been kept
+ * verbatim on the owner's earlier instruction. A reader who diffs this
+ * against the OnKey document will find:
  *
- *  - Rule 4 reads "Owner/mamager". The original's typo, kept.
- *  - Rule 6 reads "HES rules", not HSE. Also the original's, and it may
- *    even be deliberate, so it is not mine to decide.
- *  - Rule 5 points at "important notes about prompt feedback at the bottom
- *    of the page". There are no such notes anywhere on the original: it is
- *    a dangling cross-reference in Prowalco's own template. The rule is
- *    printed as written; the missing notes cannot be invented.
+ *  - Rule 4: the original reads "Owner/mamager". Corrected.
+ *  - Rule 6: the original reads "HES rules". Corrected to HSE.
+ *  - The original's rule 5 pointed at "important notes about prompt
+ *    feedback at the bottom of the page". No such notes exist anywhere on
+ *    the original or on ours, and a rule whose entire content is a
+ *    reference to missing content says nothing, so it is removed. Seven
+ *    rules became six.
  *
- * All three are flagged to the owner rather than fixed here. */
+ * Rules 1, 2, 3 and 7 are untouched. */
 const SITE_RULES = [
   'Permit issuer to remain on site for the full duration of the job, no work to proceed unless issuer is on site.',
   'Introduce yourself to the owner/manager.',
   'Owner/manager to sign jobcard confirming arrival time.',
-  'Owner/mamager to sign off successful completed maintenance, stipulating the time of completion.',
-  'See important notes about prompt feedback at the bottom of the page.',
-  "Ensure that all work is done in accordance with Prowalco's HES rules.",
+  'Owner/manager to sign off successful completed maintenance, stipulating the time of completion.',
+  "Ensure that all work is done in accordance with Prowalco's HSE rules.",
   'All rubble/dirt caused by your work to be removed and surrounding area to be left in its original state.',
 ];
 

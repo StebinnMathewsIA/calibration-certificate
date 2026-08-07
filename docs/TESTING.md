@@ -543,6 +543,51 @@ Needs a real AWS account (the code path itself is covered by
       Certificate + Metrologist Note (header/logo, reference measures,
       component tables, checklist, EFD deliveries, sign-off, footer)
 
+## Job card capture and sign-off (#109)
+
+None of this has been on a device yet.
+
+- [ ] Job card opens from a started, paused and stopped work order, and
+      from a signed-off one as read-only
+- [ ] Labour prefills from the measured working time with pauses removed,
+      and typing over it is not overwritten by a background refresh
+- [ ] Distance, labour and quantity fields accept a decimal comma as well
+      as a point on the device keyboard
+- [ ] Parts search returns results fast enough to be usable at forecourt
+      latency; adding the same part twice bumps the quantity (#112)
+- [ ] A part looked up while online is still findable later with no signal
+- [ ] Client signature pad: a downward stroke cannot dismiss the window
+- [ ] Sign-off is refused until the work is stopped, the work performed is
+      described and the client is named
+- [ ] After signing, the work order screen behind shows signed off without
+      needing to leave and come back
+- [ ] Signed job card is read-only and the document shares as a PDF
+- [ ] Site rules print as six numbered rules, with "Owner/manager" and
+      "HSE rules" (#108)
+
+## Job card offline behaviour (#109)
+
+- [ ] Airplane mode: fill in a job card, sign it, leave, reconnect. The
+      save and the sign replay in order and the work order signs off
+      exactly once
+- [ ] Airplane mode: a queued sign never overtakes the lifecycle event in
+      front of it for the same work order
+- [ ] Kill the app with an unsaved job card open, relaunch, and the
+      autosaved content is there
+
+## Work order lifecycle against OnKey (#96)
+
+- [ ] Two-hop pause for spares live: WOR to WPA to LSI, both hops
+      reaching OnKey in order
+- [ ] Start and stop a [TEST] work order and confirm the status in OnKey
+      matches within a couple of minutes
+
+## Alerting (#113)
+
+- [ ] Insights tab shows the "Needs attention" card to a manager or admin
+      and nothing to a technician
+- [ ] Owner decides the outbound channel (email, push, or in-app only)
+
 ## Not yet implemented (do not test — future issues)
 
 - Barcode/QR scan for serial numbers (expo-camera wiring)

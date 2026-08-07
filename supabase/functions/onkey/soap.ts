@@ -1,6 +1,6 @@
 /**
  * OnKey SOAP over plain HTTP (#105). Hand-built envelopes from the
- * introspected WSDLs (docs/ONKEY-WEBSERVICES.md section 6b) — no SOAP
+ * introspected WSDLs (docs/ONKEY-WEBSERVICES.md section 6b). No SOAP
  * library in Deno is worth the dependency for four operations.
  *
  * Session rules (API guide section 3): Logon returns a SessionId that
@@ -225,7 +225,58 @@ export class OnKeyClient {
     return { rows: parseDataSet(res), raw: res };
   }
 
-  /** Status/queue change: the lifecycle write-back (#96). */
+  /** ONE import builder for every WorkOrderImport operation, because the
+   * element ORDER is the same rule every time and getting it wrong is not
+   * a fault you can read: WCF answers "Expected to find node type
+   * 'Element' with name X" and stops at the first offence, so a request
+   * wrong four ways looks wrong one way.
+   *
+   * The rule, confirmed against the published schema for all three
+   * operations we send: every import item is an xs:sequence, a
+   * complexContent extension emits the BASE type's elements first, and
+   * within each type WCF orders members alphabetically. So the fixed
+   * prefix below (ImportItemBase, then CrudImportItemBase, then
+   * MasterImportItem) comes first, and everything else sorts by element
+   * name. Nothing here is guessed; the alternative was three hand-ordered
+   * lists that drift.
+   *
+   * IncludeRecordSuccesses is a ref into the COMMON namespace, not the
+   * MaintenanceManager one, and it comes AFTER the records. Both were
+   * wrong before. Operations whose request has no such element (status
+   * change) pass undefined and it is omitted. */
+  private async importRecords(
+    opts: {
+      requestElement: string;
+      recordsWrapper: string;
+      itemElement: string;
+      action: string;
+      operation: string;
+      includeSuccesses?: boolean;
+    },
+    records: Record<string, string | number | boolean | undefined>[],
+  ): Promise<ImportResult> {
+    await this.logon();
+    const items = records.map((r) => importItem(opts.itemElement, r)).join('');
+    const body = `<${opts.requestElement} xmlns="${NS_MM}">
+      <${opts.recordsWrapper}>${items}</${opts.recordsWrapper}>${
+      opts.includeSuccesses === undefined
+        ? ''
+        : `<IncludeRecordSuccesses xmlns="${NS_COMMON}">${opts.includeSuccesses}</IncludeRecordSuccesses>`
+    }
+    </${opts.requestElement}>`;
+    const xml = envelope(sessionHeader(this.sessionId!), body);
+    const res = await this.call(
+      'WorkOrderImport',
+      `${ACTION_MM}/WorkOrderImportService/${opts.action}`,
+      xml,
+      opts.operation,
+    );
+    return parseImportResult(res);
+  }
+
+  /** Status/queue change: the lifecycle write-back (#96). Note the request
+   * element is NOT the operation name plus "Request", which is why it is
+   * spelled out rather than derived. */
   async changeStatusAndQueue(
     records: {
       workOrderCode: string;
@@ -235,50 +286,23 @@ export class OnKeyClient {
       remark?: string;
       referenceId: number;
     }[],
-    // No IncludeRecordSuccesses on this request: it is not in the schema
-    // for ImportWorkOrdersStatusAndQueueRequest, unlike ImportWorkOrders.
   ): Promise<ImportResult> {
-    await this.logon();
-    // Element names and ORDER are taken from the WSDL, not guessed. The
-    // first live write was rejected with "Expected to find node type
-    // 'Element' with name 'ImportWorkOrdersStatusAndQueueRequest'", and
-    // reading the schema then showed the builder was wrong four ways:
-    // the request element name, the records wrapper (not <Records>), an
-    // IncludeRecordSuccesses element that does not exist in this request,
-    // and the field order.
-    //
-    // Order matters because the type is an xs:sequence, and ReferenceId
-    // comes first because ImportWorkOrderChangeStatusAndQueue extends
-    // ImportItemBase and a complexContent extension emits the base type's
-    // elements ahead of its own. The rest are alphabetical in the schema:
-    // Priority, QueueUser, Remark, UserDefinedStateCode, WorkOrderCode,
-    // WorkOrderId.
-    const items = records
-      .map(
-        (r) => `<ImportWorkOrderChangeStatusAndQueue>
-        <ReferenceId>${r.referenceId}</ReferenceId>
-        ${r.priority ? `<Priority>${xmlEscape(r.priority)}</Priority>` : ''}
-        ${r.queueUser ? `<QueueUser>${xmlEscape(r.queueUser)}</QueueUser>` : ''}
-        ${r.remark ? `<Remark>${xmlEscape(r.remark)}</Remark>` : ''}
-        ${r.userDefinedStateCode ? `<UserDefinedStateCode>${xmlEscape(r.userDefinedStateCode)}</UserDefinedStateCode>` : ''}
-        <WorkOrderCode>${xmlEscape(r.workOrderCode)}</WorkOrderCode>
-      </ImportWorkOrderChangeStatusAndQueue>`,
-      )
-      .join('');
-    const body = `<ImportWorkOrdersStatusAndQueueRequest xmlns="${NS_MM}">
-      <ImportWorkOrderChangeStatusAndQueueRecords>${items}</ImportWorkOrderChangeStatusAndQueueRecords>
-    </ImportWorkOrdersStatusAndQueueRequest>`;
-    const xml = envelope(sessionHeader(this.sessionId!), body);
-    const res = await this.call(
-      'WorkOrderImport',
-      `${ACTION_MM}/WorkOrderImportService/ImportWorkOrderChangeStatusAndQueues`,
-      xml,
-      'ImportWorkOrderChangeStatusAndQueues',
+    return await this.importRecords(
+      {
+        requestElement: 'ImportWorkOrdersStatusAndQueueRequest',
+        recordsWrapper: 'ImportWorkOrderChangeStatusAndQueueRecords',
+        itemElement: 'ImportWorkOrderChangeStatusAndQueue',
+        action: 'ImportWorkOrderChangeStatusAndQueues',
+        operation: 'ImportWorkOrderChangeStatusAndQueues',
+      },
+      records,
     );
-    return parseImportResult(res);
   }
 
-  /** Work order create/merge: feedback, creation, ExternalReference. */
+  /** Work order create/merge, keyed on Code. Reassignment is a Merge
+   * carrying StaffCode and nothing else: an import writes every field it
+   * is given, so sending a field we do not mean to change is how you
+   * overwrite somebody's data with your own defaults. */
   async importWorkOrders(
     records: (Record<string, string | number | boolean | undefined> & {
       referenceId: number;
@@ -287,33 +311,87 @@ export class OnKeyClient {
     })[],
     includeSuccesses = true,
   ): Promise<ImportResult> {
-    await this.logon();
-    const items = records
-      .map((r) => {
-        const { referenceId, action, ...fields } = r;
-        const inner = Object.entries(fields)
-          .filter(([, v]) => v !== undefined && v !== null && v !== '')
-          .map(([k, v]) => `<${cap(k)}>${xmlEscape(v)}</${cap(k)}>`)
-          .join('');
-        return `<ImportWorkOrder><ReferenceId>${referenceId}</ReferenceId><Action>${action}</Action>${inner}</ImportWorkOrder>`;
-      })
-      .join('');
-    const body = `<ImportWorkOrdersRequest xmlns="${NS_MM}">
-      <IncludeRecordSuccesses>${includeSuccesses}</IncludeRecordSuccesses>
-      <Records>${items}</Records>
-    </ImportWorkOrdersRequest>`;
-    const xml = envelope(sessionHeader(this.sessionId!), body);
-    const res = await this.call(
-      'WorkOrderImport',
-      `${ACTION_MM}/WorkOrderImportService/ImportWorkOrders`,
-      xml,
-      'ImportWorkOrders',
+    return await this.importRecords(
+      {
+        requestElement: 'ImportWorkOrdersRequest',
+        recordsWrapper: 'ImportWorkOrderRecords',
+        itemElement: 'ImportWorkOrder',
+        action: 'ImportWorkOrders',
+        operation: 'ImportWorkOrders',
+        includeSuccesses,
+      },
+      records,
     );
-    return parseImportResult(res);
+  }
+
+  /** Work task spares: how travel, labour and parts are actually booked
+   * against a job (the labour table is not what Prowalco uses). */
+  async importWorkTaskSpares(
+    records: (Record<string, string | number | boolean | undefined> & {
+      referenceId: number;
+      action: 'Insert' | 'Update' | 'Merge' | 'Delete';
+    })[],
+    includeSuccesses = true,
+  ): Promise<ImportResult> {
+    return await this.importRecords(
+      {
+        requestElement: 'ImportWorkTaskSparesRequest',
+        recordsWrapper: 'ImportWorkTaskSpareRecords',
+        itemElement: 'ImportWorkTaskSpare',
+        action: 'ImportWorkTaskSpares',
+        operation: 'ImportWorkTaskSpares',
+        includeSuccesses,
+      },
+      records,
+    );
   }
 }
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
+/** The base-type elements, in the order a complexContent extension emits
+ * them: ImportItemBase, then CrudImportItemBase, then MasterImportItem.
+ * Everything else sorts alphabetically after these.
+ *
+ * These five are also in a DIFFERENT NAMESPACE from the fields around
+ * them. The base types are declared in schemas.pragmaproducts.com/onkey/v1
+ * with elementFormDefault="qualified"; the derived import types are
+ * declared in .../MaintenanceManager/v1. So Code belongs to the common
+ * namespace while StaffCode, two lines later, belongs to the
+ * MaintenanceManager one.
+ *
+ * This cost a live write. Sent unqualified, they inherit the request's
+ * default namespace, WCF does not recognise them, and it drops them
+ * SILENTLY rather than faulting: OnKey answered "E5045: Code may not be
+ * null or empty" for a request that plainly contained a Code, and
+ * reported ReferenceId 0 for a record that plainly set it to 1. Two
+ * fields vanishing quietly is what a namespace mismatch looks like from
+ * the outside. */
+const IMPORT_BASE_ORDER = ['referenceId', 'action', 'id', 'code', 'newCode'];
+
+/** One import item, elements in schema order and in the right namespace.
+ * Empty values are dropped rather than sent blank: an import writes what
+ * it is given, and a blank element is an instruction to clear the field. */
+export function importItem(
+  element: string,
+  fields: Record<string, string | number | boolean | undefined | null>,
+): string {
+  const present = Object.entries(fields).filter(
+    ([, v]) => v !== undefined && v !== null && v !== '',
+  );
+  const base = IMPORT_BASE_ORDER.map((k) => present.find(([n]) => n === k)).filter(
+    (e): e is [string, string | number | boolean] => e !== undefined,
+  );
+  const rest = present
+    .filter(([n]) => !IMPORT_BASE_ORDER.includes(n))
+    .sort(([a], [b]) => (cap(a) < cap(b) ? -1 : cap(a) > cap(b) ? 1 : 0));
+  const el = (k: string, v: string | number | boolean, ns?: string) =>
+    `<${cap(k)}${ns ? ` xmlns="${ns}"` : ''}>${xmlEscape(v)}</${cap(k)}>`;
+  return `<${element}>${[
+    ...base.map(([k, v]) => el(k, v, NS_COMMON)),
+    ...rest.map(([k, v]) => el(k, v)),
+  ].join('')}</${element}>`;
+}
 
 export interface ImportResult {
   failures: { referenceId: number | null; message: string }[];

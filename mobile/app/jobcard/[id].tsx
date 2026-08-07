@@ -24,8 +24,10 @@ import {
   ChargeItem,
   JobCardBundle,
   JobCardPart,
+  StockItem,
   getJobCard,
   saveJobCard,
+  searchStock,
   signJobCard,
 } from '../../src/api/client';
 import { useAuth } from '../../src/auth/AuthContext';
@@ -96,8 +98,9 @@ export default function JobCardScreen() {
   const [ot15, setOt15] = useState('');
   const [ot20, setOt20] = useState('');
   const [parts, setParts] = useState<JobCardPart[]>([]);
-  const [partCode, setPartCode] = useState('');
-  const [partQty, setPartQty] = useState('');
+  const [search, setSearch] = useState('');
+  const [hits, setHits] = useState<StockItem[]>([]);
+  const [searching, setSearching] = useState(false);
   const [performed, setPerformed] = useState('');
   const [clientName, setClientName] = useState('');
   const [busy, setBusy] = useState(false);
@@ -150,6 +153,31 @@ export default function JobCardScreen() {
 
   useFocusEffect(useCallback(() => load(), [load]));
 
+  // Debounced, because a technician types a part code one character at a
+  // time on a phone and every keystroke would otherwise be a round trip
+  // over forecourt signal. Two characters minimum: one character matches
+  // most of the register and tells nobody anything.
+  React.useEffect(() => {
+    const q = search.trim();
+    if (q.length < 2) {
+      setHits([]);
+      setSearching(false);
+      return;
+    }
+    setSearching(true);
+    let live = true;
+    const timer = setTimeout(() => {
+      searchStock(accessToken, q)
+        .then((r) => live && setHits(r.slice(0, 8)))
+        .catch(() => live && setHits([]))
+        .finally(() => live && setSearching(false));
+    }, 250);
+    return () => {
+      live = false;
+      clearTimeout(timer);
+    };
+  }, [search, accessToken]);
+
   type SaveBody = Parameters<typeof saveJobCard>[2];
 
   const persist = useCallback(
@@ -188,18 +216,32 @@ export default function JobCardScreen() {
     performed.trim().length > 0 &&
     clientName.trim().length > 0;
 
-  const addPart = () => {
-    const code = partCode.trim().toUpperCase();
-    const qty = toNum(partQty);
-    if (!code || qty <= 0) {
-      Alert.alert('Part needs a code and a quantity', 'Enter the stock code and how many.');
-      return;
-    }
-    const next = [...parts, { itemCode: code, description: code, quantity: qty, unit: 'EA' }];
+  /** Adding the same part twice bumps the quantity rather than making a
+   * second line: two lines for one item is a costing sheet nobody can
+   * check against the van. */
+  const addPart = (hit: StockItem) => {
+    dirty.current = true;
+    const at = parts.findIndex((p) => p.itemCode === hit.itemCode);
+    const next =
+      at >= 0
+        ? parts.map((p, i) => (i === at ? { ...p, quantity: p.quantity + 1 } : p))
+        : [
+            ...parts,
+            {
+              itemCode: hit.itemCode,
+              description: hit.description ?? hit.itemCode,
+              quantity: 1,
+              unit: hit.unit,
+            },
+          ];
     setParts(next);
-    setPartCode('');
-    setPartQty('');
+    setSearch('');
+    setHits([]);
     persist({ parts: next });
+  };
+
+  const setPartQuantity = (index: number, raw: string) => {
+    setParts((prev) => prev.map((p, i) => (i === index ? { ...p, quantity: toNum(raw) } : p)));
   };
 
   const sign = async () => {
@@ -336,50 +378,94 @@ export default function JobCardScreen() {
             key={`${p.itemCode}-${i}`}
             style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 5 }}
           >
-            <Text style={{ flex: 1, color: colors.ink, fontSize: 13, fontFamily: fonts.mono }}>
-              {p.itemCode}
-            </Text>
-            <Text style={{ color: colors.ink, fontSize: 13 }}>
-              {p.quantity} {p.unit}
-            </Text>
-            {!signed ? (
-              <Text
-                onPress={() => {
-                  const next = parts.filter((_, j) => j !== i);
-                  setParts(next);
-                  persist({ parts: next });
-                }}
-                accessibilityRole="button"
-                accessibilityLabel={`Remove ${p.itemCode}`}
-                style={{ color: colors.red, fontSize: 13, paddingHorizontal: 6 }}
-              >
-                &#10007;
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: colors.ink, fontSize: 13, fontFamily: fonts.mono }}>
+                {p.itemCode}
               </Text>
-            ) : null}
+              {p.description && p.description !== p.itemCode ? (
+                <Text style={{ color: colors.muted, fontSize: 11 }}>{p.description}</Text>
+              ) : null}
+            </View>
+            {signed ? (
+              <Text style={{ color: colors.ink, fontSize: 13 }}>
+                {p.quantity} {p.unit}
+              </Text>
+            ) : (
+              <>
+                {/* Quantity is editable in place. A technician who fitted
+                    two of something should not have to remove the line and
+                    find the part again. */}
+                <TextInput
+                  style={[numField, { width: 64, textAlign: 'right' }]}
+                  value={String(p.quantity)}
+                  onChangeText={touch((v: string) => setPartQuantity(i, v))}
+                  onBlur={() => persist({ parts })}
+                  keyboardType="decimal-pad"
+                  accessibilityLabel={`Quantity of ${p.itemCode}`}
+                />
+                <Text style={{ color: colors.muted, fontSize: 11, width: 22 }}>{p.unit}</Text>
+                <Text
+                  onPress={() => {
+                    const next = parts.filter((_, j) => j !== i);
+                    setParts(next);
+                    persist({ parts: next });
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Remove ${p.itemCode}`}
+                  style={{ color: colors.red, fontSize: 13, paddingHorizontal: 6 }}
+                >
+                  &#10007;
+                </Text>
+              </>
+            )}
           </View>
         ))}
         {parts.length === 0 ? (
           <Text style={{ color: colors.muted, fontSize: 12 }}>No parts used.</Text>
         ) : null}
         {!signed ? (
-          <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+          <View style={{ marginTop: 8 }}>
             <TextInput
-              style={[numField, { flex: 2 }]}
-              value={partCode}
-              onChangeText={touch(setPartCode)}
-              autoCapitalize="characters"
-              placeholder="Stock code"
-              accessibilityLabel="Stock code"
+              style={numField}
+              value={search}
+              onChangeText={setSearch}
+              autoCorrect={false}
+              placeholder="Search a part by code or name"
+              accessibilityLabel="Search parts"
             />
-            <TextInput
-              style={[numField, { flex: 1 }]}
-              value={partQty}
-              onChangeText={touch(setPartQty)}
-              keyboardType="decimal-pad"
-              placeholder="Qty"
-              accessibilityLabel="Quantity"
-            />
-            <Button title="Add" onPress={addPart} />
+            {searching ? (
+              <Text style={{ color: colors.muted, fontSize: 11, marginTop: 4 }}>Searching…</Text>
+            ) : null}
+            {hits.map((h) => (
+              <Text
+                key={h.itemCode}
+                onPress={() => addPart(h)}
+                accessibilityRole="button"
+                accessibilityLabel={`Add ${h.itemCode} ${h.description ?? ''}`}
+                style={{
+                  color: colors.ink,
+                  fontSize: 13,
+                  paddingVertical: 7,
+                  borderTopWidth: 1,
+                  borderTopColor: colors.line,
+                }}
+              >
+                <Text style={{ fontFamily: fonts.mono }}>{h.itemCode}</Text>
+                {'  '}
+                {h.description}
+                {h.vanCount > 0 ? (
+                  <Text style={{ color: colors.muted, fontSize: 11 }}>
+                    {'  '}on {h.vanCount} {h.vanCount === 1 ? 'van' : 'vans'}
+                  </Text>
+                ) : null}
+              </Text>
+            ))}
+            {search.trim().length > 1 && !searching && hits.length === 0 ? (
+              <Text style={{ color: colors.muted, fontSize: 12, marginTop: 6 }}>
+                Nothing found. Parts come from the stock register, so a code that is not
+                listed cannot be booked to the work order.
+              </Text>
+            ) : null}
           </View>
         ) : null}
       </SectionCard>

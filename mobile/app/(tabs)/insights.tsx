@@ -1,5 +1,5 @@
 /**
- * Insights tab (#56, Arch v2 phase 5) — the technician's own numbers plus a
+ * Insights tab (#56, Arch v2 phase 5): the technician's own numbers plus a
  * PII-free company snapshot, scoped server-side by the caller's JWT.
  * Reads the offline mirror first like every other screen.
  */
@@ -9,14 +9,40 @@ import { ScrollView, Text, View } from 'react-native';
 import {
   Insights,
   MeasuresCompliance,
+  OpsAlert,
   getInsights,
   getMeasuresCompliance,
+  getOpsAlerts,
 } from '../../src/api/client';
 import { useAuth } from '../../src/auth/AuthContext';
 import { fetchThrough } from '../../src/db/cache';
 import { GreetingHeader } from '../../src/components/GreetingHeader';
 import { SyncBanner } from '../../src/components/SyncBanner';
 import { SectionCard, colors, fonts, styles } from '../../src/components/ui';
+
+/** Said as a consequence, not as a system state. "writes_dead_lettered"
+ * means nothing to a manager; "the office has not been told" does. */
+const ALERT_TITLE: Record<string, string> = {
+  sync_stalled: 'The work list has stopped updating',
+  writes_dead_lettered: 'Updates could not be delivered to OnKey',
+  writes_failing: 'Updates to OnKey are being retried',
+  writes_blocked: 'Updates we are deliberately holding',
+  divergence_unacknowledged: 'Jobs moved while a technician held them',
+  cron_failing: 'A scheduled job is failing',
+};
+
+function alertBody(a: OpsAlert): string {
+  const d = a.detail ?? {};
+  if (a.key === 'sync_stalled') {
+    return `Last successful sync ${d.minutesAgo ?? 'more than 20'} minutes ago.`;
+  }
+  if (typeof d.count === 'number') {
+    const wos = Array.isArray(d.workOrders) ? d.workOrders.filter(Boolean) : [];
+    return wos.length ? `${d.count}: ${wos.slice(0, 4).join(', ')}` : String(d.count);
+  }
+  if (Array.isArray(d.jobs)) return d.jobs.join(', ');
+  return '';
+}
 
 function Stat({ label, value, wide }: { label: string; value: string | number; wide?: boolean }) {
   return (
@@ -66,6 +92,7 @@ export default function InsightsScreen() {
   const { identity, accessToken, loading } = useAuth();
   const [insights, setInsights] = useState<Insights | null>(null);
   const [compliance, setCompliance] = useState<MeasuresCompliance | null>(null);
+  const [alerts, setAlerts] = useState<OpsAlert[] | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
@@ -82,6 +109,13 @@ export default function InsightsScreen() {
       );
     } catch {
       // no cache yet
+    }
+    // Also role holders only. NOT cached: a stale "everything is fine" is
+    // worse than no answer, because it is indistinguishable from a real one.
+    try {
+      setAlerts(await getOpsAlerts(accessToken));
+    } catch {
+      setAlerts(null);
     } finally {
       setRefreshing(false);
     }
@@ -161,6 +195,30 @@ export default function InsightsScreen() {
               </Text>
             ) : null}
           </SectionCard>
+
+          {alerts && alerts.length > 0 ? (
+            <SectionCard title="Needs attention">
+              {alerts.map((a) => (
+                <View key={a.key} style={{ paddingVertical: 5 }}>
+                  <Text
+                    style={{
+                      color:
+                        a.severity === 'critical'
+                          ? colors.red
+                          : a.severity === 'warning'
+                            ? colors.amber
+                            : colors.muted,
+                      fontSize: 13,
+                      fontFamily: fonts.bodyMedium,
+                    }}
+                  >
+                    {ALERT_TITLE[a.key] ?? a.key}
+                  </Text>
+                  <Text style={{ color: colors.muted, fontSize: 12 }}>{alertBody(a)}</Text>
+                </View>
+              ))}
+            </SectionCard>
+          ) : null}
 
           {compliance ? (
             <SectionCard title="Measures compliance (all technicians)">

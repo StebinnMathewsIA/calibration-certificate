@@ -392,15 +392,54 @@ function planFor(ev: Record<string, any>): Record<string, unknown> {
           },
         ],
       };
+    // No ExternalReference stamped in here any more. An import writes
+    // every field it is given, and ExternalReference is a real business
+    // field on the work order (the slot Prowalco may want the certificate
+    // number in), so quietly filling it with our event UUID on every merge
+    // was overwriting their data to solve a problem we do not have: the
+    // outbox is already idempotent through seq and source_event_id.
     case 'work_order_merge':
       return {
         operation: 'ImportWorkOrders',
-        records: [{ referenceId: 1, action: 'Merge', code: ev.wo_code, externalReference: ev.event_uuid, ...p }],
+        records: [{ referenceId: 1, action: 'Merge', code: ev.wo_code, ...p }],
       };
     case 'work_order_create':
       return {
         operation: 'ImportWorkOrders',
-        records: [{ referenceId: 1, action: 'Insert', externalReference: ev.event_uuid, ...p }],
+        records: [{ referenceId: 1, action: 'Insert', ...p }],
+      };
+    case 'work_task_spares':
+      // One record per costing line, all against the same work order.
+      //
+      // NOT SENDABLE YET, and the missing piece is not in this file. Every
+      // real spare row in OnKey hangs off a WORK TASK (ParentId), and we
+      // have no way to learn which task belongs to a given work order: the
+      // FIELDOPS - TASK report has required parameters whose names are not
+      // published, and it now returns zero rows for every call we can
+      // make. So taskId/taskCode below are read from the payload and the
+      // payload cannot yet carry them. Until Prowalco supplies the report
+      // parameters (or authors PWR-WT01, already specified in
+      // docs/ONKEY-REPORTS-SPEC.md), these stay queued blocked.
+      //
+      // ItemType is deliberately not set: the live rows carry ItemType 0,
+      // "Warehouse Item", and guessing a type is how a costing line lands
+      // in the wrong bucket.
+      return {
+        operation: 'ImportWorkTaskSpares',
+        records: (p.lines ?? []).map(
+          (l: Record<string, unknown>, i: number) => ({
+            referenceId: i + 1,
+            action: 'Insert',
+            workOrderCode: ev.wo_code,
+            taskId: p.taskId,
+            taskCode: p.taskCode,
+            itemCode: l.itemCode,
+            itemDescription: l.description,
+            quantityRequired: l.quantity,
+            unitCode: l.unit,
+            notes: p.workPerformed,
+          }),
+        ),
       };
     default:
       return { operation: 'UNSUPPORTED', kind: ev.kind };
@@ -413,6 +452,9 @@ async function execute(client: OnKeyClient, ev: Record<string, any>, planned: Re
       return await client.changeStatusAndQueue(planned.records);
     case 'ImportWorkOrders':
       return await client.importWorkOrders(planned.records);
+    case 'ImportWorkTaskSpares':
+      if (!planned.records.length) throw new Error('no costing lines to send');
+      return await client.importWorkTaskSpares(planned.records);
     default:
       throw new Error(`unsupported event kind ${ev.kind}`);
   }

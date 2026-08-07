@@ -280,6 +280,40 @@ unverified. Ask Prowalco's IT for a twenty-row sample of InvWarehouse as
 a CSV, separately from the live connection, so the codes can be checked
 while the firewall work is still in progress rather than after it.
 
+### FIELDOPS - TASK is a dead end, and it blocks the costing write (2026-08-07)
+
+The job card books travel, labour and parts as **work task spares**, and
+every real spare row in OnKey hangs off a WORK TASK, not off the work
+order: `wrkTaskSpares.ParentId` is the task id. So writing a technician's
+costing needs the task for that work order, and we cannot get it.
+
+What was tried, all against the live service:
+
+| Call | Result |
+|---|---|
+| `FIELDOPS - TASK`, no parameters, MaxRecordCount 20000 | 200, **0 rows** |
+| same, MaxRecordCount 500 (the count of the rows we hold) | 200, **0 rows** |
+| `parameters: {MinId: ...}` | `E15190: Export Parameter 'MinId' is not defined as a Report Parameter` |
+| `parameters: {ParentCode: ...}` | `E15190`, same |
+
+The 500 rows in our mirror were captured on 2026-08-03 and the same call
+now returns nothing, so the report either has a compiled-in date window
+that has passed or has been edited. E15190 rejects a wrong parameter name
+but never lists the right ones, so the parameter set cannot be discovered
+from outside: it lives in the report definition in OnKey.
+
+**This needs Prowalco.** Either someone opens FIELDOPS - TASK and reads off
+its Filter Criteria names, or PWR-WT01 below gets authored with
+`WorkOrderCode` as a parameter, which is the better answer anyway. Until
+then `app_job_card_sign` queues its costing lines as `blocked`: the data
+is held and one flip releases it.
+
+Two things worth knowing when it is unblocked. `ItemType` on live rows is
+**0, "Warehouse Item"**, not 1. And every live spare row carries a
+`WarehouseItemId`, so a part is booked against a specific van's stock line
+rather than against a bare item code; whether the import will resolve
+`WarehouseItemWarehouseCode` on its own is untested.
+
 ### FIELDOPS - TASK and FIELDOPS - LABOUR
 Base tables `wrkTasks` and `wrkTaskLabour`. Neither has a SiteId, so the
 Site Path runs through the parent: labour's is

@@ -133,7 +133,7 @@ export async function getMeasuresCompliance(
   return await rpc<MeasuresCompliance | null>('app_measures_compliance', token);
 }
 
-/** Role administration (#72) — admin only; the SQL guards enforce it. */
+/** Role administration (#72), admin only; the SQL guards enforce it. */
 export interface RoleEntry {
   email: string;
   role: 'manager' | 'admin';
@@ -171,7 +171,7 @@ export async function setAllocation(
   });
 }
 
-/** Cross-company certificate search (#72) — role holders only. */
+/** Cross-company certificate search (#72), role holders only. */
 export async function searchCertificates(
   token: string | null,
   query: string,
@@ -183,7 +183,7 @@ export async function searchCertificates(
   );
 }
 
-/** Open work orders grouped per technician (#76) — role holders only. */
+/** Open work orders grouped per technician (#76), role holders only. */
 export interface TeamGroup {
   staffCode: string;
   name: string | null;
@@ -366,6 +366,42 @@ export interface JobCardBundle {
   chargeItems: ChargeItem[];
   jobCard: JobCardState | null;
   document: JobCardDocument;
+}
+
+/** Something is wrong with the pipeline, in the terms a manager can act
+ * on. Role holders only: a technician cannot fix a stalled cron job and
+ * should not be shown one. */
+export interface OpsAlert {
+  key: string;
+  severity: 'critical' | 'warning' | 'info';
+  detail: Record<string, any>;
+}
+
+export async function getOpsAlerts(token: string | null): Promise<OpsAlert[] | null> {
+  return await rpc<OpsAlert[] | null>('app_ops_alerts', token);
+}
+
+/** A part the vans actually carry (#105). vanCount is a relevance signal,
+ * not a stock figure: the thing 26 vans hold is more likely the thing in
+ * this technician's hand than a catalogue entry nobody stocks. */
+export interface StockItem {
+  itemCode: string;
+  description: string | null;
+  unit: string;
+  vanCount: number;
+}
+
+/** Cached per query so a forecourt with no signal still finds the parts the
+ * technician looked up earlier the same day. */
+export async function searchStock(
+  token: string | null,
+  query: string,
+): Promise<StockItem[]> {
+  const q = query.trim();
+  if (!q) return [];
+  return await fetchThrough(`stock:${q.toLowerCase()}`, () =>
+    rpc<StockItem[]>('app_stock_search', token, { p_query: q, p_limit: 25 }),
+  );
 }
 
 const jobCardKey = (workOrderId: string) => `jobcard:${workOrderId}`;
@@ -605,7 +641,7 @@ export interface MyTechnician {
   email: string | null;
   manager: string | null;
   pliersNumber: string | null;
-  /** ACTIVE certified measures from the register (#70) — blank until the
+  /** ACTIVE certified measures from the register (#70), blank until the
    * technician registers their own. */
   measures: MeasureRecord[];
 }

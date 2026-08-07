@@ -113,15 +113,29 @@ export interface JobCardOptions {
   technicianSignatureSvg?: string;
 }
 
-/** The site rules printed on the original in 5pt. Kept verbatim: they are
- * Prowalco's HSE undertaking and not mine to reword. */
+/** The site rules printed on the original in 5pt. VERBATIM, on the owner's
+ * instruction (2026-08-07): this is Prowalco's HSE undertaking and not mine
+ * to reword.
+ *
+ * That includes three things I had quietly changed and have now put back,
+ * because a controlled document is not improved by an unannounced edit:
+ *
+ *  - Rule 4 reads "Owner/mamager". The original's typo, kept.
+ *  - Rule 6 reads "HES rules", not HSE. Also the original's, and it may
+ *    even be deliberate, so it is not mine to decide.
+ *  - Rule 5 points at "important notes about prompt feedback at the bottom
+ *    of the page". There are no such notes anywhere on the original: it is
+ *    a dangling cross-reference in Prowalco's own template. The rule is
+ *    printed as written; the missing notes cannot be invented.
+ *
+ * All three are flagged to the owner rather than fixed here. */
 const SITE_RULES = [
   'Permit issuer to remain on site for the full duration of the job, no work to proceed unless issuer is on site.',
   'Introduce yourself to the owner/manager.',
   'Owner/manager to sign jobcard confirming arrival time.',
-  'Owner/manager to sign off successful completed maintenance, stipulating the time of completion.',
+  'Owner/mamager to sign off successful completed maintenance, stipulating the time of completion.',
   'See important notes about prompt feedback at the bottom of the page.',
-  "Ensure that all work is done in accordance with Prowalco's HSE rules.",
+  "Ensure that all work is done in accordance with Prowalco's HES rules.",
   'All rubble/dirt caused by your work to be removed and surrounding area to be left in its original state.',
 ];
 

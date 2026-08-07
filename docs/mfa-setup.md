@@ -1,4 +1,4 @@
-# MFA setup — identity-provider enforced, tablet as second factor (#50)
+# MFA setup: identity-provider enforced, tablet as second factor (#50)
 
 Decision (review session, 2026-07): two-factor authentication is enforced **at
 the identity provider**, not in the app. The first sign-in on a device carries
@@ -10,10 +10,10 @@ shift.
 ## Why the app needs no changes
 
 - Sign-in runs through the **system browser** (`expo-web-browser` →
-  Supabase → IdP). Whatever challenge the IdP mandates — MFA prompt,
-  passkey, password reset — simply appears in that flow.
+  Supabase → IdP). Whatever challenge the IdP mandates (MFA prompt,
+  passkey, password reset) simply appears in that flow.
 - The session refresh token is stored with **expo-secure-store**, which is
-  the Android Keystore / iOS Keychain — hardware-backed, per-device,
+  the Android Keystore / iOS Keychain, hardware-backed, per-device,
   non-exportable. Possession of a signed-in session ⇒ possession of the
   enrolled device.
 - The **signing re-prompt** (`expo-local-authentication`,
@@ -24,15 +24,15 @@ shift.
 
 ## Owner configuration (consoles, ~15 minutes)
 
-### Microsoft Entra — pick ONE path
+### Microsoft Entra: pick ONE path
 
-**Path A — Security defaults (free, tenant-wide):**
+**Path A: Security defaults (free, tenant-wide):**
 [entra.microsoft.com](https://entra.microsoft.com) → Identity → Overview →
 Properties → *Manage security defaults* → **Enabled**. All users must
 register MFA within 14 days; challenges are risk-based/first-device rather
-than every sign-in — exactly the once-per-device feel we want.
+than every sign-in: exactly the once-per-device feel we want.
 
-**Path B — Conditional Access (needs Entra ID P1):**
+**Path B: Conditional Access (needs Entra ID P1):**
 Entra → Protection → Conditional Access → New policy:
 - Users: the technicians group (exclude a break-glass admin account)
 - Target resources: All cloud apps (or the Supabase app registration)
@@ -52,11 +52,11 @@ passwords when possible").
 
 ### Apple
 
-Apple IDs require Apple's own 2FA by default — nothing to configure.
+Apple IDs require Apple's own 2FA by default, so there is nothing to configure.
 
 ### Device policy (MDM or issue checklist)
 
-- Every field tablet MUST have a screen lock (PIN/pattern) set — this is the
+- Every field tablet MUST have a screen lock (PIN/pattern) set. This is the
   knowledge factor at signing. Enforce via MDM if available; otherwise it is
   a checklist item when issuing a tablet.
 

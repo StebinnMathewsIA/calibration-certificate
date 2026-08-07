@@ -1,4 +1,4 @@
-# Electronic Signature Procedure — Prowalco Calibration Certificates
+# Electronic Signature Procedure: Prowalco Calibration Certificates
 
 **Document status:** DRAFT for review by Prowalco QM and the accreditation
 assessor. This procedure is audited as much as the technology (CLAUDE.md,
@@ -16,7 +16,7 @@ service, and the audit trail.
 | Role | Responsibility |
 |---|---|
 | Technician (calibrated-by) | Performs the calibration, completes the form, initiates signing after a biometric/PIN identity re-confirmation |
-| Technical signatory | Named reviewer on the certificate (two-role model; may be the same person if policy allows — open question #3) |
+| Technical signatory | Named reviewer on the certificate (two-role model; may be the same person if policy allows, per open question #3) |
 | Quality manager | Owns tolerance configuration, uncertainty budget, procedure register, and this document |
 | System (signing service) | Applies the cryptographic signature; no human holds the signing key |
 
@@ -26,9 +26,9 @@ service, and the audit trail.
    results are true and the procedure was followed"), passes a device
    biometric/PIN re-prompt, and the app records the intent-to-sign event
    (device timestamp, device ID, GPS with consent).
-2. **Cryptographic signature.** The signing service — after re-validating the
+2. **Cryptographic signature.** The signing service, after re-validating the
    form against the shared schema, re-computing all results, and
-   cross-checking the PDF text layer against the submitted data — applies a
+   cross-checking the PDF text layer against the submitted data, applies a
    **PAdES** digital signature with a visible widget (technician name +
    signing date) using a private key held in **cloud KMS/HSM**. Keys never
    exist on any device.
@@ -80,7 +80,7 @@ The signing service refuses to sign unless ALL of the following hold:
    server-side recomputation against the tolerance classes in force.
 5. The uploaded PDF's SHA-256 matches the client-stated digest.
 6. The PDF text layer contains the certificate number, technician name,
-   customer name, UUT serial number, and every indicated/measured volume —
+   customer name, UUT serial number, and every indicated/measured volume:
    a compromised client cannot get arbitrary content signed.
 
 Refusals are themselves audit events (`certificate.sign_rejected`).
@@ -91,7 +91,7 @@ Certificate number; technician identity (IdP subject + name) and auth method;
 device ID; intent-to-sign timestamp and GPS (with consent, POPIA); unsigned
 and signed PDF SHA-256; signature ID; signing time; Claude analysis verdict +
 model + prompt version; sync confirmation. The audit table is **append-only**
-(no UPDATE/DELETE grants; belt-and-braces trigger — see
+(no UPDATE/DELETE grants; belt-and-braces trigger in
 `backend/migrations/001_init.sql`).
 
 ## 7. Claude analysis is advisory
@@ -111,7 +111,7 @@ unchanged for the full retention period.
 ## 9. Retention
 
 Signed PDFs and audit records are retained for at least 5 years (per lab
-policy — confirm with QM) in write-once storage.
+policy; confirm with QM) in write-once storage.
 
 ## 10. Certificate chain
 

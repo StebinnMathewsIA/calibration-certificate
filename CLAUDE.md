@@ -1,4 +1,54 @@
-# Prowalco Calibration App — Project Brief (CLAUDE.md)
+# Prowalco Calibration App: Project Brief (CLAUDE.md)
+
+## STOP. Read CONSTITUTION.md first.
+
+`CONSTITUTION.md` at the repository root governs how work is done here. It
+takes precedence over this file and over convenience. It is NOT loaded
+automatically, so read it at the start of every session. This section is a
+pointer, not a substitute.
+
+**Article 1, the prime directive, verbatim:**
+
+> **No code is written until the request exists as a GitHub issue, and that
+> issue has been specced out.**
+>
+> This applies to *every* feature request or bug report, **including ones
+> made casually in chat**.
+
+So when someone says "can you also add X" or "X is broken" in conversation,
+the first action is not to open an editor. It is:
+
+1. Open a GitHub issue, labelled `enhancement` or `bug`.
+2. Spec it using the Article 2 template (Summary, Motivation, Proposed
+   behaviour, Out of scope, Acceptance criteria).
+3. Then build, referencing the issue number in the commit.
+
+Several distinct requests in one message means several issues.
+
+Two more that are routinely missed:
+
+- **Article 3:** close the issue when the work is pushed, with a comment
+  saying what shipped and how to test it. Closing means "ready for the
+  user to test", not "verified".
+- **Article 4:** anything that cannot be verified in this environment
+  (device behaviour, biometrics, sign-ins, third-party services) goes into
+  `docs/TESTING.md` as an unchecked box.
+
+This section exists because it was broken. On 2026-08-07 the job card
+capture screen, the OnKey assignment write, the parts pick list and the
+alerting were all built with no issue, no spec and no test entries, by an
+assistant that had read this file carefully and never opened the
+constitution. See #115.
+
+**Where the rules live**, so there is no third place to miss:
+
+| Rules | File |
+|---|---|
+| How work is done: issues, specs, closing, testing, branching | `CONSTITUTION.md` |
+| How everything is written: no em dashes, no emojis, iconography | "Writing & UI style rules" below |
+| What the app is and how it is built | the rest of this file |
+
+---
 
 ## What this project is
 
@@ -9,11 +59,11 @@ A mobile app (iOS + Android) for **Prowalco** (Tatsuno fuel dispenser/pump distr
 3. Generate a **digitally signed, tamper-evident PDF calibration certificate** on-device
 4. Send the calibration results to the **Claude API** for automated analysis ("is this a good calibration?") visible to the technician and their manager
 
-Target compliance context: **ISO/IEC 17025**-style traceability and SANAS-aligned certificate content (modelled on a SANAS-accredited lab certificate). Legal metrology context for fuel dispensers in SA: NRCS / OIML R117 tolerances — confirm exact applicable tolerances with Prowalco's quality manager before hard-coding pass/fail limits.
+Target compliance context: **ISO/IEC 17025**-style traceability and SANAS-aligned certificate content (modelled on a SANAS-accredited lab certificate). Legal metrology context for fuel dispensers in SA: NRCS / OIML R117 tolerances. Confirm the exact applicable tolerances with Prowalco's quality manager before hard-coding pass/fail limits.
 
 ---
 
-## ⚠️ IMPLEMENTED MODEL (v1) — read this before the spec below
+## IMPLEMENTED MODEL (v1): read this before the spec below
 
 The app implements Prowalco's **real** document: the **NRCS Verification
 Certificate for Liquid Fuel Dispensers (LM01HV)** + its **Metrologist Note**,
@@ -24,7 +74,7 @@ not the generic ISO-17025 calibration form. The single source of truth is
 Key differences from the original brief:
 - **Accuracy** is reported as **EFD = (VFD − VREF)/VREF × 100** per delivery
   (VFD = volume the dispenser shows, VREF = volume in the reference measure),
-  MPE **±0.5 %** (provisional — confirm with QM). See `tolerance.ts`.
+  MPE **±0.5 %** (provisional, confirm with QM). See `tolerance.ts`.
 - **Per hose:** four components (meter / PC board / pulsar / solenoid), an
   11-item pass/fail checklist, EFD deliveries (Del 1/2/3 max, min flow, preset),
   and a **Certified/Rejected** outcome.
@@ -40,10 +90,10 @@ OnKey (Prowalco's asset system) is **simulated** for now behind the
 `WorkOrderProvider` seam (`backend/app/workorders/`), nothing is written back.
 - **External seed (read-only, may be partial):** Technician (email = sign-in
   identity), WorkOrder (assigned by email; 1 WO = one site), Site/Customer,
-  Dispenser — **dispenser-level granularity only**.
+  Dispenser, **dispenser-level granularity only**.
 - **Internal, we own + persist (Supabase, migration 002 + offline mirror):**
   canonical Site + Dispenser records (with `source` onkey/manual and a soft
-  `active/retired` lifecycle — never hard-deleted), the per-dispenser
+  `active/retired` lifecycle, never hard-deleted), the per-dispenser
   **component register** (`dispenser-detail.ts`), and the Verification itself.
   - On the component register (corrected 2026-08-03): OnKey DOES have a
     component table, `astComponents`, with a good structure (parent asset,
@@ -68,11 +118,11 @@ signature → VO biometric sign → backend seals PAdES → issued.
 ```
 /
 ├── CLAUDE.md              This brief
-├── shared/schema/         Shared zod schemas (TypeScript) — single source of truth for the
+├── shared/schema/         Shared zod schemas (TypeScript), single source of truth for the
 │                          calibration form, sign-queue envelope, and Claude verdict shapes.
 │                          Exports JSON Schema for the Python backend (validation parity).
-├── mobile/                Expo (React Native) app — form, offline sign queue, PDF render
-├── backend/               FastAPI service — auth verification, schema re-validation,
+├── mobile/                Expo (React Native) app, form, offline sign queue, PDF render
+├── backend/               FastAPI service, auth verification, schema re-validation,
 │                          PAdES signing (pyHanko + KMS abstraction + RFC 3161 TSA),
 │                          append-only audit log, Claude analysis proxy
 └── docs/                  E-signature procedure, key rotation runbook (assessor-facing)
@@ -82,21 +132,21 @@ signature → VO biometric sign → backend seals PAdES → issued.
 
 ## Architecture overview
 
-- **Mobile app**: **React Native with Expo + EAS** (decided — client has an EAS account). Use an **EAS development build / dev client**, not Expo Go, because native modules (crypto, Google Sign-In) are required.
+- **Mobile app**: **React Native with Expo + EAS** (decided, client has an EAS account). Use an **EAS development build / dev client**, not Expo Go, because native modules (crypto, Google Sign-In) are required.
 - **Backend API** (Node or Python) with:
-  - OAuth/OIDC federation (Microsoft Entra ID, Google, Apple Sign-In) — use a broker like Auth0/Firebase Auth/AWS Cognito rather than hand-rolling
+  - OAuth/OIDC federation (Microsoft Entra ID, Google, Apple Sign-In): use a broker like Auth0/Firebase Auth/AWS Cognito rather than hand-rolling
   - **Signing service**: private keys held in cloud KMS/HSM (AWS KMS, Azure Key Vault). Keys are NEVER on the device.
   - **Immutable audit log** (append-only table / write-once storage)
   - **Claude API integration** for calibration analysis
-- **Signing flow (final — single flow, no on-device key material):**
+- **Signing flow (final, single flow, no on-device key material):**
   1. App renders the certificate PDF locally (`expo-print` HTML template)
   2. Technician taps **Sign** → biometric/PIN re-prompt → app records intent-to-sign (device timestamp, GPS)
   3. App queues the package locally: form JSON + PDF bytes + local SHA-256 + client-generated **idempotency UUID**
   4. When online: upload package + auth token to backend
-  5. Backend verifies the session, **re-validates the form JSON against the shared zod schema**, and cross-checks key fields (certificate number, technician, result values) against the PDF text layer — a compromised client cannot get arbitrary content signed
+  5. Backend verifies the session, **re-validates the form JSON against the shared zod schema**, and cross-checks key fields (certificate number, technician, result values) against the PDF text layer, so a compromised client cannot get arbitrary content signed
   6. Backend applies a **PAdES-compliant** signature (visible widget: technician name + signing date) with keys in **KMS/HSM** + **RFC 3161 trusted timestamp**, writes the audit event, returns the signed PDF
   7. App verifies the returned PDF (hash + signature present), stores it, marks the certificate **issued**
-- **Timestamp semantics (assessor-relevant):** if signing was queued offline, the audit trail records BOTH the technician's intent-to-sign time (device clock) and the cryptographic signing time (TSA). The visible signature date on the PDF is the TSA date. The certificate is only "issued" once signed — never distribute unsigned output.
+- **Timestamp semantics (assessor-relevant):** if signing was queued offline, the audit trail records BOTH the technician's intent-to-sign time (device clock) and the cryptographic signing time (TSA). The visible signature date on the PDF is the TSA date. The certificate is only "issued" once signed. Never distribute unsigned output.
 - **Offline & sign-queue state machine:** technicians work at forecourts with poor connectivity, so every state below is **persisted to expo-sqlite and survives app kill/restart**:
   - `DRAFT` → form in progress, autosaved on every field change
   - `READY_TO_SIGN` → validation passed, declaration ticked
@@ -131,7 +181,7 @@ chat replies.
 ## Branding
 
 - Prowalco logo (green/blue "prowalco" + red "TATSUNO") top-left of certificate; asset provided by client (`assets/prowalco-logo.png`)
-- Accreditation marks (SANAS etc.) top-right IF/WHEN Prowalco holds accreditation — placeholder slot in template, feature-flagged off by default
+- Accreditation marks (SANAS etc.) top-right IF/WHEN Prowalco holds accreditation. Placeholder slot in the template, feature-flagged off by default
 - Certificate visual layout modelled on standard SANAS calibration certificates: header block, "CERTIFICATE OF CALIBRATION", certificate number, detail rows, results tables, signature block, footer with contact details and "Page X of Y"
 
 ---
@@ -140,7 +190,7 @@ chat replies.
 
 Certificate number format: auto-generated, e.g. `PWC-{branch}-{sequence}-{revision}` (confirm scheme with Prowalco).
 
-### Section 1 — Job & customer details
+### Section 1: Job & customer details
 | Field | Input type | Notes |
 |---|---|---|
 | Certificate number | Auto-generated, read-only | Unique, immutable |
@@ -151,7 +201,7 @@ Certificate number format: auto-generated, e.g. `PWC-{branch}-{sequence}-{revisi
 | Calibration date | Date picker (default today) | Required |
 | Issue date | Auto (date of signing) | Read-only |
 
-### Section 2 — Unit under test (UUT)
+### Section 2: Unit under test (UUT)
 | Field | Input type | Notes |
 |---|---|---|
 | Equipment type | Dropdown: Fuel dispenser / Pump / Flow meter / Pressure transmitter / Other | Required |
@@ -162,7 +212,7 @@ Certificate number format: auto-generated, e.g. `PWC-{branch}-{sequence}-{revisi
 | Product/grade | Dropdown: ULP 93 / ULP 95 / Diesel 50ppm / Diesel 500ppm / Paraffin / Other | Fuel-specific |
 | Meter K-factor before | Numeric | If applicable |
 
-### Section 3 — Reference standards used
+### Section 3: Reference standards used
 Repeating group (add one row per standard):
 | Field | Input type | Notes |
 |---|---|---|
@@ -171,7 +221,7 @@ Repeating group (add one row per standard):
 | Certificate number | Auto-filled | Read-only |
 | Calibration due date | Auto-filled | **Block signing if expired** |
 
-### Section 4 — Environment & method
+### Section 4: Environment & method
 | Field | Input type | Notes |
 |---|---|---|
 | Ambient temperature (°C) | Numeric, 1 decimal | Required |
@@ -179,7 +229,7 @@ Repeating group (add one row per standard):
 | Procedure/method reference | Dropdown of controlled procedures | Required |
 | Condition of UUT | Dropdown: Good / Damaged / Leaks noted / Other + notes | Required |
 
-### Section 5 — Results ("As found" and "As left")
+### Section 5: Results ("As found" and "As left")
 Two identical tables; "As left" only shown if adjustment made (toggle: **Adjustment performed? Yes/No**).
 
 Repeating rows per test point (typical: low flow, high flow, multiple deliveries):
@@ -200,10 +250,10 @@ Additional:
 | Meter K-factor after | Numeric |
 | Uncertainty of measurement | Auto from lab uncertainty budget config (state k=2, ~95% confidence) |
 | Remarks / notes | Multiline text |
-| Photos | Camera capture (seal, totaliser, display) — embedded in cert appendix or stored in audit trail |
+| Photos | Camera capture (seal, totaliser, display), embedded in cert appendix or stored in audit trail |
 | Verification seal number(s) | Text + photo |
 
-### Section 6 — Sign-off
+### Section 6: Sign-off
 | Field | Input type | Notes |
 |---|---|---|
 | Calibrated by | Auto = logged-in technician | Read-only |
@@ -211,7 +261,7 @@ Additional:
 | Declaration checkbox | "I certify these results are true and the procedure was followed" | Required before signing |
 | Sign action | Button → biometric/PIN re-prompt → triggers signing flow | |
 
-Validation rules: all required fields complete, standards in-date, at least one result row, declaration ticked — otherwise sign button disabled with reasons listed.
+Validation rules: all required fields complete, standards in-date, at least one result row, declaration ticked. Otherwise the sign button is disabled with the reasons listed.
 
 ---
 
@@ -229,11 +279,11 @@ Validation rules: all required fields complete, standards in-date, at least one 
 
 ## Claude analysis feature
 
-- After results entry (before or after signing — recommend BEFORE signing so technician can react), backend sends structured JSON of the calibration to the Claude API and requests a structured verdict.
+- After results entry (before or after signing, recommend BEFORE signing so technician can react), backend sends structured JSON of the calibration to the Claude API and requests a structured verdict.
 - Suggested output schema: `{ "verdict": "pass|marginal|fail|data_anomaly", "summary": "...", "concerns": [...], "recommendations": [...] }`
 - Prompt should include: tolerances in force, as-found vs as-left data, environment, standards used, and instruct Claude to flag: out-of-tolerance points, drift patterns, suspicious data (identical readings, impossible values), expired standards, temperature-correction issues.
 - Show verdict in-app to technician; notify manager (push/email) on `marginal`, `fail`, or `data_anomaly`.
-- **The Claude verdict is advisory and is logged, but the human signatory remains responsible** — record this in the quality procedure.
+- **The Claude verdict is advisory and is logged, but the human signatory remains responsible**. Record this in the quality procedure.
 - Implementation: Anthropic Messages API from the backend (never embed API keys in the mobile app). See https://docs.claude.com/en/api/overview for current models, structured output options, and SDKs.
 
 ## Non-functional requirements
@@ -241,19 +291,19 @@ Validation rules: all required fields complete, standards in-date, at least one 
 - POPIA (SA privacy law) compliance for customer + technician data; GPS capture requires consent
 - Certificate retention per lab policy (typically ≥ 5 years); signed PDFs in write-once storage
 - Key rotation policy in KMS; certificate chain from an internal CA is acceptable for v1 (validate with accreditation assessor), upgrade path to a public/qualified CA later
-- Document the e-signature procedure for the SANAS/accreditation assessor — this is audited as much as the tech
+- Document the e-signature procedure for the SANAS/accreditation assessor: this is audited as much as the tech
 
 ## Tech stack (decided)
 
 ### Mobile (Expo + EAS, dev-client workflow)
 - **Framework:** Expo SDK (latest), TypeScript, Expo Router
-- **Auth:** broker all three providers through **one OIDC layer** (Auth0, Firebase Auth, or AWS Cognito) via `expo-auth-session` — one integration in-app, provider config lives in the broker. Note: **Apple's App Store rules require Sign in with Apple if you offer Google/Microsoft login on iOS** — already covered since Apple is in scope.
+- **Auth:** broker all three providers through **one OIDC layer** (Auth0, Firebase Auth, or AWS Cognito) via `expo-auth-session`: one integration in-app, provider config lives in the broker. Note: **Apple's App Store rules require Sign in with Apple if you offer Google/Microsoft login on iOS**. Already covered, since Apple is in scope.
 - **Forms:** `react-hook-form` + `zod` schemas (share the same zod schemas with the backend for validation parity)
 - **Offline store / sign queue:** `expo-sqlite` (or WatermelonDB if sync complexity grows)
-- **PDF render:** `expo-print` (HTML/CSS template → PDF) — logo embedded as base64; page footer/numbering via CSS
-- **Crypto:** `react-native-quick-crypto` for binary SHA-256 of the PDF (queue integrity + verifying the signed PDF returned by the backend; needs dev client — fine on EAS)
+- **PDF render:** `expo-print` (HTML/CSS template → PDF), logo embedded as base64; page footer/numbering via CSS
+- **Crypto:** `react-native-quick-crypto` for binary SHA-256 of the PDF (queue integrity + verifying the signed PDF returned by the backend; needs dev client, fine on EAS)
 - **Device features:** `expo-camera` (photos + barcode scan), `expo-location` (GPS w/ consent), `expo-local-authentication` (biometric re-prompt before signing), `expo-secure-store` (tokens)
-- **EAS:** `development`, `preview` (internal APK/TestFlight), `production` profiles in `eas.json`; secrets via EAS environment variables — **no API keys in the app bundle**
+- **EAS:** `development`, `preview` (internal APK/TestFlight), `production` profiles in `eas.json`; secrets via EAS environment variables, **no API keys in the app bundle**
 
 ### Backend
 - **Signing service:** Python **FastAPI + pyHanko** (best open-source PAdES + RFC 3161 support), keys in **AWS KMS or Azure Key Vault**, TSA: a public trusted timestamp authority
@@ -273,7 +323,7 @@ Validation rules: all required fields complete, standards in-date, at least one 
 
 ## Future state (post-PoC): On Key work order integration
 
-**Not built in the PoC** — but the PoC is designed so this slots in without rework.
+**Not built in the PoC**: but the PoC is designed so this slots in without rework.
 
 > NEXT PHASE CONTEXT (2026-08-01): the owner supplied the On Key 5 Web
 > Service API Guide and confirmed the next phase covers work-order
@@ -287,13 +337,13 @@ Validation rules: all required fields complete, standards in-date, at least one 
 1. Technician logs in → home screen lists **open work orders assigned to them** (synced from On Key)
 2. Technician selects a WO → **customer, site address, asset/UUT details prepopulate** from On Key's asset register (fields render prefilled + locked, with an "override" affordance that logs a discrepancy flag)
 3. Technician completes calibration + signing as in PoC
-4. On issue: **write-back to On Key** — attach the signed PDF to the WO, post feedback/close-out status, and record the certificate number against the asset
+4. On issue: **write-back to On Key**: attach the signed PDF to the WO, post feedback/close-out status, and record the certificate number against the asset
 
 ### Integration design
-- On Key exposes an **OpenAPI-compliant REST API** (plus an iPaaS layer, "On Key Integrate") — integration goes **backend-to-backend only**; the mobile app never talks to On Key directly and holds no On Key credentials
-- Backend adapter behind a **`WorkOrderProvider` interface** (`listAssignedWorkOrders(technicianId)`, `getWorkOrderDetail(woId)`, `attachCertificate(woId, pdf, meta)`, `closeOut(woId, feedback)`) — PoC ships a `ManualEntryProvider`; future adds `OnKeyProvider`. Nothing else changes.
+- On Key exposes an **OpenAPI-compliant REST API** (plus an iPaaS layer, "On Key Integrate"). Integration goes **backend-to-backend only**; the mobile app never talks to On Key directly and holds no On Key credentials
+- Backend adapter behind a **`WorkOrderProvider` interface** (`listAssignedWorkOrders(technicianId)`, `getWorkOrderDetail(woId)`, `attachCertificate(woId, pdf, meta)`, `closeOut(woId, feedback)`). The PoC ships a `ManualEntryProvider`; future adds `OnKeyProvider`. Nothing else changes.
 - **Offline:** assigned WOs sync to the device on login/refresh into the same SQLite store, so WO selection and prefill work at zero-signal forecourts; write-back rides the existing sign-queue retry machinery
-- **Identity mapping:** technician's IdP identity (Microsoft/Google/Apple subject) must map to their On Key resource/labour record — maintain a mapping table server-side
+- **Identity mapping:** technician's IdP identity (Microsoft/Google/Apple subject) must map to their On Key resource/labour record: maintain a mapping table server-side
 - Audit trail gains: WO ID, On Key asset ID, prefill snapshot (what On Key said at sync time), and any technician overrides
 
 ### PoC design hooks (do these NOW, they're cheap)

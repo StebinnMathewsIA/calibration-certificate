@@ -10,8 +10,8 @@ real devices; anything new that needs human testing gets added here.
       (docs/supabase-setup.md §4), redirect URL `prowalco-cal://auth-callback`
       allow-listed
 - [ ] Backend deployed and Live on Render (issue #2) at
-      https://prowalco-calibration-api.onrender.com — verify `/healthz`
-      returns `{"status":"ok"}` (first hit after idle takes ~30–60 s — free
+      https://prowalco-calibration-api.onrender.com, verify `/healthz`
+      returns `{"status":"ok"}` (first hit after idle takes ~30–60 s, free
       tier wakes from sleep)
 - [x] `mobile/eas.json` points at the live backend + Supabase project
       (issue #3)
@@ -20,7 +20,7 @@ real devices; anything new that needs human testing gets added here.
       1. `cd mobile && npm install`
       2. `npx eas-cli login` then `npx eas-cli init` (Expo account)
       3. `npx eas-cli build --profile development --platform android`
-         (or `ios` — needs an Apple Developer account)
+         (or `ios`, needs an Apple Developer account)
       4. Install the build from the QR/link, then `npx expo start --dev-client`
 - [ ] Real Prowalco logo dropped into `mobile/assets/logo-base64.ts`
 
@@ -30,14 +30,14 @@ real devices; anything new that needs human testing gets added here.
 `mobile/.env`. Good for: sign-in, form UX, drafts, review screen. NOT
 supported in Expo Go (needs a dev/preview build): PDF render+hash
 (react-native-quick-crypto), biometric re-prompt, actual signing/queue
-upload — the sign step will error in Expo Go by design.
+upload, the sign step will error in Expo Go by design.
 
 ## Auth (Supabase PKCE flow)
 
 - [ ] Sign in with Microsoft (Azure) completes and returns to the app
 - [ ] Sign in with Google completes and returns to the app
 - [ ] Sign in with Apple on iOS uses the NATIVE sheet (Face ID, no browser)
-      and lands signed-in on Home — requires the app bundle ID
+      and lands signed-in on Home, requires the app bundle ID
       `za.co.prowalco.calibration` added to the Supabase Apple provider's
       Client IDs (alongside the Services ID)
 - [ ] Sign in with Apple on Android completes via the web flow
@@ -67,7 +67,7 @@ upload — the sign step will error in Expo Go by design.
 
 ## UX improvements round (issues #13–#19, 2026-07)
 
-Requires a NEW EAS development build — two native modules were added
+Requires a NEW EAS development build, two native modules were added
 (`react-native-webview`, `@react-native-community/datetimepicker`).
 
 ### Home & queue visibility (#13)
@@ -132,16 +132,16 @@ Requires a NEW EAS development build — two native modules were added
       active tab in dark green
 - [ ] Primary buttons are lime green with NAVY text (no white-on-green
       anywhere); secondary buttons are navy outlines; danger solid red
-- [ ] Status chips are tinted pills (pass/due/fail) with a word or ✓/⚠/✗ —
+- [ ] Status chips are tinted pills (pass/due/fail) with a word or ✓/⚠/✗:
       never colour alone; no ALL-CAPS labels anywhere
 - [ ] Sync banner uses the blue info tint online / amber tint offline
-- [ ] Certificate PDF is visually UNCHANGED (still matches the NRCS document
-      — the brand kit is app-UI only)
+- [ ] Certificate PDF is visually UNCHANGED (still matches the NRCS
+      document; the brand kit is app-UI only)
 
 ### Header & bottom nav (#25)
 - [ ] Tab screens show the "prowalco" wordmark (green, blue "o") left-aligned
       on a flat navy bar with the avatar on the right
-- [ ] Tab icons are the custom clipboard / fuel-pump vectors — correctly
+- [ ] Tab icons are the custom clipboard / fuel-pump vectors, correctly
       tinted dark-green active / steel inactive, slightly bolder when active;
       no emoji anywhere
 - [ ] Tab bar: white, hairline top border, no shadow; labels legible at 11px
@@ -150,12 +150,12 @@ Requires a NEW EAS development build — two native modules were added
 
 ### Certificate page size & VO name (#27, #28)
 
-- [ ] A certificate issued from an **iOS** device is A4 landscape — open the
+- [ ] A certificate issued from an **iOS** device is A4 landscape, open the
       PDF and check the page measures 842×595 pt / 297×210 mm (was US Letter
       portrait before #27); Android output unchanged
 - [ ] With an empty profile and an IdP account that has no display name, the
       certificate VO field shows a name (e.g. "Stebinn" or "S. Mathews"
-      depending on what the mailbox yields) — NEVER the email address
+      depending on what the mailbox yields), NEVER the email address
 - [ ] Sign in with an account whose IdP profile HAS a name → VO falls back to
       "Initial & Surname" form when the app profile is empty
 - [ ] A session from before #28 (VO name showed the email): relaunch the app
@@ -167,7 +167,7 @@ Requires a NEW EAS development build — two native modules were added
 - [ ] FIRST Apple authorization (revoke first: Settings → Apple ID → Sign-In
       &amp; Security → Sign in with Apple → this app → Stop using Apple ID):
       sign in with Apple → My profile shows First name(s) + Surname prefilled,
-      and they SURVIVE sign-out/sign-in (persisted to Supabase user metadata —
+      and they SURVIVE sign-out/sign-in (persisted to Supabase user metadata:
       check the user's `user_metadata` in the Supabase dashboard)
 - [ ] Microsoft/Google sign-in with given/family name claims seeds an empty
       profile the same way
@@ -193,7 +193,7 @@ Requires a NEW EAS development build — two native modules were added
 
 - [ ] Home shows "Hello, {first name}" (profile first name; sensible word
       from the sign-in name when the profile is empty) with the open
-      work-order count beneath — no wordmark/logo on this screen
+      work-order count beneath, no wordmark/logo on this screen
 - [ ] Count matches the "My open work orders" list and still shows from
       cache in airplane mode
 - [ ] Greeting doesn't collide with the status bar (safe area respected,
@@ -212,20 +212,20 @@ Requires a NEW EAS development build — two native modules were added
 - [ ] Pill clears the iOS home indicator / Android gesture bar
 - [ ] VoiceOver/TalkBack read "Work orders" / "Sites" with selected state
 - [ ] (#34) Tapping Sites in the pill actually opens the Sites tab, and
-      Work orders returns — verify on BOTH platforms (touch fall-through to
+      Work orders returns, verify on BOTH platforms (touch fall-through to
       the screen layer was the #34 bug)
 
 ### Certificate output round 2 (#35, #36, #37)
 
 - [ ] iOS-issued PDF page 1: rotated group labels (LFD Description / Meter /
-      PC Board / Pulsar / Solenoid Valve) sit inside their own column — no
+      PC Board / Pulsar / Solenoid Valve) sit inside their own column, no
       overlap with Make/Model/Serial labels (verified in Chromium; iOS
       renderer is the one that previously overflowed)
 - [ ] Metrologist note: Verification Status prints "New" / "Repaired" /
       "ATU" / "Rej" (not lowercase raw values)
 - [ ] Newly issued PDF opens in Adobe Reader as a CERTIFIED document
       (blue-ribbon panel); editing the file afterwards invalidates the
-      certification (DocMDP no-changes) — note: backend must be redeployed
+      certification (DocMDP no-changes), note: backend must be redeployed
       for #37 to take effect
 - [ ] App still accepts/verifies the returned signed PDF end-to-end after
       the certify change
@@ -259,8 +259,8 @@ Requires a NEW EAS development build — two native modules were added
 ### Shared tab header + guaranteed back button (#42, #43)
 
 - [ ] Sites tab shows the same header as Home: large "Sites" title, site
-      count subtitle, refresh icon left of the avatar — no navy wordmark bar
-- [ ] Sites refresh via the icon works (spinner in the icon only, no bar —
+      count subtitle, refresh icon left of the avatar, no navy wordmark bar
+- [ ] Sites refresh via the icon works (spinner in the icon only, no bar:
       #44); avatar still opens My profile
 - [ ] **#43 regression:** Home → tap a work-order card → a back chevron IS
       visible in the navy header and returns to Home (verify on BOTH
@@ -268,7 +268,7 @@ Requires a NEW EAS development build — two native modules were added
 - [ ] Back chevron present and working on every pushed screen: site,
       dispenser identity, components, results, review & sign, signing
       status, certificate, profile
-- [ ] Sign-in screen shows no back chevron — including immediately after
+- [ ] Sign-in screen shows no back chevron, including immediately after
       signing out from the profile screen
 - [ ] Signature capture screen still has NO back button and no swipe-back
       (Save / Cancel only)
@@ -277,19 +277,19 @@ Requires a NEW EAS development build — two native modules were added
 ### Single refresh indicator + tappable bottom nav (#44, #45)
 
 - [ ] Refresh on Home and Sites shows ONLY the spinner inside the header
-      icon — no "Refreshing…" bar ever appears, and the list does not jump
+      icon, no "Refreshing…" bar ever appears, and the list does not jump
 - [ ] **#45 regression (was the broken one):** tapping the fuel-pump icon
       in the pill OPENS the Sites tab; tapping the clipboard returns to
-      Work orders — verify on BOTH platforms
+      Work orders, verify on BOTH platforms
 - [ ] Pill still looks floating (centred, rounded, shadow, navy active
       square) and clears the iOS home indicator / Android gesture bar
 - [ ] Last card on each tab scrolls fully into view above the pill (scroll
-      padding was reduced — check nothing hides behind the bar)
+      padding was reduced, check nothing hides behind the bar)
 
 ### TestFlight auto-submit build (#46)
 
 - [ ] One-time on a computer: `cd mobile && npx eas-cli build -p ios
-      --profile production --auto-submit` — the interactive prompts store
+      --profile production --auto-submit`, the interactive prompts store
       the Apple distribution cert + App Store Connect API key with EAS
 - [ ] After that, the eas-build workflow with platform=ios,
       profile=production, submit=true queues a build that lands in
@@ -309,7 +309,7 @@ Requires a NEW EAS development build — two native modules were added
       PIN/pattern (fallback path)
 - [ ] Tablet issue checklist/MDM: screen lock required on every field device
 
-### Device binding — trust-on-first-use (#51, #52)
+### Device binding: trust-on-first-use (#51, #52)
 
 Rollout order matters: verify on-device FIRST, then set
 `DEVICE_BINDING_ENFORCE=true` (+ `ADMIN_EMAILS`) on Render.
@@ -332,7 +332,7 @@ Rollout order matters: verify on-device FIRST, then set
 
 - [ ] Owner: generate a long random token; set it as `ONKEY_SYNC_TOKEN` on
       Render (Environment) AND as repo Actions secret `ONKEY_SYNC_TOKEN`
-- [ ] Owner: default branch must be `main` — scheduled workflows only run
+- [ ] Owner: default branch must be `main`, scheduled workflows only run
       from the default branch
 - [ ] One-time backfill: Actions → onkey-sync → Run workflow → mode
       `backfill` → job summary shows rows fetched/inserted and the WOE001
@@ -346,7 +346,7 @@ Rollout order matters: verify on-device FIRST, then set
 
 - [ ] Name shows READ-ONLY from the register (no editable name inputs);
       "OnKey record: <staff code> · Manager: …" line shows
-- [ ] Demo alias → the ridden technician's name displays; "Demo account —
+- [ ] Demo alias → the ridden technician's name displays; "Demo account:
       register is read-only" note; saving pliers stays local only
 - [ ] A real technician (direct OnKey email) saving pliers persists to the
       register (check onkey_technicians row) and re-appears on a fresh
@@ -354,10 +354,10 @@ Rollout order matters: verify on-device FIRST, then set
 - [ ] Certificate still prints Initial & Surname from the register-sourced
       name; offline profile loads from the local store unchanged
 
-### Certified measures register (#70 — supersedes the #48 prefill flow)
+### Certified measures register (#70: supersedes the #48 prefill flow)
 
 - [ ] Fresh sign-in: profile shows NO measures ("No certified measures
-      registered yet") — there are no defaults anywhere
+      registered yet"), there are no defaults anywhere
 - [ ] Home shows a RED "verifications blocked" banner while measures are
       missing/expired; tapping it opens the profile
 - [ ] Starting a verification with missing/expired measures is blocked with
@@ -379,15 +379,15 @@ Rollout order matters: verify on-device FIRST, then set
 ### Direct Supabase reads (Arch v2 phase 1, #65)
 
 - [ ] Home, work-order, site, and dispenser screens load noticeably faster
-      (first open of a work order well under 1 s on signal — was ~3 s)
+      (first open of a work order well under 1 s on signal, was ~3 s)
 - [ ] All read screens show the same data as before the switch (shapes are
       identical; only the transport changed)
 - [ ] A technician cannot open another technician's work order (deep-link a
       foreign WO id → "not assigned" error)
 - [ ] With the anon key alone (no sign-in), the Supabase REST API returns
       permission errors for both tables and app_* functions
-- [ ] Writes (save site, dispensers, component register, profile) still work
-      — they still go via the backend
+- [ ] Writes (save site, dispensers, component register, profile) still
+      work; they still go via the backend
 
 ### Offline mirror + outbox (Arch v2 phase 2, #66)
 
@@ -397,10 +397,10 @@ Rollout order matters: verify on-device FIRST, then set
 - [ ] Screens that were synced open with NO spinner even on signal (cached
       copy renders, refresh happens in background)
 - [ ] Airplane mode: complete a site identity, edit a dispenser, add a
-      dispenser, save a component register, save the profile — all succeed
+      dispenser, save a component register, save the profile, all succeed
       locally
 - [ ] Return to signal (or foreground the app on wifi): the queued writes
-      replay — verify the records on the server (sites/dispensers tables)
+      replay, verify the records on the server (sites/dispensers tables)
 - [ ] A new work order assigned in OnKey appears on Home within ~15 min of
       the app being open on signal (5-min WOE001 sync + sync interval)
 
@@ -422,7 +422,7 @@ Rollout order matters: verify on-device FIRST, then set
 ### Certificate archive + history (Arch v2 phase 4, #68)
 
 - [ ] Issue a certificate, open the site: "Verification history" lists it
-      (cert number, dispenser, date, VO, expiry) — including certificates
+      (cert number, dispenser, date, VO, expiry), including certificates
       signed by OTHER technicians/devices at that site
 - [ ] "Download & share sealed PDF" on a history row fetches the archived
       PDF and opens the share sheet; the shared file opens with a valid
@@ -465,7 +465,7 @@ Rollout order matters: verify on-device FIRST, then set
 
 ### Admin UI + certificate archive search (#72)
 
-- [ ] Admin: Profile → "Roles & team allocations" — grant a manager role by
+- [ ] Admin: Profile → "Roles & team allocations", grant a manager role by
       email; it appears in the list; revoke works; revoking the LAST admin
       is refused with a clear message
 - [ ] Allocate technicians to a manager (search + tap toggles ✓); that
@@ -514,10 +514,10 @@ Rollout order matters: verify on-device FIRST, then set
       signature is embedded in the PDF
 - [ ] Visible VO signature widget shows on the last page of the signed PDF
 - [ ] Adobe Reader signature panel validates the signature once a trusted
-      (non-dev) signing certificate is configured — dev cert will show as
+      (non-dev) signing certificate is configured, dev cert will show as
       untrusted, which is expected
 
-## Production signing — AWS KMS (#24)
+## Production signing: AWS KMS (#24)
 
 Needs a real AWS account (the code path itself is covered by
 `backend/tests/test_kms_signer.py` against a fake KMS).
@@ -588,7 +588,7 @@ None of this has been on a device yet.
       and nothing to a technician
 - [ ] Owner decides the outbound channel (email, push, or in-app only)
 
-## Not yet implemented (do not test — future issues)
+## Not yet implemented (do not test: future issues)
 
 - Barcode/QR scan for serial numbers (expo-camera wiring)
 - Photo capture (seal/totaliser/display) and photo hashes in the audit trail

@@ -1,6 +1,6 @@
-# Architecture v2 — offline-first field app on Supabase
+# Architecture v2: offline-first field app on Supabase
 
-Status: **agreed spec** (owner interview, 2026-07-25 — issue #64).
+Status: **agreed spec** (owner interview, 2026-07-25, issue #64).
 Where this document differs from CLAUDE.md's original brief, **this document
 wins**. Implementation happens in phases; each phase opens its own issue
 (CONSTITUTION Article 1) when it starts.
@@ -12,7 +12,7 @@ read went phone → FastAPI (Render free, cross-continent) → Supabase
 (6–8 sequential queries, N+1 on dispensers, per-request alias aggregate).
 Opening a work order cost ~3 s of pure round trips for a few KB of data.
 The WOE001 sync made that shape obsolete: **Supabase already holds a
-5-minute-fresh copy of everything** — the middleman read path is waste.
+5-minute-fresh copy of everything**, so the middleman read path is waste.
 
 ## 2. Ground truth (owner interview)
 
@@ -29,7 +29,7 @@ The WOE001 sync made that shape obsolete: **Supabase already holds a
 | Managers: whole-company visibility, pre-filtered to their team | RLS allows manager read; UI defaults to allocated technicians |
 | Admin sets up technicians, tech→manager allocation, proving measures | No site/equipment admin yet |
 | Equipment master source does not exist yet | On-site identity completion stays; master import is a future feed |
-| ~50 certificates/day assumed | ~13k/yr, ~5–7 GB/yr PDFs — trivial |
+| ~50 certificates/day assumed | ~13k/yr, ~5–7 GB/yr PDFs, trivial |
 | **PoC stays on free tiers** (Supabase free + Render free) | No region migration now; offline-first hides latency; paid SA-local hosting is a post-PoC item |
 
 ## 3. Target architecture
@@ -37,7 +37,7 @@ The WOE001 sync made that shape obsolete: **Supabase already holds a
 ### 3.1 Tablet app (Expo, Android-first)
 - **Local SQLite mirror is the source of truth for every screen.** Work
   orders, sites, equipment, technician profile + proving measures, and the
-  technician's own certificate archive render from local data — zero
+  technician's own certificate archive render from local data, zero
   spinners, zero network in the UI path.
 - **Outbox pattern for all writes**: results, on-site equipment identity,
   site gap-fills, issued certificates queue locally and replay in order when
@@ -47,13 +47,13 @@ The WOE001 sync made that shape obsolete: **Supabase already holds a
   connectivity regained, and ~every 15 min while online. Mid-day work-order
   changes arrive at the next signal window (the server copy is at most
   5 min behind OnKey).
-- Delta sync uses `updated_at` cursors served by SQL functions — one round
+- Delta sync uses `updated_at` cursors served by SQL functions, one round
   trip per table, not per row.
 
-### 3.2 Supabase (the data platform — the app talks to it DIRECTLY)
+### 3.2 Supabase (the data platform: the app talks to it DIRECTLY)
 - Postgres: OnKey registers (`onkey_*`), canonical store, certificate
   index, append-only audit. Auth: existing PKCE sign-in (the Supabase JWT
-  is what PostgREST accepts — no new auth). Storage: sealed PDFs,
+  is what PostgREST accepts; no new auth). Storage: sealed PDFs,
   write-once, indefinite retention.
 - **RLS for three roles**: technician (own record, own work, own certs),
   manager (company-wide read, team-scoped by default via the tech→manager
@@ -65,13 +65,13 @@ The WOE001 sync made that shape obsolete: **Supabase already holds a
   aggregates.
 
 ### 3.3 Signing service (the only server code left in the request path)
-Invoked solely at the moment of issue — the one moment latency is
+Invoked solely at the moment of issue: the one moment latency is
 acceptable:
 1. verify the device signature (possession factor) and session (first factor)
 2. re-validate the payload against the shared schema + PDF text-layer crosscheck
 3. seal PAdES + RFC 3161 timestamp
 4. write the PDF to Storage (write-once) and index it
-5. dispatch the customer email with the sealed PDF — **server-side, so the
+5. dispatch the customer email with the sealed PDF, **server-side, so the
    emailed copy is byte-identical to the stored, sealed document**; what the
    technician previewed is the same rendered document pre-seal
 
@@ -86,7 +86,7 @@ progress analytics, default-filtered to their allocated team with a
 company-wide filter. Admin: technician records, tech→manager allocation,
 proving measures. External users: out of scope.
 
-### 3.5 Insights (all users, RLS-scoped — extends #56)
+### 3.5 Insights (all users, RLS-scoped: extends #56)
 An Insights tab for every role, where RLS shapes what each sees:
 technician → their own throughput/outcomes; manager → team (default) and
 company; admin → everything. Served by SQL aggregate functions, cached into
@@ -94,7 +94,7 @@ the device mirror like other reads.
 
 ## 4. Security model changes
 - **2FA = something you know (account sign-in) + something you have (the
-  registered device key, #51/#52)** — `DEVICE_BINDING_ENFORCE` flips on.
+  registered device key, #51/#52)**, `DEVICE_BINDING_ENFORCE` flips on.
   Biometric/PIN remains a local convenience gate where hardware exists,
   never a requirement.
 - One technician per tablet, one tablet per technician. Device transfer =
@@ -104,7 +104,7 @@ the device mirror like other reads.
 
 ## 5. Data rules
 - **Dispenser relocation**: a transfer event archives the component register
-  and identity fields (audit — never deleted) and resets them blank for
+  and identity fields (audit, never deleted) and resets them blank for
   re-entry at the new site. Historic verifications stay attached to the
   site+dispenser combination they were issued under.
 - **Certificate archive**: begins at go-live. Historic paper certificates
@@ -119,18 +119,18 @@ the device mirror like other reads.
 - The biometric-gated signing assumption
 
 ## 7. Phase plan (each phase = its own issue when started)
-1. **Direct read path** — RLS policies + RPC functions; the app syncs
+1. **Direct read path**: RLS policies + RPC functions; the app syncs
    straight from Supabase; Render leaves the read loop. *Biggest immediate
    speed win, free-tier compatible.*
-2. **Offline mirror + outbox** — one SQLite schema on device; every screen
+2. **Offline mirror + outbox**: one SQLite schema on device; every screen
    goes local; existing caches and the sign queue fold in.
-3. **Signing v2** — device binding enforced as the second factor; client
+3. **Signing v2**: device binding enforced as the second factor; client
    signature removed; dormant email pipeline.
-4. **Archive & history** — certificate index + per-site/dispenser history
+4. **Archive & history**: certificate index + per-site/dispenser history
    views in-app.
-5. **Insights tab** — all users, RLS-scoped (with #56).
+5. **Insights tab**: all users, RLS-scoped (with #56).
 6. **Roles in-app** (amended 2026-07-26): manager/admin roles, view-as
-   (replaces the demo-alias mechanism), measures-compliance reporting —
+   (replaces the demo-alias mechanism), measures-compliance reporting:
    built into the existing app. The dedicated web app is DEFERRED until a
    desk-based need is proven; the same screens export to web via Expo when
    it is.
@@ -145,7 +145,7 @@ the device mirror like other reads.
 Two registries, both versioned code, neither a configuration engine:
 
 - **Test plans** (shared/schema/src/test-plans.ts, generated to JSON for
-  the Python backend — never hand-mirrored): required measures, delivery
+  the Python backend, never hand-mirrored): required measures, delivery
   points with fixed nominals, timing rules, MPE. `lfd-std-v1` is the
   classic 20/5 L flow; `lfd-hv-v1` verifies high flow rate dispensers
   with the 200 L measure. The dispenser identity's STD/HV designation
@@ -166,6 +166,6 @@ validation applies only to payloads that declare their plan.
 
 ## 9. Deferred (post-PoC approval)
 Paid hosting near South Africa (Supabase `af-south-1` + signing service in
-Johannesburg — the planned end-state once the PoC is approved),
+Johannesburg, the planned end-state once the PoC is approved),
 `@prowalco.co.za` sending domain, historic certificate import, OnKey
 write-back, external user access.

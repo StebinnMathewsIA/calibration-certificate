@@ -1,4 +1,4 @@
-# Supabase Setup — Prowalco Calibration App
+# Supabase Setup: Prowalco Calibration App
 
 Supabase provides three things for this system:
 
@@ -8,7 +8,7 @@ Supabase provides three things for this system:
 | **Storage** (private bucket) | Signed certificate PDFs |
 | **Auth** | Sign-in broker federating Microsoft (Azure), Google, Apple |
 
-The FastAPI signing service remains in front of all three — the mobile app
+The FastAPI signing service remains in front of all three; the mobile app
 never talks to the database or the bucket directly, and PostgREST access to
 the tables is locked out by RLS. Supabase Auth is the only piece the app
 touches directly (sign-in), holding just the publishable anon key.
@@ -34,10 +34,10 @@ touches directly (sign-in), holding just the publishable anon key.
    DATABASE_URL=postgresql+psycopg2://postgres.<project-ref>:<db-password>@aws-0-<region>.pooler.supabase.com:5432/postgres?sslmode=require
    ```
 
-   Use the session pooler (port 5432), not the transaction pooler (6543) —
+   Use the session pooler (port 5432), not the transaction pooler (6543):
    SQLAlchemy's default prepared-statement behaviour is not compatible with
    transaction-mode PgBouncer.
-2. Apply the schema (idempotent — also creates the storage bucket):
+2. Apply the schema (idempotent, also creates the storage bucket):
 
    ```bash
    cd backend && .venv/bin/python scripts/apply_migrations.py
@@ -53,7 +53,7 @@ touches directly (sign-in), holding just the publishable anon key.
 
 1. **Storage → New bucket**: name `certificates`, **Private** (do NOT enable
    public access).
-2. Do not add any RLS policies to the bucket — with no policies, only the
+2. Do not add any RLS policies to the bucket. With no policies, only the
    service role (the backend) can read or write objects, which is exactly the
    intent. Signed PDFs reach users only through the backend, which logs every
    access to the audit trail.
@@ -69,15 +69,15 @@ Lock as a post-PoC hardening step.
 ## 4. Auth (sign-in providers)
 
 1. **Authentication → Sign In / Up → Providers**: enable
-   - **Azure** (Microsoft work accounts) — create an Entra ID app
+   - **Azure** (Microsoft work accounts): create an Entra ID app
      registration, supply client ID + secret, set the tenant.
-   - **Google** — OAuth client ID + secret from Google Cloud Console.
-   - **Apple** — Client IDs must list BOTH `za.co.prowalco.calibration.signin`
-     (Services ID — web flow, used on Android) and `za.co.prowalco.calibration`
-     (bundle ID — native iOS sheet), comma-separated. The web flow also needs
+   - **Google**: OAuth client ID + secret from Google Cloud Console.
+   - **Apple**: Client IDs must list BOTH `za.co.prowalco.calibration.signin`
+     (Services ID, web flow, used on Android) and `za.co.prowalco.calibration`
+     (bundle ID, native iOS sheet), comma-separated. The web flow also needs
      the client-secret JWT generated from the Sign in with Apple key (ES256;
-     Apple caps validity at 6 months). ⏰ **Current secret expires 2027-01-11**
-     — regenerate from the `.p8` key and update the provider before then.
+     Apple caps validity at 6 months). **Current secret expires 2027-01-11.**
+     Regenerate from the `.p8` key and update the provider before then.
      (Apple sign-in is required on iOS since Google/Microsoft login is
      offered.)
 2. **Authentication → URL Configuration**: add the app's redirect URL to the
@@ -89,17 +89,17 @@ Lock as a post-PoC hardening step.
    If you must stay on the legacy shared secret temporarily, set
    `SUPABASE_JWT_SECRET` on the backend instead.
 
-Only Azure/Google/Apple identities are accepted by the backend — tokens from
+Only Azure/Google/Apple identities are accepted by the backend; tokens from
 any other provider (e.g. email/password sign-ups) are rejected with 403
 (`backend/app/auth.py`).
 
 **Test account note:** the test suite provisions one technician account
 (`calibration-e2e@example.com`) through the Auth admin API, tagged with an
-`azure` provider in its app metadata, and signs in with the password grant —
+`azure` provider in its app metadata, and signs in with the password grant:
 so the **email provider must remain enabled** in Supabase Auth (it is by
 default). End users can never reach the backend with plain email identities.
 
-## 5. Backend `.env` (summary — same in every environment)
+## 5. Backend `.env` (summary: same in every environment)
 
 ```
 DATABASE_URL=postgresql+psycopg2://postgres.<ref>:<pw>@aws-0-<region>.pooler.supabase.com:5432/postgres?sslmode=require
@@ -115,14 +115,14 @@ ANTHROPIC_API_KEY=<key>
 There is no dev mode: the API refuses to start, and the test suite refuses
 to run, without a reachable Supabase project. Tests run against this same
 project (schema application is idempotent; test certificates use random
-numbers and land in the same append-only tables and bucket — use a separate
+numbers and land in the same append-only tables and bucket, so use a separate
 Supabase project for CI/testing if you want to keep production data
 pristine, but the architecture is identical either way).
 
 ## 6. What does NOT move to Supabase
 
-- **PAdES signing keys** — cloud KMS/HSM (AWS KMS / Azure Key Vault), per
+- **PAdES signing keys**: cloud KMS/HSM (AWS KMS / Azure Key Vault), per
   docs/key-rotation-runbook.md. Supabase has no HSM signing primitive.
-- **The Anthropic API key** — backend environment only.
-- **The signing/validation logic** — a certificate is only issued through
+- **The Anthropic API key**: backend environment only.
+- **The signing/validation logic**: a certificate is only issued through
   the FastAPI service; Supabase is storage + identity, not the trust anchor.

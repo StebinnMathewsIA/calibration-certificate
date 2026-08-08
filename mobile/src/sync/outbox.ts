@@ -22,6 +22,7 @@ export type OutboxKind =
   | 'patchMyTechnician'
   | 'addMeasure'
   | 'woTransition'
+  | 'woStandDown'
   | 'jobCardSave'
   | 'jobCardSign';
 
@@ -91,6 +92,9 @@ async function perform(token: string | null, kind: OutboxKind, p: any): Promise<
     case 'jobCardSign':
       await rpc('app_job_card_sign', token, p.args);
       return;
+    case 'woStandDown':
+      await rpc('app_wo_stand_down', token, p.args);
+      return;
     case 'woTransition':
       // Straight to the RPC, unlike the rest: the lifecycle lives in
       // Supabase, not behind a Render endpoint. p_occurred_at carries the
@@ -113,7 +117,7 @@ async function perform(token: string | null, kind: OutboxKind, p: any): Promise<
 /** The work order an item acts on, for ordering. Only lifecycle events
  * need it: the rest are independent upserts. */
 function targetOf(kind: OutboxKind, p: any): string | null {
-  if (kind === 'woTransition') return String(p.workOrderId);
+  if (kind === 'woTransition' || kind === 'woStandDown') return String(p.workOrderId);
   // Job card writes belong to the SAME per-work-order sequence: a sign
   // must not overtake the save that put the content there, and neither
   // may pass a lifecycle event the server rejected.

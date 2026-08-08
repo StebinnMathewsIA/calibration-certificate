@@ -8,20 +8,24 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Location from 'expo-location';
 import React, { useCallback, useMemo, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
-import { Alert, Text, TextInput, View } from 'react-native';
+import { Alert, Pressable, Text, TextInput, View } from 'react-native';
 import {
+  DispenserResolved,
   PauseReason,
   WoDivergence,
   WorkOrderRecord,
   acknowledgeDivergence,
   listDivergence,
   listPauseReasons,
+  listSiteDispensers,
   listWorkOrderRecords,
+  standDownWorkOrder,
   transitionWorkOrder,
 } from '../../src/api/client';
 import { useAuth } from '../../src/auth/AuthContext';
 import { Badge, Button, SectionCard, colors, fonts } from '../../src/components/ui';
 import { FormScrollView } from '../../src/components/FormScrollView';
+import { LifecycleActions } from '../../src/components/LifecycleActions';
 import { MiniMap } from '../../src/components/MiniMap';
 import { fetchThrough, readCache, writeCache } from '../../src/db/cache';
 import { rejectedTransitions } from '../../src/sync/outbox';
@@ -103,6 +107,7 @@ export default function WorkOrderLifecycleScreen() {
   // The office moved this job while the technician holds it. Detected on
   // sync (migration 047), where the register is actually fresh.
   const [divergence, setDivergence] = useState<WoDivergence | null>(null);
+  const [dispensers, setDispensers] = useState<DispenserResolved[] | null>(null);
 
   const load = useCallback(() => {
     setLoadState((s) => (s === 'ready' ? s : 'loading'));
@@ -223,6 +228,39 @@ export default function WorkOrderLifecycleScreen() {
     }
   };
 
+  /** Abandoning a journey is not pausing work. It used to open "Why are
+   * you pausing?" and offer six reasons about work in progress, two of
+   * which permanently block resuming, for a job the technician never
+   * reached (#127). A plain confirmation is the whole of it. */
+  const confirmStandDown = () => {
+    Alert.alert(
+      'Cannot get there?',
+      'This job goes back to your list as not started, and nothing is sent to the office. You can pick it up again later.',
+      [
+        { text: 'Keep going', style: 'cancel' },
+        {
+          text: 'Cannot get there',
+          style: 'destructive',
+          onPress: () => {
+            setBusy(true);
+            standDownWorkOrder(accessToken, String(id))
+              .then((updated) => {
+                setWo(updated);
+                router.back();
+              })
+              .catch((err) =>
+                Alert.alert(
+                  'Could not stand down',
+                  err instanceof Error ? err.message : String(err),
+                ),
+              )
+              .finally(() => setBusy(false));
+          },
+        },
+      ],
+    );
+  };
+
   const confirmPause = () => {
     if (!chosenReason) {
       Alert.alert('Reason required', 'Choose why the work order is being paused.');
@@ -252,6 +290,27 @@ export default function WorkOrderLifecycleScreen() {
 
   return (
     <FormScrollView>
+      {/* The verbs first, above the description and the map. They were
+          three stacked full-width buttons further down the page, so the
+          technician scrolled past the job to reach the thing they came to
+          tap (#122). */}
+      <View style={{ marginHorizontal: 12, marginTop: 12 }}>
+        <LifecycleActions
+          state={state}
+          blocksResume={wo.lifecycle?.blocksResume ?? false}
+          busy={busy}
+          onAction={(verb) => {
+            // Pause needs a reason before it can be applied, so it opens
+            // the sheet. On the way, tapped while already on the way, means
+            // standing down: the technician is telling us they cannot get
+            // there (#127).
+            if (verb === 'pause') setPausing(true);
+            else if (verb === 'on_the_way' && state === 'on_the_way') confirmStandDown();
+            else void apply(verb);
+          }}
+        />
+      </View>
+
       <SectionCard title={wo.siteName ?? wo.externalRef ?? 'Work order'}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 }}>
           <Badge text={STATE_LABEL[state] ?? state} tone={STATE_TONE[state] ?? 'muted'} />
@@ -267,18 +326,17 @@ export default function WorkOrderLifecycleScreen() {
           {wo.completeBy ? `Complete by ${wo.completeBy.slice(0, 16).replace('T', ' ')}` : ''}
           {wo.estimatedDurationMinutes ? ` · about ${wo.estimatedDurationMinutes} min` : ''}
         </Text>
+        {/* Deliberately quiet, and deliberately called "on this job" rather
+            than "working time" (#121). It is how long the app has been in
+            this state, which is useful for orientation and is NOT what gets
+            billed: labour is entered per visit on the job card. Presenting
+            it as a measurement of work is what printed one minute next to
+            four point two charged hours. */}
         {elapsed ? (
-          <Text
-            style={{
-              marginTop: 6,
-              color: colors.ink,
-              fontFamily: fonts.mono,
-              fontVariant: ['tabular-nums'],
-            }}
-          >
-            Working time: {elapsed}
+          <Text style={{ marginTop: 6, color: colors.muted, fontSize: 12 }}>
+            On this job {elapsed}
             {wo.lifecycle?.pausedSeconds
-              ? ` (paused ${Math.round(wo.lifecycle.pausedSeconds / 60)} min)`
+              ? `, paused ${Math.round(wo.lifecycle.pausedSeconds / 60)} min`
               : ''}
           </Text>
         ) : null}
@@ -395,34 +453,8 @@ export default function WorkOrderLifecycleScreen() {
       ) : null}
 
       <View style={{ marginHorizontal: 12 }}>
-        {state === 'not_started' ? (
-          <>
-            <Button title="On the way" onPress={() => void apply('on_the_way')} busy={busy} />
-            {/* Still offered: a technician already at the site should not
-                have to claim a journey they did not make. */}
-            <Button
-              title="Already here, start work"
-              kind="secondary"
-              onPress={() => void apply('start')}
-              busy={busy}
-            />
-          </>
-        ) : null}
-        {state === 'on_the_way' && !pausing ? (
-          <>
-            <Button title="Arrived, start work" onPress={() => void apply('start')} busy={busy} />
-            <Button title="Cannot get there" kind="secondary" onPress={() => setPausing(true)} />
-          </>
-        ) : null}
-        {state === 'started' && !pausing ? (
-          <>
-            <Button title="Pause" kind="secondary" onPress={() => setPausing(true)} />
-            <Button title="Stop (work complete)" onPress={() => void apply('stop')} busy={busy} />
-          </>
-        ) : null}
-        {state === 'paused' && !wo.lifecycle?.blocksResume ? (
-          <Button title="Resume" onPress={() => void apply('start')} busy={busy} />
-        ) : null}
+        {/* Job card is a DESTINATION, not a lifecycle verb, so it stays a
+            labelled button. The verbs are the icon row at the top. */}
         {state === 'stopped' ? (
           <Button
             title="Job card and sign-off"
@@ -446,6 +478,71 @@ export default function WorkOrderLifecycleScreen() {
           />
         ) : null}
       </View>
+
+      {/* What the technician will find on site, before they drive out
+          (#123): whose dispenser, which model, how many hoses, therefore
+          which parts to load. All of it was already held, and reachable
+          only after arriving and picking a dispenser. */}
+      <SectionCard title="Dispensers on site">
+        {dispensers === null ? (
+          <Text style={{ color: colors.muted, fontSize: 12 }}>Loading…</Text>
+        ) : dispensers.length === 0 ? (
+          <Text style={{ color: colors.muted, fontSize: 12 }}>
+            No dispensers on record for this site yet.
+          </Text>
+        ) : (
+          <>
+            {dispensers.map((d) => {
+              const allocated = !!wo.assetCode && d.id === wo.assetCode;
+              return (
+                <Pressable
+                  key={d.id}
+                  onPress={() =>
+                    router.push({
+                      pathname:
+                        !d.make || !d.model || !d.serialNumber
+                          ? '/dispenser/[id]/identity'
+                          : '/dispenser/[id]/register',
+                      params: { id: d.id },
+                    })
+                  }
+                  accessibilityRole="button"
+                  accessibilityLabel={`Open dispenser ${d.id}`}
+                  style={{
+                    borderWidth: 1,
+                    borderColor: allocated ? colors.green : colors.line,
+                    backgroundColor: allocated ? colors.greenTint : '#fff',
+                    borderRadius: 10,
+                    padding: 10,
+                    marginTop: 8,
+                  }}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <Text
+                      style={{ flex: 1, color: colors.ink, fontSize: 14, fontFamily: fonts.bodyMedium }}
+                    >
+                      {[d.make, d.model].filter(Boolean).join(' ') || 'Identity not captured'}
+                    </Text>
+                    {allocated ? <Badge text="This job" tone="ok" /> : null}
+                  </View>
+                  <Text style={{ color: colors.muted, fontSize: 12, marginTop: 2 }}>
+                    {d.id}
+                    {d.serialNumber ? ` · ${d.serialNumber}` : ''}
+                    {' · '}
+                    {d.hoseCount == null ? 'hoses not recorded' : `${d.hoseCount} hoses`}
+                  </Text>
+                </Pressable>
+              );
+            })}
+            {wo.assetCode && !dispensers.some((d) => d.id === wo.assetCode) ? (
+              /* A gap in the register worth seeing, not an error to hide. */
+              <Text style={{ color: colors.amber, fontSize: 12, marginTop: 8 }}>
+                This job is against {wo.assetCode}, which is not on our register for this site.
+              </Text>
+            ) : null}
+          </>
+        )}
+      </SectionCard>
 
       {/* The verification launcher now lives INSIDE the job (platform
           vision): start a certificate without leaving the work order. */}

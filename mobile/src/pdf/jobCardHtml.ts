@@ -27,7 +27,11 @@
  *     it. The costing block is now on the page, above the signatures.
  *  7. One start/end pair was printed for a job that took three visits, so
  *     the document said 06:56 to 10:15 for work spread over months. Visits
- *     are listed individually and the totals are summed.
+ *     are listed individually and the totals are summed. Their labour and
+ *     travel are entered per visit by the technician (#121): an earlier
+ *     version printed the app's own timer here, which put one minute of
+ *     measured time four lines above four point two hours of charged
+ *     labour on a document the client signs.
  *  8. No page numbering. Added, because a signed multi-page document
  *     without it cannot be shown to be complete.
  *
@@ -49,6 +53,19 @@ export const cleanOilCompany = (raw: string | null | undefined): string =>
     .filter(Boolean)
     .join(' / ');
 
+/** A quantity as somebody would write it: 4.2, not 4.20, and 50 not 50.0. */
+const qty = (n: number | null | undefined): string => {
+  const v = Number(n) || 0;
+  return v % 1 ? v.toFixed(1) : String(v);
+};
+
+const dayOnly = (iso: string | null | undefined): string => {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleDateString('en-ZA', { day: '2-digit', month: 'short', year: 'numeric' });
+};
+
 const hhmm = (iso: string | null | undefined): string => {
   if (!iso) return '';
   const d = new Date(iso);
@@ -58,13 +75,21 @@ const hhmm = (iso: string | null | undefined): string => {
   return `${day} ${time}`;
 };
 
-/** One attendance on site. The original document could not express more
- * than one, which is why a three-visit job printed a single pair of times. */
+/** One attendance on site, with the labour and travel the TECHNICIAN
+ * recorded for it (#121).
+ *
+ * It used to carry the lifecycle timer's start, end and duration. That
+ * printed one minute of measured time four lines above four point two
+ * hours of charged labour, on the page the client signs, because the timer
+ * measures how long the app sat in a state and not how long anyone worked.
+ * Every number here is now entered by the person who did the work. */
 export interface JobCardVisit {
-  startedAt: string | null;
-  completedAt: string | null;
-  /** Net working minutes, pauses already removed. */
-  workingMinutes?: number | null;
+  /** ISO date of the attendance. */
+  date?: string | null;
+  distanceKm?: number | null;
+  labourHours?: number | null;
+  labourOt15Hours?: number | null;
+  labourOt20Hours?: number | null;
 }
 
 /** A costing line as OnKey holds it: work task spares, whatever it is for.
@@ -167,7 +192,8 @@ export function jobCardHtml(job: JobCard, opts: JobCardOptions = {}): string {
   const realTasks = job.tasks.filter(
     (t) => t.description.trim().toLowerCase() !== 'default task',
   );
-  const totalMinutes = job.visits.reduce((n, v) => n + (v.workingMinutes ?? 0), 0);
+  const visitTotal = (k: keyof JobCardVisit): number =>
+    job.visits.reduce((n, v) => n + (Number(v[k]) || 0), 0);
   const pages = realTasks.length > 0 ? 2 : 1;
 
   const contactRows = [
@@ -238,18 +264,24 @@ export function jobCardHtml(job: JobCard, opts: JobCardOptions = {}): string {
   <tr><td class="free">${esc(job.workRequired ?? '')}</td></tr></table>
 
 <table class="grid" style="margin-bottom:8px">
-  <tr><th>Visit</th><th>Started</th><th>Completed</th><th class="num">Working time</th></tr>
+  <tr><th>Visit</th><th>Date</th><th class="num">Travel</th><th class="num">Labour</th>
+      <th class="num">1.5 OT</th><th class="num">2.0 OT</th></tr>
   ${job.visits
     .map(
-      (v, i) => `<tr><td>${i + 1}</td><td>${esc(hhmm(v.startedAt))}</td>
-      <td>${esc(hhmm(v.completedAt))}</td>
-      <td class="num">${v.workingMinutes != null ? `${Math.floor(v.workingMinutes / 60)} h ${v.workingMinutes % 60} min` : ''}</td></tr>`,
+      (v, i) => `<tr><td>${i + 1}</td><td>${esc(dayOnly(v.date))}</td>
+      <td class="num">${qty(v.distanceKm)} km</td>
+      <td class="num">${qty(v.labourHours)} hrs</td>
+      <td class="num">${qty(v.labourOt15Hours)}</td>
+      <td class="num">${qty(v.labourOt20Hours)}</td></tr>`,
     )
     .join('')}
   ${
     job.visits.length > 1
-      ? `<tr class="totals"><td colspan="3">Total over ${job.visits.length} visits</td>
-         <td class="num">${Math.floor(totalMinutes / 60)} h ${totalMinutes % 60} min</td></tr>`
+      ? `<tr class="totals"><td colspan="2">Total over ${job.visits.length} visits</td>
+         <td class="num">${qty(visitTotal('distanceKm'))} km</td>
+         <td class="num">${qty(visitTotal('labourHours'))} hrs</td>
+         <td class="num">${qty(visitTotal('labourOt15Hours'))}</td>
+         <td class="num">${qty(visitTotal('labourOt20Hours'))}</td></tr>`
       : ''
   }
 </table>

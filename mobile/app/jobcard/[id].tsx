@@ -4,26 +4,30 @@
  *
  * Two decisions worth knowing while reading this.
  *
- * DISTANCE IS ONE FLAT NUMBER (owner decision). It becomes two OnKey lines,
- * VEH_TECH and TRA_TECH, because that is how the real data is booked: 127
- * of the 128 work orders carrying both had identical quantities. Making the
- * technician type it twice to satisfy somebody else's data model would be
- * the app serving OnKey rather than the person on the forecourt.
+ * EVERYTHING IS ENTERED PER VISIT (#121). Labour and travel belong to an
+ * attendance on site, not to the job as a whole, because a job worked over
+ * three visits is three lots of driving.
  *
- * LABOUR IS PREFILLED, NOT ASSUMED. The lifecycle timer knows the net
- * working minutes with pauses removed, measured on the technician's own
- * clock, so the normal-rate field starts there. It stays editable: the
- * timer is evidence, not a decision, and overtime is a judgement the
- * technician makes.
+ * DISTANCE IS ONE NUMBER PER VISIT (owner decision). It becomes two OnKey
+ * lines, VEH_TECH and TRA_TECH, because that is how the real data is
+ * booked: 127 of the 128 work orders carrying both had identical
+ * quantities. Making the technician type it twice to satisfy somebody
+ * else's data model would be the app serving OnKey rather than the person
+ * on the forecourt.
+ *
+ * NOTHING IS PREFILLED FROM THE LIFECYCLE TIMER. It used to be, and the
+ * first real job card printed one minute of measured time four lines above
+ * four point two hours of charged labour, on the page the client signs.
+ * The timer measures how long the app sat in a state.
  */
 import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import * as Sharing from 'expo-sharing';
 import React, { useCallback, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import {
-  ChargeItem,
   JobCardBundle,
   JobCardPart,
+  JobCardVisit,
   StockItem,
   getJobCard,
   saveJobCard,
@@ -72,12 +76,61 @@ const toJobCard = (b: JobCardBundle): JobCard => ({
   requester: b.document.customerName,
   workRequired: b.workRequired,
   workPerformed: b.jobCard?.workPerformed ?? null,
-  visits: b.document.visits,
+  visits: b.jobCard?.visits ?? [],
   lines: b.document.lines,
   tasks: [],
   technicianName: b.document.technicianName ?? '',
   clientName: b.jobCard?.clientName ?? null,
   signedAt: b.jobCard?.signedAt ?? null,
+});
+
+/** A labelled number box. Separate component because a visit needs four of
+ * them and inlining that made the row unreadable. */
+function VisitField({
+  label,
+  value,
+  editable,
+  onChange,
+  onBlur,
+}: {
+  label: string;
+  value: number;
+  editable: boolean;
+  onChange: (raw: string) => void;
+  onBlur: () => void;
+}) {
+  // Held as text while it is being typed: binding straight to the number
+  // would turn "0." into "0" under the technician's finger.
+  const [text, setText] = useState(value ? String(value) : '');
+  React.useEffect(() => {
+    setText(value ? String(value) : '');
+  }, [value]);
+  return (
+    <View style={{ flex: 1 }}>
+      <Text style={{ color: colors.muted, fontSize: 11, marginBottom: 3 }}>{label}</Text>
+      <TextInput
+        style={numField}
+        value={text}
+        onChangeText={(t) => {
+          setText(t);
+          onChange(t);
+        }}
+        onBlur={onBlur}
+        editable={editable}
+        keyboardType="decimal-pad"
+        placeholder="0"
+        accessibilityLabel={label}
+      />
+    </View>
+  );
+}
+
+const blankVisit = (seq: number): JobCardVisit => ({
+  date: new Date().toISOString().slice(0, 10),
+  distanceKm: 0,
+  labourHours: 0,
+  labourOt15Hours: 0,
+  labourOt20Hours: 0,
 });
 
 /** Empty means zero, not NaN. A technician clearing a field to retype it
@@ -94,10 +147,7 @@ export default function JobCardScreen() {
 
   const [bundle, setBundle] = useState<JobCardBundle | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [km, setKm] = useState('');
-  const [hours, setHours] = useState('');
-  const [ot15, setOt15] = useState('');
-  const [ot20, setOt20] = useState('');
+  const [visits, setVisits] = useState<JobCardVisit[]>([]);
   const [parts, setParts] = useState<JobCardPart[]>([]);
   const [search, setSearch] = useState('');
   const [hits, setHits] = useState<StockItem[]>([]);
@@ -116,21 +166,25 @@ export default function JobCardScreen() {
     set(v);
   };
 
+  const setVisitField = (index: number, key: keyof JobCardVisit, raw: string) => {
+    dirty.current = true;
+    setVisits((prev) =>
+      prev.map((v, i) => (i === index ? { ...v, [key]: toNum(raw) } : v)),
+    );
+  };
+
+  const total = (key: keyof JobCardVisit): string => {
+    const n = visits.reduce((sum, v) => sum + (Number(v[key]) || 0), 0);
+    return n % 1 ? n.toFixed(1) : String(n);
+  };
+
   const seedFields = useCallback((b: JobCardBundle) => {
     const jc = b.jobCard;
-    setKm(jc && jc.distanceKm ? String(jc.distanceKm) : '');
-    // Prefill from the measured working time only when the technician has
-    // not already entered something. Overwriting their number with ours on
-    // every screen open would be maddening.
-    setHours(
-      jc && jc.labourHours
-        ? String(jc.labourHours)
-        : b.workedMinutes
-          ? (b.workedMinutes / 60).toFixed(1)
-          : '',
-    );
-    setOt15(jc && jc.labourOt15Hours ? String(jc.labourOt15Hours) : '');
-    setOt20(jc && jc.labourOt20Hours ? String(jc.labourOt20Hours) : '');
+    // One empty visit to start, because a job card with no visit has
+    // nowhere to type. NOT prefilled from the lifecycle timer: that is
+    // what printed one minute of measured time next to four hours of
+    // charged labour (#121).
+    setVisits(jc?.visits?.length ? jc.visits : [blankVisit(1)]);
     setParts(jc?.parts ?? []);
     setPerformed(jc?.workPerformed ?? '');
     setClientName(jc?.clientName ?? '');
@@ -189,16 +243,13 @@ export default function JobCardScreen() {
   const persist = useCallback(
     (over: Partial<SaveBody> = {}) => {
       void saveJobCard(accessToken, String(id), {
-        distanceKm: toNum(km),
-        labourHours: toNum(hours),
-        labourOt15Hours: toNum(ot15),
-        labourOt20Hours: toNum(ot20),
+        visits,
         parts,
         workPerformed: performed,
         ...over,
       }).catch(() => {});
     },
-    [accessToken, id, km, hours, ot15, ot20, parts, performed],
+    [accessToken, id, visits, parts, performed],
   );
 
   if (loadError) {
@@ -215,7 +266,6 @@ export default function JobCardScreen() {
   if (!bundle) return <Text style={{ padding: 16, color: colors.muted }}>Loading…</Text>;
 
   const signed = bundle.jobCard?.state === 'signed';
-  const labour: ChargeItem[] = bundle.chargeItems.filter((c) => c.kind === 'labour');
   const capturedSignature = readCache<string>(`jobcard-sign:${id}`);
 
   // Capturing a signature and sealing the job card are DIFFERENT ACTS and
@@ -350,56 +400,93 @@ export default function JobCardScreen() {
         ) : null}
       </SectionCard>
 
-      <SectionCard title="Travel">
-        <Text style={{ color: colors.muted, fontSize: 12, marginBottom: 6 }}>
-          Distance for this visit. Entered once, and booked to OnKey as both vehicle and travel.
+      <SectionCard title="Visits">
+        <Text style={{ color: colors.muted, fontSize: 12, marginBottom: 8 }}>
+          One row per attendance on site. Travel is entered once per visit and booked to
+          OnKey as both vehicle and travel.
         </Text>
-        <TextInput
-          style={numField}
-          value={km}
-          onChangeText={touch(setKm)}
-          onBlur={() => persist()}
-          editable={!signed}
-          keyboardType="decimal-pad"
-          placeholder="0"
-          accessibilityLabel="Distance in kilometres"
-        />
-        <Text style={{ color: colors.muted, fontSize: 11, marginTop: 3 }}>km</Text>
-      </SectionCard>
-
-      <SectionCard title="Labour">
-        {bundle.workedMinutes > 0 ? (
-          <Text style={{ color: colors.muted, fontSize: 12, marginBottom: 6 }}>
-            Timed at {Math.floor(bundle.workedMinutes / 60)} h {bundle.workedMinutes % 60} min,
-            pauses removed. Adjust if that is not what you want billed.
+        {visits.map((v, i) => (
+          <View
+            key={i}
+            style={{
+              borderTopWidth: i === 0 ? 0 : 1,
+              borderTopColor: colors.line,
+              paddingTop: i === 0 ? 0 : 10,
+              marginBottom: 10,
+            }}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
+              <Text style={{ flex: 1, color: colors.ink, fontSize: 13, fontFamily: fonts.bodyMedium }}>
+                Visit {i + 1}
+                {v.date ? `  ${v.date}` : ''}
+              </Text>
+              {!signed && visits.length > 1 ? (
+                <Text
+                  onPress={() => {
+                    const next = visits.filter((_, j) => j !== i);
+                    setVisits(next);
+                    persist({ visits: next });
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Remove visit ${i + 1}`}
+                  style={{ color: colors.red, fontSize: 13, paddingHorizontal: 6 }}
+                >
+                  &#10007;
+                </Text>
+              ) : null}
+            </View>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <VisitField
+                label="Travel km"
+                value={v.distanceKm}
+                editable={!signed}
+                onChange={(n) => setVisitField(i, 'distanceKm', n)}
+                onBlur={() => persist()}
+              />
+              <VisitField
+                label="Labour hrs"
+                value={v.labourHours}
+                editable={!signed}
+                onChange={(n) => setVisitField(i, 'labourHours', n)}
+                onBlur={() => persist()}
+              />
+            </View>
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+              <VisitField
+                label="1.5 OT hrs"
+                value={v.labourOt15Hours}
+                editable={!signed}
+                onChange={(n) => setVisitField(i, 'labourOt15Hours', n)}
+                onBlur={() => persist()}
+              />
+              <VisitField
+                label="2.0 OT hrs"
+                value={v.labourOt20Hours}
+                editable={!signed}
+                onChange={(n) => setVisitField(i, 'labourOt20Hours', n)}
+                onBlur={() => persist()}
+              />
+            </View>
+          </View>
+        ))}
+        {!signed ? (
+          <Button
+            title="Add a visit"
+            kind="secondary"
+            onPress={() => {
+              const next = [...visits, blankVisit(visits.length + 1)];
+              setVisits(next);
+              persist({ visits: next });
+            }}
+          />
+        ) : null}
+        {visits.length > 1 ? (
+          <Text style={{ color: colors.muted, fontSize: 12, marginTop: 6 }}>
+            Total {total('distanceKm')} km, {total('labourHours')} hrs
+            {total('labourOt15Hours') ? `, ${total('labourOt15Hours')} hrs at 1.5` : ''}
+            {total('labourOt20Hours') ? `, ${total('labourOt20Hours')} hrs at 2.0` : ''}.
           </Text>
         ) : null}
-        {labour.map((c) => {
-          const [val, set] =
-            c.itemCode === 'LAB_TECH'
-              ? [hours, setHours]
-              : c.itemCode === 'LAB(1.5)_TECH'
-                ? [ot15, setOt15]
-                : [ot20, setOt20];
-          return (
-            <View key={c.itemCode} style={{ marginBottom: 8 }}>
-              <Text style={{ color: colors.ink, fontSize: 13, marginBottom: 3 }}>
-                {c.description}
-              </Text>
-              <TextInput
-                style={numField}
-                value={val}
-                onChangeText={touch(set)}
-                onBlur={() => persist()}
-                editable={!signed}
-                keyboardType="decimal-pad"
-                placeholder="0"
-                accessibilityLabel={c.description}
-              />
-              <Text style={{ color: colors.muted, fontSize: 11, marginTop: 3 }}>{c.unit}</Text>
-            </View>
-          );
-        })}
       </SectionCard>
 
       <SectionCard title="Parts used">

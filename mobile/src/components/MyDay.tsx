@@ -34,9 +34,16 @@ const STATE_BADGE: Record<string, { text: string; tone: 'ok' | 'warn' | 'muted' 
   signed_off: { text: 'Signed off', tone: 'ok' },
 };
 
+/** Signed off, and therefore in "Completed today" rather than in the live
+ * list. The server only returns work signed off since midnight, so this
+ * needs no date arithmetic: being here at all means today (#126). */
+const isCompleted = (r: Ranked): boolean => r.wo.lifecycle?.state === 'signed_off';
+
 const matches = (r: Ranked, f: Filter): boolean => {
   const s = r.wo.lifecycle?.state ?? 'not_started';
-  if (f === 'all') return true;
+  // "All" means all the LIVE work. Completed jobs have their own section,
+  // and showing them in both places would double the count.
+  if (f === 'all') return !isCompleted(r);
   if (f === 'not_started') return s === 'not_started';
   // Travelling to a job counts as being on it.
   if (f === 'active') return s === 'on_the_way' || s === 'started' || s === 'paused';
@@ -78,11 +85,13 @@ export function MyDay({
         // Ranking still works on urgency alone without a fix.
       }
       const apply = (list: WorkOrderRecord[]) => {
-        setRanked(rankWorkOrders(list, here));
-        // The greeting's count comes from HERE, not from a second query.
-        // Home used to count OnKey's open statuses while this list counted
-        // our work-order records, so the header said 2 above a list of 4.
-        onCountRef.current?.(list.length);
+        const r = rankWorkOrders(list, here);
+        setRanked(r);
+        // The greeting's count comes from HERE, not from a second query,
+        // and counts the same thing the list shows: work still to do.
+        // Counting the raw list said "3 open work orders" above a list of
+        // 2, because the completed one was in one count and not the other.
+        onCountRef.current?.(r.filter((x) => !isCompleted(x)).length);
       };
       try {
         const list = await fetchThrough<WorkOrderRecord[]>(
@@ -128,6 +137,7 @@ export function MyDay({
   if (!ranked || ranked.length === 0) return null;
   const visible = ranked.filter((r) => matches(r, filter));
   const shown = showAll ? visible : visible.slice(0, 4);
+  const completed = ranked.filter(isCompleted);
 
   return (
     <View style={{ marginHorizontal: 12, marginBottom: 12 }}>
@@ -240,6 +250,60 @@ export function MyDay({
         >
           {showAll ? 'Show fewer' : `Show all ${visible.length}`}
         </Text>
+      ) : null}
+
+      {/* Completed today (#126). Defined by a timestamp, not a flag, so it
+          empties itself at midnight and nobody has to clear it. Rendered
+          only under "All": the Done chip already shows the same jobs in the
+          list above, and printing them twice would be its own confusion. */}
+      {filter === 'all' && completed.length > 0 ? (
+        <View style={{ marginTop: 14 }}>
+          <Text
+            style={{
+              color: colors.muted,
+              fontSize: 12,
+              fontFamily: fonts.bodyMedium,
+              letterSpacing: 0.6,
+              marginBottom: 6,
+            }}
+          >
+            COMPLETED TODAY
+          </Text>
+          {completed.map((r) => (
+            <Pressable
+              key={r.wo.id}
+              onPress={() => router.push({ pathname: '/wo/[id]', params: { id: r.wo.id } })}
+              accessibilityRole="button"
+              accessibilityLabel={`Completed: ${r.wo.siteName ?? r.wo.externalRef ?? 'work order'}`}
+              style={{
+                borderWidth: 1,
+                borderColor: colors.line,
+                borderRadius: 12,
+                paddingVertical: 10,
+                paddingHorizontal: 12,
+                marginBottom: 6,
+                backgroundColor: '#fff',
+                opacity: 0.85,
+              }}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Text
+                  style={{ flex: 1, color: colors.ink, fontSize: 14, fontFamily: fonts.bodyMedium }}
+                  numberOfLines={1}
+                >
+                  {r.wo.siteName ?? r.wo.externalRef}
+                </Text>
+                <Badge text="Signed off" tone="ok" />
+              </View>
+              <Text style={{ color: colors.muted, fontSize: 12, marginTop: 2 }}>
+                {r.wo.externalRef}
+                {r.wo.lifecycle?.signedOffAt
+                  ? ` · ${r.wo.lifecycle.signedOffAt.slice(11, 16)}`
+                  : ''}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
       ) : null}
     </View>
   );

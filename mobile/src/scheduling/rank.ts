@@ -64,8 +64,11 @@ function humanHours(h: number): string {
   return `${Math.round(abs / 24)} days`;
 }
 
-/** Rank a technician's OPEN work orders. Work already signed off drops
- * out; started/paused work stays visible (it is what they are on). */
+/** Rank a technician's work for today. Signed-off work is KEPT and sorted
+ * last (#126): the server only returns jobs completed since midnight, so
+ * dropping them here left the technician with no record of what they had
+ * finished, and made the header count disagree with the list on the same
+ * screen. */
 export function rankWorkOrders(
   workOrders: WorkOrderRecord[],
   here: { latitude: number; longitude: number } | null,
@@ -106,6 +109,8 @@ export function rankWorkOrders(
       ours === 'on_the_way' ? 1
       : ours === 'started' ? 2
       : ours === 'paused' ? 3
+      // Finished today. Below everything live, above nothing.
+      : ours === 'signed_off' ? 99
       : (wo.statusStage ?? 95);
 
     return { wo, score, stage, overdue, distanceKm, why: bits.join(' · ') };
@@ -115,7 +120,5 @@ export function rankWorkOrders(
   // rule, 2026-08-05: the technician works down the list in lifecycle
   // order, Allocated first, so what planning has just given them is at
   // the top rather than buried under jobs they have already stopped.
-  return ranked
-    .filter((r) => r.wo.lifecycle?.state !== 'signed_off')
-    .sort((a, b) => a.stage - b.stage || a.score - b.score);
+  return ranked.sort((a, b) => a.stage - b.stage || a.score - b.score);
 }

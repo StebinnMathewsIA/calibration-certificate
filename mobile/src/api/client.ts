@@ -222,6 +222,7 @@ export interface WoLifecycle {
   startedAt: string | null;
   pausedAt: string | null;
   stoppedAt: string | null;
+  signedOffAt: string | null;
   pausedSeconds: number;
 }
 
@@ -322,11 +323,24 @@ export interface ChargeItem {
   kind: 'distance' | 'labour';
 }
 
-export interface JobCardState {
+/** One attendance on site. Every number is the technician's, not the
+ * lifecycle timer's (#121). */
+export interface JobCardVisit {
+  date: string | null;
   distanceKm: number;
   labourHours: number;
   labourOt15Hours: number;
   labourOt20Hours: number;
+}
+
+export interface JobCardState {
+  /** Totals, maintained server-side as the SUM of the visits so the page
+   * and the costing can never disagree. Read them, do not write them. */
+  distanceKm: number;
+  labourHours: number;
+  labourOt15Hours: number;
+  labourOt20Hours: number;
+  visits: JobCardVisit[];
   parts: JobCardPart[];
   workPerformed: string | null;
   clientName: string | null;
@@ -350,7 +364,7 @@ export interface JobCardDocument {
   assetDescription: string | null;
   importance: string | null;
   technicianName: string | null;
-  visits: { startedAt: string | null; completedAt: string | null; workingMinutes: number | null }[];
+  visits: JobCardVisit[];
   lines: { itemCode: string; description: string; quantity: number; unit: string }[];
 }
 
@@ -430,22 +444,25 @@ export async function saveJobCard(
   token: string | null,
   workOrderId: string,
   body: {
-    distanceKm: number;
-    labourHours: number;
-    labourOt15Hours: number;
-    labourOt20Hours: number;
+    visits: JobCardVisit[];
     parts: JobCardPart[];
     workPerformed: string;
   },
 ): Promise<void> {
+  // The flat totals are still sent, because the RPC keeps them in step and
+  // an older row may still hold them, but VISITS are the source of truth
+  // and the server recomputes the totals from them regardless.
+  const sum = (k: keyof JobCardVisit) =>
+    body.visits.reduce((n, v) => n + (Number(v[k]) || 0), 0);
   const args = {
     p_work_order_id: workOrderId,
-    p_distance_km: body.distanceKm,
-    p_labour_hours: body.labourHours,
-    p_labour_ot15: body.labourOt15Hours,
-    p_labour_ot20: body.labourOt20Hours,
+    p_distance_km: sum('distanceKm'),
+    p_labour_hours: sum('labourHours'),
+    p_labour_ot15: sum('labourOt15Hours'),
+    p_labour_ot20: sum('labourOt20Hours'),
     p_parts: body.parts,
     p_work_performed: body.workPerformed,
+    p_visits: body.visits,
   };
   try {
     // Both RPCs return the whole bundle, so the cache is refreshed from the
@@ -490,6 +507,43 @@ export async function signJobCard(
     );
   } catch {
     // The work order is not on this device. Nothing to keep in step.
+  }
+}
+
+/** Abandon a journey that has not become work (#127). Returns the work
+ * order to not started. Nothing reaches OnKey: on_the_way is ours alone,
+ * so there is nothing there to undo. */
+export async function standDownWorkOrder(
+  token: string | null,
+  workOrderId: string,
+  opts: { note?: string; deviceId?: string; gps?: string } = {},
+): Promise<WorkOrderRecord> {
+  const occurredAt = new Date().toISOString();
+  const args = {
+    p_work_order_id: workOrderId,
+    p_note: opts.note ?? null,
+    p_device_id: opts.deviceId ?? null,
+    p_gps: opts.gps ?? null,
+    p_occurred_at: occurredAt,
+  };
+  try {
+    const updated = await rpc<WorkOrderRecord>('app_wo_stand_down', token, args);
+    commitTransitionLocally(workOrderId, updated);
+    return updated;
+  } catch (err) {
+    if (!isNetworkError(err)) throw err;
+    const list = readCache<WorkOrderRecord[]>('wo:records') ?? [];
+    const found = list.find((w) => w.id === workOrderId);
+    if (!found) throw err;
+    const updated: WorkOrderRecord = {
+      ...found,
+      lifecycle: found.lifecycle
+        ? { ...found.lifecycle, state: 'not_started', onTheWayAt: null }
+        : found.lifecycle,
+    };
+    enqueueWrite('woStandDown', { workOrderId, args });
+    commitTransitionLocally(workOrderId, updated);
+    return updated;
   }
 }
 
@@ -565,6 +619,7 @@ function applyTransitionLocally(
     startedAt: null,
     pausedAt: null,
     stoppedAt: null,
+    signedOffAt: null,
     pausedSeconds: 0,
   };
   const secondsSince = (iso: string | null): number =>
@@ -839,6 +894,10 @@ export interface DispenserResolved {
   retiredAt?: string | null;
   updatedAt?: string | null;
   inStore?: boolean;
+  /** Hoses on the component register. NULL means the register has never
+   * been completed, which is a different answer from zero and a technician
+   * planning a visit needs to tell them apart (#123). */
+  hoseCount?: number | null;
 }
 
 export interface WorkOrderSummary extends WorkOrderSeed {

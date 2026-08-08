@@ -3,7 +3,7 @@ import { useFocusEffect } from 'expo-router';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import React, { useCallback, useState } from 'react';
-import { Alert, ScrollView, Text, View } from 'react-native';
+import { Alert, Pressable, ScrollView, Text, View } from 'react-native';
 import {
   CertHistoryEntry,
   DispenserResolved,
@@ -86,11 +86,32 @@ export default function SiteDetailScreen() {
   const active = dispensers.filter((d) => d.status !== 'retired');
   const retired = dispensers.filter((d) => d.status === 'retired');
 
-  const row = (d: DispenserResolved) => {
+  /** Where a dispenser should open, decided from what is missing rather
+   * than asked of the technician (#125). Identity first when we do not yet
+   * know what the machine is; otherwise the component register, which is
+   * where a verification is actually started. */
+  const openDispenser = (d: DispenserResolved) => {
+    const needsIdentity = !d.make || !d.model || !d.serialNumber;
+    router.push({
+      pathname: needsIdentity ? '/dispenser/[id]/identity' : '/dispenser/[id]/register',
+      params: { id: d.id },
+    });
+  };
+
+  const row = (d: DispenserResolved, tappable = true) => {
     const c = certs[d.id] ?? { state: 'none' as const };
+    const needsIdentity = !d.make || !d.model || !d.serialNumber;
     return (
-      <View
+      <Pressable
         key={d.id}
+        onPress={tappable ? () => openDispenser(d) : undefined}
+        disabled={!tappable}
+        accessibilityRole={tappable ? 'button' : undefined}
+        accessibilityLabel={
+          tappable
+            ? `Open ${d.make || 'dispenser'} ${d.model} ${d.id}`
+            : undefined
+        }
         style={{ borderTopWidth: 1, borderColor: colors.line, paddingVertical: 8 }}
       >
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -106,6 +127,15 @@ export default function SiteDetailScreen() {
           </View>
           <Badge text={CERT_LABEL[c.state]} tone={CERT_TONE[c.state]} />
         </View>
+        {/* Said out loud, not left to be discovered by tapping hopefully.
+            This row used to offer nothing at all unless a certificate
+            already existed, which stopped the technician one tap into the
+            flow the button promised. */}
+        {tappable ? (
+          <Text style={{ color: colors.blueText, fontSize: 12, marginTop: 4 }}>
+            {needsIdentity ? 'Complete identity to verify →' : 'Start verification →'}
+          </Text>
+        ) : null}
         {c.recordId ? (
           <Text
             onPress={() =>
@@ -121,7 +151,7 @@ export default function SiteDetailScreen() {
             View / share certificate →
           </Text>
         ) : null}
-      </View>
+      </Pressable>
     );
   };
 
@@ -143,12 +173,12 @@ export default function SiteDetailScreen() {
         {active.length === 0 ? (
           <Text style={{ color: colors.muted, marginTop: 6 }}>No active dispensers.</Text>
         ) : (
-          active.map(row)
+          active.map((d) => row(d))
         )}
       </SectionCard>
 
       {retired.length > 0 ? (
-        <SectionCard title="Retired dispensers">{retired.map(row)}</SectionCard>
+        <SectionCard title="Retired dispensers">{retired.map((d) => row(d, false))}</SectionCard>
       ) : null}
 
       <SectionCard title="Verification history">

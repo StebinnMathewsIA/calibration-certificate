@@ -99,3 +99,66 @@ send Prowalco's IT the new address BEFORE the change, not after.
    refreshed so a technician can judge it.
 4. **Write-back scope.** Sashern's note said to say what is needed if we
    write back to Syspro. Answering question 1 answers this too.
+
+
+## InvWarehouse: the real structure (owner sample, 2026-08-08)
+
+Prowalco supplied a 20-row `InvWarehouse` export. This is the table the
+reports spec asked for, and it settles two things and opens one.
+
+**Shape.** 122 columns, one row per stock code per warehouse, the same
+grain as OnKey's `FIELDOPS - INV`. Six columns matter:
+
+| Column | Use |
+|---|---|
+| `StockCode` | the item |
+| `Warehouse` | the van or store |
+| `QtyOnHand` | what is actually there |
+| `UnitCost` | costing, if a line is ever priced |
+| `DefaultBin` | where it sits on the van |
+| `TimeStamp` | change detection for incremental pulls |
+
+The rest is sales history, aged balances and twelve months of opening
+balances per warehouse. None of it belongs in a parts picker.
+
+**The file carries a UTF-8 BOM**, so the first header reads as
+`\ufeffStockCode`. A naive `DictReader` fails on the one column that
+matters, silently, with a KeyError only if you happen to name it.
+
+### The OnKey join does not work on this data
+
+The spec has carried an unverified assumption that the two systems could be
+joined on warehouse code plus stock code. Tested against the sample and our
+stored OnKey inventory:
+
+| Check | Result |
+|---|---|
+| Syspro warehouse codes present in OnKey | 1 of 11 (`BU`) |
+| Syspro stock codes present in OnKey | 0 of 6 |
+
+The formats differ visibly. OnKey has 85 two-letter warehouse codes out of
+87; Syspro's sample includes `0C`, `2`, `5J`, `U1`. Stock codes look like
+different schemes:
+
+```
+Syspro   000-075-008-SC-E   0000846RC   1745003
+OnKey    100-058            900743-001  906894
+```
+
+`BU` matching is more likely coincidence than correspondence.
+
+**Settle this before building the loader.** A picker that mixes two code
+schemes produces costing lines OnKey rejects, or accepts against the wrong
+item, which is worse.
+
+`UserField1/2/3` are free slots on this table. If Prowalco populates one
+with the OnKey code, the join becomes exact and stays exact.
+
+### Missing from this table
+
+No description. A picker fed from `InvWarehouse` alone shows a technician
+`0000846RC` and nothing else. Descriptions live in `InvMaster`, which is
+needed as well.
+
+No technician. The van-to-technician mapping that the costing write needs
+(#129) is not here.

@@ -594,3 +594,41 @@ None of this has been on a device yet.
 - Photo capture (seal/totaliser/display) and photo hashes in the audit trail
 - Manager push/email notification channel (currently a logging stub)
 - KMS-held signing key + RFC 3161 TSA in production signing
+
+## Profile signature gate (#128)
+
+- [ ] A technician with no saved signature sees an exclamation marker on
+      the profile avatar, on every screen that shows it
+- [ ] Job card sign-off is refused with "add your signature to your
+      profile" in the still-to-do line, and the shortcut opens the profile
+- [ ] Saving a signature clears the marker and allows sign-off
+- [ ] The Artisan block on the generated job card is filled
+
+## Job card visits (#121)
+
+- [ ] Travel and labour are entered per visit; adding a second visit works
+- [ ] Totals under the visit list equal the sum of the rows
+- [ ] The printed job card shows one row per visit and NO working-time
+      column
+- [ ] The costing block equals the visit totals
+
+## Lifecycle icon row (#122) and stand down (#127)
+
+- [ ] The four verbs are one icon row above the fold at every stage
+- [ ] Invalid actions are visibly disabled, not missing
+- [ ] "Cannot get there" while on the way asks for confirmation, not a
+      pause reason, and returns the job to not started
+- [ ] Nothing is queued to OnKey for a stand down
+
+## Work order dispensers (#123) and the verification path (#125)
+
+- [ ] Dispensers on site show make, model and hose count
+- [ ] The allocated dispenser is marked "This job" and listed first
+- [ ] Tapping a dispenser with no certificate opens it (identity if
+      incomplete, otherwise the component register)
+
+## Completed today (#126)
+
+- [ ] Signing off a work order moves it to "Completed today"
+- [ ] The header count and the day list agree
+- [ ] The section is empty the next morning

@@ -422,19 +422,43 @@ const numOrNull = (v: string | null) => (v == null || v === '' ? null : Number(v
 
 /** ExportDataResponse -> row dicts. The rows arrive as CDATA XML inside
  * <Data>, one element per record (guide section 5.2.2). */
+/** Rows out of an ExportData response.
+ *
+ * TWO things about the payload that this got wrong, and both produced an
+ * empty result with a 200 and no error, which is the worst possible
+ * failure: OnKey returned 37 KB of rows for FIELDOPS - TASK and we reported
+ * "0 rows" for days, long enough that I told the owner their report was
+ * broken. It was not.
+ *
+ *  1. <Data> is ESCAPED XML, not CDATA. It arrives as
+ *     "&lt;FIELDOPS_x0020_-_x0020_TASKDataSet&gt;" and has to be decoded
+ *     before anything can be matched in it. Stripping a CDATA wrapper that
+ *     is not there leaves the escaped text untouched.
+ *  2. Element names are the DATASET NAME with spaces encoded, so
+ *     "FIELDOPS - TASK" becomes "FIELDOPS_x0020_-_x0020_TASK". That
+ *     contains a hyphen, which the old [A-Za-z0-9_]+ name class excluded,
+ *     so the root element never matched even once decoded.
+ *
+ * Both are invisible from the outside. Neither throws. */
+const NAME = '[A-Za-z_][A-Za-z0-9_.\\-]*';
+
 export function parseDataSet(xml: string): Record<string, string>[] {
   const data = tagText(xml, 'Data');
   if (!data) return [];
-  const inner = data.replace(/^<!\[CDATA\[/, '').replace(/\]\]>$/, '');
+  // CDATA when it is CDATA, decoded when it is escaped. Both forms have
+  // been seen from this service.
+  const inner = data.startsWith('<![CDATA[')
+    ? data.replace(/^<!\[CDATA\[/, '').replace(/\]\]>$/, '')
+    : decodeEntities(data);
   const rows: Record<string, string>[] = [];
   // Records are the second-level elements of the dataset root.
-  const rootMatch = inner.match(/<([A-Za-z0-9_]+)>([\s\S]*)<\/\1>/);
+  const rootMatch = inner.match(new RegExp(`<(${NAME})>([\\s\\S]*)</\\1>`));
   if (!rootMatch) return rows;
-  const recordRe = /<([A-Za-z0-9_]+)>([\s\S]*?)<\/\1>/g;
+  const recordRe = new RegExp(`<(${NAME})>([\\s\\S]*?)</\\1>`, 'g');
   let m: RegExpExecArray | null;
   while ((m = recordRe.exec(rootMatch[2])) !== null) {
     const row: Record<string, string> = {};
-    const fieldRe = /<([A-Za-z0-9_]+)(?:\s[^>]*)?>([\s\S]*?)<\/\1>/g;
+    const fieldRe = new RegExp(`<(${NAME})(?:\\s[^>]*)?>([\\s\\S]*?)</\\1>`, 'g');
     let f: RegExpExecArray | null;
     while ((f = fieldRe.exec(m[2])) !== null) row[f[1]] = decodeEntities(f[2]);
     if (Object.keys(row).length) rows.push(row);
@@ -442,10 +466,14 @@ export function parseDataSet(xml: string): Record<string, string>[] {
   return rows;
 }
 
+/** &amp; LAST, always. Decoding it first turns "&amp;lt;" into "<" when it
+ * was meant to stay the literal text "&lt;". */
 const decodeEntities = (s: string) =>
   s
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"')
     .replace(/&apos;/g, "'")
+    .replace(/&#xD;/gi, '')
+    .replace(/&#xA;/gi, '\n')
     .replace(/&amp;/g, '&');

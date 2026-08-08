@@ -1,9 +1,10 @@
 import { useRouter } from 'expo-router';
 import React from 'react';
-import { Pressable, Text } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
 import { useAuth } from '../auth/AuthContext';
 import { colors } from './ui';
-import { getProfile, profileInitials } from '../profile/profileStore';
+import { getProfile, profileInitials, profileGaps } from '../profile/profileStore';
+import { readCache } from '../db/cache';
 
 /** Two-letter initials from a name. Handles "First Last" -> "FL", a single
  * word -> its first two letters, and an email -> the local part's initials. */
@@ -16,7 +17,7 @@ export function initialsOf(name: string): string {
   return base.slice(0, 2).toUpperCase();
 }
 
-/** Circular avatar (the technician's initials) in the header — opens profile.
+/** Circular avatar (the technician's initials) in the header, opens profile.
  * `variant` picks the tint: white-on-navy app bars (default) or navy-on-light
  * for in-content headers like the Home greeting. */
 export function HeaderProfileButton({ variant = 'onNavy' }: { variant?: 'onNavy' | 'onLight' }) {
@@ -29,12 +30,19 @@ export function HeaderProfileButton({ variant = 'onNavy' }: { variant?: 'onNavy'
   // Real first/surname initials when the profile has them; guessed otherwise.
   const initials = profileInitials(profile) ?? initialsOf(name);
   const onLight = variant === 'onLight';
+  // Something on the profile is missing and will stop the technician
+  // mid-job if they do not fix it (#128). Shown on the avatar because that
+  // is the one control on every screen, so the problem is visible long
+  // before they are standing in front of a client.
+  const gaps = profileGaps(identity?.subject ?? '', readCache);
 
   return (
     <Pressable
       onPress={() => router.push('/profile')}
       accessibilityRole="button"
-      accessibilityLabel="Open profile"
+      accessibilityLabel={
+        gaps.length ? `Open profile. ${gaps.join('. ')}` : 'Open profile'
+      }
       hitSlop={8}
       style={{
         width: onLight ? 40 : 34,
@@ -55,6 +63,27 @@ export function HeaderProfileButton({ variant = 'onNavy' }: { variant?: 'onNavy'
       >
         {initials}
       </Text>
+      {gaps.length ? (
+        <View
+          // A plain typographic mark, not an emoji, per the brand rules.
+          // Positioned outside the circle so it reads on both tints.
+          style={{
+            position: 'absolute',
+            top: -2,
+            right: -2,
+            minWidth: 16,
+            height: 16,
+            borderRadius: 8,
+            backgroundColor: colors.red,
+            borderWidth: 1.5,
+            borderColor: onLight ? '#fff' : colors.navy,
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}
+        >
+          <Text style={{ color: '#fff', fontSize: 10, fontWeight: '800', lineHeight: 12 }}>!</Text>
+        </View>
+      ) : null}
     </Pressable>
   );
 }

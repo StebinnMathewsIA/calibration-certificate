@@ -41,7 +41,7 @@ import { FormScrollView } from '../../src/components/FormScrollView';
 import { readCache } from '../../src/db/cache';
 import { JobCard } from '../../src/pdf/jobCardHtml';
 import { renderJobCardPdf } from '../../src/pdf/renderPdf';
-import { voSignatureCacheKey } from '../../src/profile/profileStore';
+import { hasProfileSignature, voSignatureCacheKey } from '../../src/profile/profileStore';
 
 // StyleSheet.create, not a bare object: it types fontVariant as
 // FontVariant[] rather than widening it to string[], which TextInput rejects.
@@ -267,6 +267,12 @@ export default function JobCardScreen() {
 
   const signed = bundle.jobCard?.state === 'signed';
   const capturedSignature = readCache<string>(`jobcard-sign:${id}`);
+  // The technician's own signature, from their profile. Without it the
+  // Artisan block on the document comes out blank, which is what happened
+  // on the first real job card: the client signed and the person who did
+  // the work did not (#128). Blocking the seal is the same gate an expired
+  // proving measure puts on a verification.
+  const signedByTech = hasProfileSignature(identity?.subject ?? '', readCache);
 
   // Capturing a signature and sealing the job card are DIFFERENT ACTS and
   // used to share one condition (#118). Capturing is collecting evidence
@@ -280,7 +286,8 @@ export default function JobCardScreen() {
   const canCapture =
     !signed && started && performed.trim().length > 0 && clientName.trim().length > 0;
   // Sealing still requires the work to be stopped. That gate is correct.
-  const canSign = canCapture && bundle.lifecycleState === 'stopped' && !!capturedSignature;
+  const canSign =
+    canCapture && bundle.lifecycleState === 'stopped' && !!capturedSignature && signedByTech;
 
   /** Only what is actually missing. Listing all three conditions when two
    * are met reads as if nothing has been done. */
@@ -290,6 +297,7 @@ export default function JobCardScreen() {
   if (!clientName.trim()) blockers.push("enter the client's name");
   if (canCapture && !capturedSignature) blockers.push('capture the signature');
   else if (canCapture && bundle.lifecycleState !== 'stopped') blockers.push('stop the work');
+  if (!signedByTech) blockers.push('add your signature to your profile');
 
   /** Adding the same part twice bumps the quantity rather than making a
    * second line: two lines for one item is a costing sheet nobody can
@@ -659,6 +667,13 @@ export default function JobCardScreen() {
             <Text style={{ color: colors.muted, fontSize: 11, marginTop: 4 }}>
               Still to do: {blockers.join(', ')}.
             </Text>
+          ) : null}
+          {!signedByTech ? (
+            <Button
+              title="Add my signature"
+              kind="secondary"
+              onPress={() => router.push('/profile')}
+            />
           ) : null}
         </SectionCard>
       ) : null}

@@ -1,6 +1,6 @@
 /**
- * The technician's own profile — display name, VO pliers number and their
- * saved handwritten signature — kept on-device (per IdP subject). The VO
+ * The technician's own profile (display name, VO pliers number and their
+ * saved handwritten signature) kept on-device, per IdP subject. The VO
  * signature is embedded into every certificate they sign so the signature on
  * the document looks like theirs.
  */
@@ -35,7 +35,7 @@ export interface TechProfile {
   measurePhotos?: Record<string, string>;
 }
 
-/** The VO name as printed on the certificate — the document's field is
+/** The VO name as printed on the certificate: the document's field is
  * labelled "Initial & Surname", e.g. "S. Mathews". Falls back to the legacy
  * display name, then the sign-in name. */
 export function certificateName(p: TechProfile, fallback: string): string {
@@ -63,7 +63,7 @@ export function profileInitials(p: TechProfile): string | null {
 }
 
 /** Seed the real name parts from an IdP sign-in. Never overwrites a name the
- * VO typed themselves — only fills a profile that has neither part. */
+ * VO typed themselves: only fills a profile that has neither part. */
 export function seedProfileName(subject: string, firstName: string, lastName: string): void {
   if (!firstName && !lastName) return;
   const p = getProfile(subject);
@@ -88,3 +88,29 @@ export function saveProfile(subject: string, profile: TechProfile): void {
 
 /** Cache key the signature-capture screen writes the VO's drawn signature to. */
 export const voSignatureCacheKey = (subject: string) => `profile-signature:${subject}`;
+
+/** What is missing from a technician's profile that will stop them
+ * mid-job (#128). Returned as sentences, because the caller shows them to
+ * the person who has to fix it.
+ *
+ * The signature is the only entry today. It is here rather than inline in
+ * the header so that the next gate (a missing certificate name, say) is
+ * added in one place and appears everywhere the marker does. */
+export function profileGaps(
+  subject: string,
+  read: <T>(key: string) => T | null,
+): string[] {
+  if (!subject) return [];
+  const gaps: string[] = [];
+  const signature = read<string>(voSignatureCacheKey(subject));
+  if (!signature) gaps.push('Your signature is not on your profile');
+  return gaps;
+}
+
+/** True when this technician can put their name to a document. */
+export function hasProfileSignature(
+  subject: string,
+  read: <T>(key: string) => T | null,
+): boolean {
+  return !!subject && !!read<string>(voSignatureCacheKey(subject));
+}

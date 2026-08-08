@@ -501,3 +501,27 @@ master uploads stay until PWR-STF01/PWR-AST01 prove more complete than
 the files. Every report lands in its own raw snapshot table with
 content-hash dedupe, and derivation into the app-facing registers stays
 in SQL, per the architecture.
+
+### Work task spares: how far the write actually gets (2026-08-08)
+
+Proven live, in this order, each one a separate wall:
+
+1. **The parser was discarding every export row.** `<Data>` is escaped XML,
+   not CDATA, and the element names are the dataset name with spaces
+   encoded (`FIELDOPS_x0020_-_x0020_TASK`), which contains a hyphen the
+   name pattern excluded. FIELDOPS - TASK looked empty for days and was
+   not. Fixed in soap.ts.
+2. **Tasks must be fetched per work order.** The report caps at 5000 rows
+   and returns an arbitrary slice: a full pull covered 29 of 1143 open work
+   orders. The WorkOrderCode filter works, with the bracket escaped
+   (`[[]TEST]#7067567`).
+3. **The envelope is correct.** `ImportWorkTaskSpares` with `WorkTaskId`,
+   `ItemCode`, `QuantityRequired`, `UnitCode` and `ItemType 0` is accepted
+   and parsed.
+4. **It is refused on content**: `E202189: Warehouse Code must have a value
+   if the Item Type is 0 or 1.` Every spare is booked against a warehouse,
+   and warehouses are the vans. See #129.
+
+The remaining unknown is a technician-to-warehouse mapping. The only link
+in the data is a person's name inside `WarehouseDescription`, in at least
+two formats, which is not a basis for booking money.

@@ -232,6 +232,13 @@ async function handleExport(body: Record<string, unknown>): Promise<Response> {
       if (error) throw new Error(error.message);
       inserted += payload.length;
     }
+    // Fold the raw rows into the work task mirror in the SAME call. A
+    // separate step would leave a window where the rows are stored and the
+    // thing that reads them still says "no task known for this job".
+    if (body.refreshTasks) {
+      const { error } = await db.rpc('onkey_work_tasks_refresh');
+      if (error) throw new Error(`task refresh failed: ${error.message}`);
+    }
     await finishRun(runId, { state: 'succeeded', rows_fetched: rows.length, rows_inserted: inserted });
     return json({ ok: true, reportCode, rows: rows.length, columns: rows[0] ? Object.keys(rows[0]) : [] });
   } catch (err) {
@@ -424,33 +431,32 @@ function planFor(ev: Record<string, any>): Record<string, unknown> {
     case 'work_task_spares':
       // One record per costing line, all against the same work order.
       //
-      // NOT SENDABLE YET, and the missing piece is not in this file. Every
-      // real spare row in OnKey hangs off a WORK TASK (ParentId), and we
-      // have no way to learn which task belongs to a given work order: the
-      // FIELDOPS - TASK report has required parameters whose names are not
-      // published, and it now returns zero rows for every call we can
-      // make. So taskId/taskCode below are read from the payload and the
-      // payload cannot yet carry them. Until Prowalco supplies the report
-      // parameters (or authors PWR-WT01, already specified in
-      // docs/ONKEY-REPORTS-SPEC.md), these stay queued blocked.
-      //
-      // ItemType is deliberately not set: the live rows carry ItemType 0,
-      // "Warehouse Item", and guessing a type is how a costing line lands
-      // in the wrong bucket.
+      // The task reference used to be unobtainable, which is why these
+      // were queued blocked. It was never OnKey's fault: our own parser
+      // was discarding every export row, so FIELDOPS - TASK looked empty.
+      // Tasks are now fetched per work order and mirrored, and the sign
+      // resolves one before it queues.
       return {
         operation: 'ImportWorkTaskSpares',
         records: (p.lines ?? []).map(
           (l: Record<string, unknown>, i: number) => ({
             referenceId: i + 1,
             action: 'Insert',
+            // WorkTaskId is the parent: every live spare row hangs off a
+            // TASK, not off the work order. Resolved server-side at sign
+            // time from the task mirror, so a costing cannot be queued
+            // without one.
+            workTaskId: p.taskId,
             workOrderCode: ev.wo_code,
-            taskId: p.taskId,
-            taskCode: p.taskCode,
             itemCode: l.itemCode,
             itemDescription: l.description,
             quantityRequired: l.quantity,
             unitCode: l.unit,
-            notes: p.workPerformed,
+            // ItemType 0 is "Warehouse Item", read off the live rows
+            // rather than guessed: a wrong type puts a line in the wrong
+            // bucket on somebody's costing sheet.
+            itemType: 0,
+            sequenceNumber: i,
           }),
         ),
       };

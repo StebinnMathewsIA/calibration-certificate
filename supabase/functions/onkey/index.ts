@@ -199,7 +199,20 @@ async function handleExport(body: Record<string, unknown>): Promise<Response> {
   const runId = await startRun('export', { reportCode, parameters });
   const client = new OnKeyClient(creds());
   try {
-    const { rows } = await client.exportData(reportCode, dataSetName, maxRecords, parameters);
+    const { rows, raw } = await client.exportData(reportCode, dataSetName, maxRecords, parameters);
+    // An empty result is ambiguous: OnKey returning nothing and us failing
+    // to parse what it returned look identical from here, and reporting the
+    // first as fact when it is the second wastes somebody else's day.
+    if (body.debug) {
+      return json({
+        ok: true,
+        reportCode,
+        rows: rows.length,
+        rawBytes: raw.length,
+        rawHead: raw.slice(0, 1200),
+        rawTail: raw.slice(-600),
+      });
+    }
     let inserted = 0;
     // Chunked upsert: one Edge invocation handles one bounded bite.
     for (let i = 0; i < rows.length; i += 500) {

@@ -19,7 +19,7 @@
 import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import * as Sharing from 'expo-sharing';
 import React, { useCallback, useState } from 'react';
-import { Alert, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import {
   ChargeItem,
   JobCardBundle,
@@ -29,6 +29,7 @@ import {
   saveJobCard,
   searchStock,
   signJobCard,
+  stockCount,
 } from '../../src/api/client';
 import { useAuth } from '../../src/auth/AuthContext';
 import { Badge, Button, SectionCard, colors, fonts } from '../../src/components/ui';
@@ -101,6 +102,7 @@ export default function JobCardScreen() {
   const [search, setSearch] = useState('');
   const [hits, setHits] = useState<StockItem[]>([]);
   const [searching, setSearching] = useState(false);
+  const [partCount, setPartCount] = useState<number | null>(null);
   const [performed, setPerformed] = useState('');
   const [clientName, setClientName] = useState('');
   const [busy, setBusy] = useState(false);
@@ -153,30 +155,34 @@ export default function JobCardScreen() {
 
   useFocusEffect(useCallback(() => load(), [load]));
 
-  // Debounced, because a technician types a part code one character at a
-  // time on a phone and every keystroke would otherwise be a round trip
-  // over forecourt signal. Two characters minimum: one character matches
-  // most of the register and tells nobody anything.
+  // The register loads with nothing typed, so the field is a PICK LIST and
+  // not a guessing game (#119). Debounced because a technician types a code
+  // one character at a time and every keystroke would otherwise be a round
+  // trip over forecourt signal.
   React.useEffect(() => {
     const q = search.trim();
-    if (q.length < 2) {
-      setHits([]);
-      setSearching(false);
-      return;
-    }
     setSearching(true);
     let live = true;
-    const timer = setTimeout(() => {
-      searchStock(accessToken, q)
-        .then((r) => live && setHits(r.slice(0, 8)))
-        .catch(() => live && setHits([]))
-        .finally(() => live && setSearching(false));
-    }, 250);
+    const timer = setTimeout(
+      () => {
+        searchStock(accessToken, q)
+          .then((r) => live && setHits(r))
+          .catch(() => live && setHits([]))
+          .finally(() => live && setSearching(false));
+      },
+      q ? 250 : 0,
+    );
     return () => {
       live = false;
       clearTimeout(timer);
     };
   }, [search, accessToken]);
+
+  React.useEffect(() => {
+    stockCount(accessToken)
+      .then(setPartCount)
+      .catch(() => {});
+  }, [accessToken]);
 
   type SaveBody = Parameters<typeof saveJobCard>[2];
 
@@ -210,11 +216,30 @@ export default function JobCardScreen() {
 
   const signed = bundle.jobCard?.state === 'signed';
   const labour: ChargeItem[] = bundle.chargeItems.filter((c) => c.kind === 'labour');
-  const canSign =
-    !signed &&
-    bundle.lifecycleState === 'stopped' &&
-    performed.trim().length > 0 &&
-    clientName.trim().length > 0;
+  const capturedSignature = readCache<string>(`jobcard-sign:${id}`);
+
+  // Capturing a signature and sealing the job card are DIFFERENT ACTS and
+  // used to share one condition (#118). Capturing is collecting evidence
+  // while the client is standing in front of you; sealing is finishing the
+  // job. Requiring the work to be stopped before the client could sign
+  // meant a technician who paused for spares and left site could never get
+  // a signature at all, because by the time the job stops the client is
+  // long gone. The original OnKey card asks for a signature confirming
+  // ARRIVAL, so this was never an end-of-job act.
+  const started = bundle.lifecycleState !== 'not_started' && bundle.lifecycleState !== 'on_the_way';
+  const canCapture =
+    !signed && started && performed.trim().length > 0 && clientName.trim().length > 0;
+  // Sealing still requires the work to be stopped. That gate is correct.
+  const canSign = canCapture && bundle.lifecycleState === 'stopped' && !!capturedSignature;
+
+  /** Only what is actually missing. Listing all three conditions when two
+   * are met reads as if nothing has been done. */
+  const blockers: string[] = [];
+  if (!started) blockers.push('start the job');
+  if (!performed.trim()) blockers.push('describe the work performed');
+  if (!clientName.trim()) blockers.push("enter the client's name");
+  if (canCapture && !capturedSignature) blockers.push('capture the signature');
+  else if (canCapture && bundle.lifecycleState !== 'stopped') blockers.push('stop the work');
 
   /** Adding the same part twice bumps the quantity rather than making a
    * second line: two lines for one item is a costing sheet nobody can
@@ -244,20 +269,25 @@ export default function JobCardScreen() {
     setParts((prev) => prev.map((p, i) => (i === index ? { ...p, quantity: toNum(raw) } : p)));
   };
 
+  /** The same full-screen locked window the verification certificate uses:
+   * no swipe-to-dismiss and no back button, so a downward stroke cannot
+   * close it mid-signature. The drawing lands in the cache under a job-card
+   * key so it never mixes with the VO's own saved signature. */
+  const capture = () => {
+    router.push({
+      pathname: '/signature',
+      params: {
+        cacheKey: `jobcard-sign:${id}`,
+        title: 'Client signature',
+        hint: 'Hand the phone to the client. Signing accepts the work recorded on this job card.',
+      },
+    });
+  };
+
   const sign = async () => {
-    // The client's signature is captured on the shared signature screen and
-    // left in the cache under a job-card key, so it never mixes with the
-    // VO's own saved signature.
     const clientSig = readCache<string>(`jobcard-sign:${id}`);
     if (!clientSig) {
-      router.push({
-        pathname: '/signature',
-        params: {
-          cacheKey: `jobcard-sign:${id}`,
-          title: 'Client signature',
-          hint: 'Hand the phone to the client. Signing accepts the work recorded on this job card.',
-        },
-      });
+      capture();
       return;
     }
     setBusy(true);
@@ -435,7 +465,16 @@ export default function JobCardScreen() {
             />
             {searching ? (
               <Text style={{ color: colors.muted, fontSize: 11, marginTop: 4 }}>Searching…</Text>
-            ) : null}
+            ) : (
+              <Text style={{ color: colors.muted, fontSize: 11, marginTop: 4 }}>
+                {search.trim()
+                  ? `${hits.length} of ${partCount ?? '?'} parts`
+                  : `${partCount ?? hits.length} parts, most carried first`}
+              </Text>
+            )}
+            {/* Capped height so the list scrolls inside the card instead of
+                pushing the sign-off block off the screen. */}
+            <ScrollView style={{ maxHeight: 260 }} nestedScrollEnabled keyboardShouldPersistTaps="handled">
             {hits.map((h) => (
               <Text
                 key={h.itemCode}
@@ -460,10 +499,12 @@ export default function JobCardScreen() {
                 ) : null}
               </Text>
             ))}
-            {search.trim().length > 1 && !searching && hits.length === 0 ? (
+            </ScrollView>
+            {!searching && hits.length === 0 ? (
               <Text style={{ color: colors.muted, fontSize: 12, marginTop: 6 }}>
-                Nothing found. Parts come from the stock register, so a code that is not
-                listed cannot be booked to the work order.
+                {search.trim()
+                  ? `No match in ${partCount ?? 'the'} parts. Parts come from the stock register, so a code that is not listed cannot be booked to the work order.`
+                  : 'The parts register is empty on this device. Reconnect once to load it.'}
               </Text>
             ) : null}
           </View>
@@ -503,19 +544,33 @@ export default function JobCardScreen() {
             accessibilityLabel="Client name"
           />
           <Text style={{ color: colors.muted, fontSize: 12, marginTop: 8 }}>
-            {readCache<string>(`jobcard-sign:${id}`)
-              ? 'Signature captured. Signing seals the job card and signs off the work order.'
-              : 'Signing opens the signature pad for the client.'}
+            {capturedSignature
+              ? 'Signature captured. It stays with the job card until you sign off.'
+              : 'Hand the phone to the client on the signature pad.'}
           </Text>
-          <Button
-            title={readCache<string>(`jobcard-sign:${id}`) ? 'Sign off' : 'Capture client signature'}
-            onPress={() => void sign()}
-            busy={busy}
-            disabled={!canSign}
-          />
-          {!canSign ? (
+          {/* Two buttons, because they are two acts. The client can sign
+              while you are still on site; sealing waits for the work to
+              stop. */}
+          {!capturedSignature ? (
+            <Button
+              title="Capture client signature"
+              onPress={() => void capture()}
+              disabled={!canCapture}
+            />
+          ) : (
+            <>
+              <Button title="Sign off" onPress={() => void sign()} busy={busy} disabled={!canSign} />
+              <Button
+                title="Re-capture signature"
+                kind="secondary"
+                onPress={() => void capture()}
+                disabled={!canCapture}
+              />
+            </>
+          )}
+          {blockers.length > 0 ? (
             <Text style={{ color: colors.muted, fontSize: 11, marginTop: 4 }}>
-              Needs the work stopped, a description of the work performed, and the client's name.
+              Still to do: {blockers.join(', ')}.
             </Text>
           ) : null}
         </SectionCard>

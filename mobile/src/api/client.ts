@@ -392,16 +392,24 @@ export interface StockItem {
 }
 
 /** Cached per query so a forecourt with no signal still finds the parts the
- * technician looked up earlier the same day. */
+ * technician looked up earlier the same day. An EMPTY query is the whole
+ * register, most-carried first: the list has to show what there is before
+ * anything is typed, or a technician tapping it sees a blank box and
+ * reasonably concludes it is broken (#119). */
 export async function searchStock(
   token: string | null,
   query: string,
 ): Promise<StockItem[]> {
   const q = query.trim();
-  if (!q) return [];
-  return await fetchThrough(`stock:${q.toLowerCase()}`, () =>
-    rpc<StockItem[]>('app_stock_search', token, { p_query: q, p_limit: 25 }),
+  return await fetchThrough(`stock:${q.toLowerCase() || '*'}`, () =>
+    rpc<StockItem[]>('app_stock_search', token, { p_query: q, p_limit: q ? 50 : 300 }),
   );
+}
+
+/** Size of the register, so an empty result can say "no match in 502 parts"
+ * rather than showing nothing and meaning two different things. */
+export async function stockCount(token: string | null): Promise<number> {
+  return await fetchThrough('stock:count', () => rpc<number>('app_stock_count', token));
 }
 
 const jobCardKey = (workOrderId: string) => `jobcard:${workOrderId}`;

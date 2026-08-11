@@ -701,3 +701,14 @@ rather than an integration problem.
 - [ ] Prowalco confirms which manager owns each unallocated technician
 - [ ] `SELECT * FROM technician_allocations_unallocated;` returns no rows
 - [ ] Each manager signs in and sees their own technicians, and no others
+
+### Two technicians share one van code
+
+`technician_warehouses` has two verified staff codes pointing at warehouse
+`NJ`. That is either a genuinely shared van or a mapping error, and it is
+the same class of question as #129. Per-technician counts are correct
+either way, because `app_team_vans` groups by staff code, but any query
+that groups by warehouse code alone will double this van.
+
+- [ ] Prowalco confirms whether that van is shared or one of the two
+      mappings is wrong

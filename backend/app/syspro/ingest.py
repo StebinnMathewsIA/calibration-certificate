@@ -196,8 +196,40 @@ def _upsert_many(db: Session, rows: list[dict]) -> int:
     return written
 
 
-def load_stock(db: Session, settings: Settings) -> dict:
-    """Full load: one streaming query over the van warehouses."""
+def _hex(value: Any) -> str | None:
+    """A rowversion as text. Opaque on purpose: we compare it only by
+    handing it back to SQL Server, never by interpreting it here."""
+    if value is None:
+        return None
+    if isinstance(value, (bytes, bytearray)):
+        return "0x" + bytes(value).hex().upper()
+    return str(value)
+
+
+def _unhex(value: str | None) -> bytes | None:
+    if not value:
+        return None
+    text_value = value[2:] if value.lower().startswith("0x") else value
+    try:
+        return bytes.fromhex(text_value)
+    except ValueError:
+        return None
+
+
+def load_stock(db: Session, settings: Settings, mode: str = "full") -> dict:
+    """Load the catalogue.
+
+    'full' streams everything and prunes what Syspro no longer returns.
+    'incremental' reads only rows whose rowversion is above the stored
+    high-water mark, which costs about two seconds when nothing has
+    changed.
+
+    Incremental CANNOT see a deletion: a deleted row takes its rowversion
+    with it, so nothing is left to compare. That is not a gap to close, it
+    is why the full load stays on a nightly schedule and keeps the prune.
+    Incremental for freshness, full for truth."""
+    if mode not in ("full", "incremental"):
+        raise SysproError(f"mode must be 'full' or 'incremental', not '{mode}'")
     database = qualify(settings.syspro_database)
     client = SysproClient(settings)
 
@@ -216,7 +248,8 @@ def load_stock(db: Session, settings: Settings) -> dict:
         )
     )
     load_id = db.execute(
-        text("INSERT INTO syspro_loads (state) VALUES ('running') RETURNING id")
+        text("INSERT INTO syspro_loads (state, mode) VALUES ('running', :mode) RETURNING id"),
+        {"mode": mode},
     ).scalar()
     db.commit()
 
@@ -240,9 +273,36 @@ def load_stock(db: Session, settings: Settings) -> dict:
     seen = written = rejected = skipped = batches = 0
     complete = False
 
+    # Read the high-water mark BEFORE the rows, not after. A row updated
+    # while we are reading gets a rowversion above this mark and is picked
+    # up next time. Taking the maximum afterwards would step over exactly
+    # those rows and lose them silently.
     try:
-        sql = q_all_stock(database)
-        for chunk in client.stream(sql, batch_size=BATCH_SIZE):
+        new_water = _hex((client.rows(q_max_timestamp(database)) or [{}])[0].get("high_water"))
+    except SysproError:
+        new_water = None
+
+    since = None
+    if mode == "incremental":
+        since = db.execute(
+            text("SELECT high_water FROM syspro_watermark WHERE company = :c"),
+            {"c": database},
+        ).scalar()
+        if not since:
+            # Nothing to be incremental from. Falling back to a full load
+            # is the only honest option: an incremental pull from zero is
+            # a full load wearing the wrong label, and skipping would
+            # leave the register empty.
+            mode = "full"
+
+    try:
+        if mode == "incremental":
+            sql = q_changed_since(database)
+            stream = client.stream(sql, params=(_unhex(since),), batch_size=BATCH_SIZE)
+        else:
+            sql = q_all_stock(database)
+            stream = client.stream(sql, batch_size=BATCH_SIZE)
+        for chunk in stream:
             batches += 1
             batch: list[dict] = []
             for row in chunk:
@@ -300,7 +360,21 @@ def load_stock(db: Session, settings: Settings) -> dict:
         ).mappings().one()
 
         derived = 0
-        if complete:
+        if complete and new_water:
+            db.execute(
+                text("""
+                    INSERT INTO syspro_watermark (company, high_water, updated_at)
+                    VALUES (:c, :w, now())
+                    ON CONFLICT (company) DO UPDATE
+                       SET high_water = excluded.high_water, updated_at = now()
+                """),
+                {"c": database, "w": new_water},
+            )
+
+        # Pruning is a FULL-load act only. An incremental pull cannot see a
+        # deletion, so every row it did not touch would look stale and the
+        # prune would empty the table.
+        if complete and mode == "full":
             # Rows Syspro no longer returns are gone. Two guards on this.
             # Only after a COMPLETE load, because pruning a partial one
             # deletes stock that had simply not arrived yet. And only for
@@ -318,6 +392,7 @@ def load_stock(db: Session, settings: Settings) -> dict:
                 ),
                 {"company": database, "warehouses": warehouses, "id": load_id},
             )
+        if complete:
             derived = db.execute(text("SELECT syspro_derive_stock_items()")).scalar() or 0
             db.commit()
 
@@ -329,7 +404,7 @@ def load_stock(db: Session, settings: Settings) -> dict:
                        state = :state,
                        rows_seen = :seen, rows_written = :written,
                        rows_rejected = :rejected, warehouses = :warehouses,
-                       stock_codes = :codes, pages = :pages
+                       stock_codes = :codes, pages = :pages, high_water = :water
                  WHERE id = :id
                 """
             ),
@@ -341,6 +416,7 @@ def load_stock(db: Session, settings: Settings) -> dict:
                 "warehouses": summary["warehouses"],
                 "codes": summary["stock_codes"],
                 "pages": batches,
+                "water": new_water,
                 "id": load_id,
             },
         )
@@ -348,6 +424,7 @@ def load_stock(db: Session, settings: Settings) -> dict:
 
         return {
             "loadId": load_id,
+            "mode": mode,
             "state": "succeeded" if complete else "partial",
             "pages": batches,
             "rowsSeen": seen,
@@ -392,13 +469,13 @@ def load_state() -> dict:
     return dict(_state)
 
 
-def run_load(db: Session, settings: Settings) -> dict:
+def run_load(db: Session, settings: Settings, mode: str = "full") -> dict:
     with _lock:
         if _state["running"]:
             return {"accepted": False, "reason": "a load is already running"}
         _state["running"] = True
     try:
-        result = load_stock(db, settings)
+        result = load_stock(db, settings, mode=mode)
         _state["last"] = result
         return {"accepted": True, **result}
     finally:

@@ -67,17 +67,25 @@ def syspro_diagnose(
 
 @router.post("/load")
 def syspro_load(
+    mode: str = Query(default="full", pattern="^(full|incremental)$"),
     authorization: str | None = Header(default=None),
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> dict:
-    """Pull the whole catalogue into `syspro_stock` and rebuild the parts
-    register from it. Single-flight: two loads would fight over the same
-    keyset and double the memory on an instance that already overruns."""
+    """Pull the catalogue into `syspro_stock` and rebuild the parts
+    register from it.
+
+    'incremental' reads only rows whose rowversion is above the stored
+    high-water mark, measured at about two seconds when nothing has
+    changed, which is what makes a short interval defensible. It cannot
+    see a deletion, so 'full' still runs nightly and keeps the prune.
+
+    Single-flight: two loads would double the memory on an instance that
+    already overruns (#134)."""
     _require_sync_token(authorization, settings)
     _require_configured(settings)
     try:
-        return run_load(db, settings)
+        return run_load(db, settings, mode=mode)
     except SysproError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from None
 

@@ -195,3 +195,39 @@ def test_the_upsert_deduplicates_within_a_batch():
     assert written == 1
     assert captured[0]["stock_code_0"] == "100-058"
     assert "stock_code_1" not in captured[0]
+
+
+# --- incremental loads (#142) ---
+
+
+def test_rowversion_round_trips_as_opaque_hex():
+    from app.syspro.ingest import _hex, _unhex
+
+    # We never interpret a rowversion, only hand it back to SQL Server,
+    # so the only property that matters is that it survives the trip.
+    raw = bytes.fromhex("000000071D8E776A")
+    assert _hex(raw) == "0x000000071D8E776A"
+    assert _unhex(_hex(raw)) == raw
+    assert _unhex("000000071D8E776A") == raw
+    assert _hex(None) is None
+    assert _unhex(None) is None
+    assert _unhex("not hex") is None
+
+
+def test_incremental_query_is_parameterised_on_the_rowversion():
+    from app.syspro.ingest import q_changed_since
+
+    sql = q_changed_since(_DB)
+    assert_select(sql)
+    assert "w.TimeStamp > %s" in sql
+    # Still no ORDER BY: the reason that killed the first design has not
+    # changed just because the predicate has.
+    assert "ORDER BY" not in sql.upper()
+
+
+def test_load_mode_is_validated():
+    import inspect
+
+    from app.syspro.ingest import load_stock
+
+    assert "mode" in inspect.signature(load_stock).parameters

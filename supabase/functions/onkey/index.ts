@@ -452,6 +452,10 @@ function planFor(ev: Record<string, any>): Record<string, unknown> {
             itemDescription: l.description,
             quantityRequired: l.quantity,
             unitCode: l.unit,
+            // OnKey refuses a type 0 or 1 line with no warehouse
+            // (E202189). Warehouses are the vans, resolved from the
+            // technician at sign time.
+            warehouseItemWarehouseCode: p.warehouseCode,
             // ItemType 0 is "Warehouse Item", read off the live rows
             // rather than guessed: a wrong type puts a line in the wrong
             // bucket on somebody's costing sheet.

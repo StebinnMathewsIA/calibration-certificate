@@ -390,7 +390,15 @@ def derive_registers(db: Session) -> dict:
                    now()
             FROM onkey_woe001
             WHERE coalesce(data->>'Code', '') <> ''
-            ORDER BY data->>'Code', start_date_ts DESC NULLS LAST
+            -- last_seen_at FIRST (#130). A work order's start date does not
+            -- change when the record is updated, so ordering by it made the
+            -- choice between two snapshots of the same work order a coin
+            -- toss, and a stale one could win forever. Four work orders
+            -- reassigned in OnKey sat on the wrong technician for four days
+            -- because of this line. When we last SAW a row is the only
+            -- thing that means current.
+            ORDER BY data->>'Code', last_seen_at DESC NULLS LAST,
+                     start_date_ts DESC NULLS LAST
             ON CONFLICT (code) DO UPDATE SET
                 status_code = EXCLUDED.status_code,
                 status_description = EXCLUDED.status_description,

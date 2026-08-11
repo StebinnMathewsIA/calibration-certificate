@@ -115,6 +115,60 @@ def syspro_status(
     }
 
 
+@router.get("/timing")
+def syspro_timing(
+    authorization: str | None = Header(default=None),
+    settings: Settings = Depends(get_settings),
+) -> dict:
+    """Measure what a schedule can honestly be built on (#142).
+
+    Reports the shape of `InvWarehouse.TimeStamp`, then times a full scan
+    against an incremental pull. The incremental one is deliberately given
+    a high-water mark that matches nothing, so it measures the PREDICATE
+    rather than the size of the result: the question is whether the server
+    can use the column at all, and a filter on this table has already
+    turned out to be fifty times slower than no filter (#136)."""
+    _require_sync_token(authorization, settings)
+    _require_configured(settings)
+
+    import time
+
+    from ..syspro.client import SysproClient
+    from ..syspro.ingest import q_all_stock, q_changed_since, q_max_timestamp, q_timestamp_shape
+
+    client = SysproClient(settings)
+    database = settings.syspro_database
+    out: dict = {}
+
+    def timed(name: str, sql: str, params=None, limit=None) -> None:
+        began = time.monotonic()
+        try:
+            rows = client.rows(sql, params=params, limit=limit)
+            out[name] = {
+                "ok": True,
+                "seconds": round(time.monotonic() - began, 2),
+                "rowCount": len(rows),
+                "sample": rows[:4],
+            }
+        except SysproError as exc:
+            out[name] = {"ok": False, "seconds": round(time.monotonic() - began, 2), "error": str(exc)}
+
+    timed("columns", q_timestamp_shape(database))
+    timed("maxTimestamp", q_max_timestamp(database))
+
+    high_water = None
+    if out.get("maxTimestamp", {}).get("ok") and out["maxTimestamp"]["sample"]:
+        high_water = out["maxTimestamp"]["sample"][0].get("high_water")
+
+    # First rows only. Time to FIRST ROW is what decides whether the server
+    # streams or materialises, which is the thing that bit us before.
+    timed("fullScanFirst5000", q_all_stock(database), limit=5000)
+    if high_water is not None:
+        timed("incrementalAtHighWater", q_changed_since(database), params=(high_water,), limit=5000)
+
+    return out
+
+
 @router.get("/catalogue")
 def syspro_catalogue(
     limit: int = Query(default=500, ge=1, le=20000),

@@ -65,6 +65,59 @@ LEFT JOIN {db}.dbo.InvMaster m ON m.StockCode = w.StockCode
 """
 
 
+def q_timestamp_shape(database: str) -> str:
+    """What `InvWarehouse.TimeStamp` actually is, and whether it is indexed.
+
+    Both matter and neither is safe to assume. A SQL Server `rowversion`
+    is monotonic and comparable, which makes a cheap high-water mark; a
+    `datetime` maintained by the application may not be either. And an
+    unindexed predicate on this table has already cost us once: filtering
+    on Warehouse ran about fifty times slower than no filter at all
+    (#136)."""
+    db = qualify(database)
+    return f"""
+SELECT c.COLUMN_NAME    AS column_name,
+       c.DATA_TYPE      AS data_type,
+       c.IS_NULLABLE    AS is_nullable,
+       (SELECT count(*)
+          FROM {db}.sys.index_columns ic
+          JOIN {db}.sys.columns sc
+            ON sc.object_id = ic.object_id AND sc.column_id = ic.column_id
+         WHERE ic.object_id = OBJECT_ID('{db}.dbo.InvWarehouse')
+           AND sc.name = c.COLUMN_NAME) AS index_entries
+FROM {db}.INFORMATION_SCHEMA.COLUMNS c
+WHERE c.TABLE_NAME = 'InvWarehouse'
+  AND c.COLUMN_NAME IN ('TimeStamp', 'StockCode', 'Warehouse', 'QtyOnHand')
+"""
+
+
+def q_changed_since(database: str) -> str:
+    """Rows whose TimeStamp is above a high-water mark.
+
+    Parameterised, and the comparison is done as the column's own type so
+    a rowversion compares as binary rather than through a string. Whether
+    this is faster than reading everything is a question for the server,
+    not for us, so `/v1/syspro/timing` asks it."""
+    db = qualify(database)
+    return f"""
+SELECT '{db}'         AS company,
+       w.StockCode    AS stock_code,
+       w.Warehouse    AS warehouse,
+       m.Description  AS description,
+       m.StockUom     AS unit,
+       w.QtyOnHand    AS qty_on_hand,
+       w.UnitCost     AS unit_cost
+FROM {db}.dbo.InvWarehouse w
+LEFT JOIN {db}.dbo.InvMaster m ON m.StockCode = w.StockCode
+WHERE w.TimeStamp > %s
+"""
+
+
+def q_max_timestamp(database: str) -> str:
+    db = qualify(database)
+    return f"SELECT max(w.TimeStamp) AS high_water FROM {db}.dbo.InvWarehouse w"
+
+
 def _num(value: Any) -> Decimal | None:
     """TDS 7.0 hands numerics back as strings ('18.000000'), so every
     quantity and cost arrives needing a cast. Returns None on a value that

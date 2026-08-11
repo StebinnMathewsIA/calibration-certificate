@@ -749,3 +749,16 @@ each is one `manager_reports_to_set()` call to change.
 
 - [ ] Prowalco confirms the reporting lines, in particular which of the
       branch managers report to whom
+
+## Syspro schedule (#142)
+
+- [ ] The stock tab's freshness line stays under ten minutes without
+      anyone pressing anything
+- [ ] Issue a part to a van in Syspro, and the figure changes in the app
+      within about ten minutes
+- [ ] Remove a stock line from a van in Syspro, and confirm it disappears
+      only after the nightly full load, not before. A rowversion cannot
+      see a deletion, and this is the check that the nightly load is
+      really covering that gap
+- [ ] Pause the schedule for 40 minutes and confirm `syspro_stale` appears
+      in the ops alerts

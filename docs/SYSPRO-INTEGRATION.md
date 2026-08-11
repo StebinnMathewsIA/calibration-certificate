@@ -373,3 +373,48 @@ Direct SQL buys freshness we have no use for, in exchange for a permanent
 inbound hole into the company's inventory, costing and sales history,
 guarded by a filter that is shared with strangers. The recommendation is
 now stronger than it was, not weaker.
+
+
+## Cadence: how live the stock can honestly be, measured 2026-08-11
+
+| Operation | Time |
+|---|---|
+| Connection floor, any trivial query | ~1.9 s |
+| Full scan, first 5,000 rows | 4.1 s |
+| Full load, everything | 36 s (50 s end to end) |
+| Incremental at the high-water mark, nothing changed | 7.5 s end to end |
+
+`InvWarehouse.TimeStamp` is a SQL Server **rowversion**: binary, monotonic,
+bumped on every update, and **not indexed**. The predicate therefore scans,
+but the scan is cheap enough that an idle incremental pull costs almost
+nothing. That measurement is what makes a short interval defensible, and it
+was worth taking rather than assuming: filtering this same table on
+`Warehouse` ran about fifty times SLOWER than no filter at all.
+
+### The schedule
+
+- **Incremental every 10 minutes**, on minute 5 of each ten so it never
+  starts on the same tick as the two-minutely OnKey sync.
+- **Full load nightly at 02:47 SAST**, clear of the 02:17 to 02:41 block of
+  OnKey refreshes.
+
+Ten minutes and not one. An idle pull is cheap for us and it is still a scan
+of somebody else's production inventory table. Six an hour is responsive
+enough for stock that moves when a storeman loads a van, and 144 scans a day
+rather than 1,440 is the difference between a good neighbour and a bad one.
+Nothing we do changes these figures between loads: our job cards book parts
+to OnKey, not to Syspro.
+
+### Why the full load stays
+
+A rowversion cannot see a **deletion**. The deleted row takes its rowversion
+with it, so no incremental pull will ever notice. Incremental for freshness,
+full for truth, and pruning is refused on an incremental run: left as it
+was, one incremental load would have emptied the table.
+
+### If it stops
+
+`ops_alerts()` raises `syspro_stale` after 35 minutes, which is three missed
+incremental runs, so a single blip raises nothing. The stock tab also shows
+the last load time, so a technician sees staleness without anyone telling
+them.

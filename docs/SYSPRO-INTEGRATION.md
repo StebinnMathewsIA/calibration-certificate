@@ -186,10 +186,14 @@ here.
 
 ### The allowlisted address is wrong
 
-`74.220.48.56` was allowlisted, against our measured `74.220.48.176`. Same
-/24, different host: both are Render egress addresses, so this looks like a
-stale or mistyped value rather than a misunderstanding about which service
-to permit.
+`74.220.48.56` was allowlisted, against our measured `74.220.48.176`.
+
+This was first written up as a stale or mistyped value. That was unfair and
+is corrected here. Once the address was seen to move on every deploy, and
+one of the observed addresses was `74.220.48.55`, the likeliest reading is
+that `74.220.48.56` was measured correctly at some earlier point and had
+simply rotated since. Nobody mistyped anything. The address is just not
+stable, which is the actual finding.
 
 Measured from the host's own outbound connection through
 `/v1/onkey/egress-ip`, which is the only trustworthy source. What a
@@ -211,8 +215,12 @@ connector, and the deploy moved us off it.
 
 | When | Address | Samples |
 |---|---|---|
-| Before the deploy | `74.220.48.176` | 9, over ~24 hours |
-| After the deploy | `74.220.48.172` | 14 |
+| Before the connector deploy | `74.220.48.176` | 9, over ~24 hours |
+| After the connector deploy | `74.220.48.172` | 14 |
+| After the next deploy, docs only | `74.220.48.55` | 11 |
+
+Three addresses in one afternoon, one per deploy. The second deploy changed
+no application code at all, and still moved it.
 
 The distinction that matters, because it is not the obvious one:
 
@@ -243,12 +251,33 @@ One successful pull is enough to unblock the parts picker. The catalogue is
 slow-changing reference data, not a live feed, so a fragile address is a
 problem for a recurring sync and not for landing the catalogue once.
 
-So: have both `74.220.48.176` and `74.220.48.172` allowlisted, pull once,
-store it, and decide the ongoing transport without the picker waiting on it.
+The sequence matters, because a Render environment change is itself a
+deploy and moves the address:
+
+1. Set the `SYSPRO_*` environment variables. This restarts the service and
+   moves the address, so it has to happen first.
+2. Measure the address, then send that one to Prowalco IT.
+3. **Deploy nothing** until the pull has run.
+4. Pull the catalogue and store it.
 
 Do not ask for the whole Render range as a fix. It is shared with every
 other Render customer in the region, and combined with a passwordless login
 that is the worst available combination.
+
+### The ongoing transport
+
+Two workable options, and chasing addresses is not one of them.
+
+**Dedicated outbound IPs.** Render reserves a set of three IPv4 addresses
+for the workspace, which is exactly what an allowlist needs. It requires
+the **Pro workspace plan or higher** plus a monthly fee per IP set, so it
+is a real cost decision rather than a toggle. This is the right answer if
+the live SQL connection is wanted.
+
+**A nightly export.** No inbound exposure, no allowlist, no address to
+chase, no credential for us to hold, and no Render plan change. The
+catalogue is slow-changing reference data and we never deduct stock, so
+this meets the requirement in full.
 
 ### The allowlist cannot be the only control (#134 is separate, see #133)
 

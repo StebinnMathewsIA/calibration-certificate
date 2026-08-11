@@ -164,21 +164,34 @@ ORDER BY TABLE_NAME
 # The catalogue the picker needs, and nothing else. InvWarehouse carries
 # 122 columns of sales history and aged balances (docs/SYSPRO-INTEGRATION.md);
 # none of it belongs in a parts list, so it is not selected.
+#
+# Schema-qualified with dbo on purpose. The login's default schema is not
+# ours to assume, and an unqualified name that resolves somewhere
+# unexpected fails as "invalid object name", which reads like a
+# permissions problem.
+#
+# `company` comes from DB_NAME() so every row says which company database
+# it came from. Prowalco runs SysproCompanyRSA and, for Lesotho,
+# SysproCompanyH. We only pull RSA today, because every van warehouse we
+# have mapped is RSA, but a catalogue whose rows cannot say where they
+# came from is one that cannot take the second company later without
+# guesswork.
 Q_CATALOGUE = """
-SELECT w.StockCode      AS stock_code,
+SELECT DB_NAME()        AS company,
+       w.StockCode      AS stock_code,
        w.Warehouse      AS warehouse,
        m.Description    AS description,
        m.StockUom       AS unit,
        w.QtyOnHand      AS qty_on_hand,
        w.UnitCost       AS unit_cost
-FROM InvWarehouse w
-LEFT JOIN InvMaster m ON m.StockCode = w.StockCode
+FROM dbo.InvWarehouse w
+LEFT JOIN dbo.InvMaster m ON m.StockCode = w.StockCode
 WHERE w.QtyOnHand IS NOT NULL
 """
 
 Q_WAREHOUSES = """
 SELECT Warehouse AS warehouse, COUNT(*) AS stock_codes
-FROM InvWarehouse
+FROM dbo.InvWarehouse
 GROUP BY Warehouse
 ORDER BY Warehouse
 """

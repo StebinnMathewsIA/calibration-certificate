@@ -100,7 +100,14 @@ class Settings(BaseSettings):
     # issued has no password; that is recorded, not endorsed.
     syspro_host: str = ""
     syspro_port: int = 1433
-    syspro_database: str = ""
+    # Prowalco's South African company database, owner-supplied. Lesotho is
+    # a second database, SysproCompanyH, which we do not pull: every van
+    # warehouse we have mapped is RSA. Defaulted here rather than left to
+    # the environment because a database name is not a credential, and
+    # every environment change on Render restarts the service and moves
+    # its outbound address (#133), so the fewer variables to set the
+    # better.
+    syspro_database: str = "SysproCompanyRSA"
     syspro_user: str = ""
     syspro_password: str = ""
     # The forward crosses a VPN, so a first packet is slower than a LAN

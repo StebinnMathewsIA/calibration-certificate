@@ -78,8 +78,8 @@ services:
         sync: false
       - key: SYSPRO_PORT
         sync: false
-      - key: SYSPRO_DATABASE
-        sync: false
+      # SYSPRO_DATABASE defaults to SysproCompanyRSA in config.py. Set it
+      # only to override, for example to SysproCompanyH for Lesotho.
       - key: SYSPRO_USER
         sync: false
       - key: SYSPRO_PASSWORD

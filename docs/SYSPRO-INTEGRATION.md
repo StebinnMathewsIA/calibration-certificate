@@ -268,11 +268,28 @@ that is the worst available combination.
 
 Two workable options, and chasing addresses is not one of them.
 
-**Dedicated outbound IPs.** Render reserves a set of three IPv4 addresses
-for the workspace, which is exactly what an allowlist needs. It requires
-the **Pro workspace plan or higher** plus a monthly fee per IP set, so it
-is a real cost decision rather than a toggle. This is the right answer if
-the live SQL connection is wanted.
+**Dedicated outbound IPs.** Render reserves a set of IPv4 addresses for the
+workspace, which is exactly what an allowlist needs. This is the right
+answer if the live SQL connection is wanted.
+
+Dashboard: **Networking > Dedicated IPs > + Create Dedicated IPs**. Name
+it, pick **the region the service runs in**, choose the scope, and the
+dashboard shows the monthly cost before you commit. Render "provisions your
+new IP set within a few minutes". Needs the **Pro workspace plan or higher**
+and an Admin role.
+
+Two things to get right:
+
+- **A set is three addresses, and all three must be allowlisted.** Render
+  says "a service's outbound requests might use any IP in its assigned
+  set". Allowlisting one of the three reproduces the bug we already have,
+  just less often, which is worse than having it constantly.
+- The **workspace** plan is what gates this, not the instance plan. Those
+  are different things, and conflating them is exactly the mistake
+  `render.yaml` used to record.
+
+Once the set is live, verify it rather than assume: call
+`/v1/onkey/egress-ip` and confirm the address is one of the three.
 
 **A nightly export.** No inbound exposure, no allowlist, no address to
 chase, no credential for us to hold, and no Render plan change. The

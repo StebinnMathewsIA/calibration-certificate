@@ -168,22 +168,28 @@ No technician. The van-to-technician mapping that the costing write needs
 
 Prowalco IT opened a SQL Server port forward and asked us to test it.
 
-**Endpoint**: `vpn.prowalco.co.za` / `105.22.39.170`, port 60443.
-**Restricted to source IP**: `74.220.48.56`.
+**Endpoint**: withheld. This repository is public, and a SQL Server on a
+known host and port with a passwordless login (see below) is not something
+to publish. The hostname, address and port are in Prowalco IT's mail of
+2026-08-11 and belong in the Supabase Vault alongside the credential, not
+here.
+
+**Restricted to a single source IP**, which is the wrong one (below).
 
 ### Tested
 
 | Check | Result |
 |---|---|
-| DNS | `vpn.prowalco.co.za` resolves to `105.22.39.170` |
+| DNS | The supplied hostname resolves to the supplied address |
 | Connect from a non-allowlisted address | Times out with no reset. The source-IP filter holds. |
 | Our backend's actual egress | **`74.220.48.176`**, measured nine times, one address |
 
 ### The allowlisted address is wrong
 
-`74.220.48.56` against our `74.220.48.176`. Same /24, different host: both
-are Render egress addresses, so this looks like a stale or mistyped value
-rather than a misunderstanding about which service to permit.
+`74.220.48.56` was allowlisted, against our measured `74.220.48.176`. Same
+/24, different host: both are Render egress addresses, so this looks like a
+stale or mistyped value rather than a misunderstanding about which service
+to permit.
 
 Measured from the host's own outbound connection through
 `/v1/onkey/egress-ip`, which is the only trustworthy source. What a
@@ -200,20 +206,44 @@ described it as our backend's outbound address. It is not. A correction
 naming `74.220.48.176` has to follow, or the port forward stays shut to us
 and the failure looks like a network problem rather than a wrong entry.
 
+### The allowlist cannot be the only control (#134 is separate, see #133)
+
+The login offered is read-only and **has no password**. On that design the
+source IP allowlist is the entire access control, and it cannot carry that
+weight, for two reasons that come from Render's own documentation.
+
+Render's outbound IP ranges are **shared across all services in the same
+region**. Allowlisting the address we appear from allowlists every other
+Render customer in that region at the same time. With no password, that is
+an unauthenticated database reachable by anyone who can deploy there.
+
+Render also only promises the *range*, not the host: "any individual
+service might use any IP address within its associated ranges". Our nine
+identical samples are evidence, not a guarantee. A dedicated outbound IP is
+a paid add-on and is what an allowlist would actually need.
+
 ### Still required before this route can carry the sync
 
-- [ ] `74.220.48.176` allowlisted, replacing or alongside `74.220.48.56`.
+- [ ] The login has a real password. A blank password on an
+      internet-reachable port is not acceptable under any allowlist.
+- [ ] `74.220.48.176` allowlisted, replacing `74.220.48.56`, and dedicated
+      outbound IPs bought so that address is ours alone.
 - [ ] A read-only SQL login limited to `InvWarehouse`, `InvMaster` and
       `InvWhControl`. An IP allowlist says where a request comes from, not
       what it may read; that is the missing half and it is needed whichever
       transport is chosen.
 - [ ] TLS enforced on the connection.
-- [ ] Credentials in the Supabase Vault, never in the repository.
+- [ ] Credentials in the Supabase Vault, never in the repository, never in
+      an email, never in chat.
 
 ### The recommendation still stands
 
 A nightly export of Cobus's existing query meets the requirement with no
-inbound exposure at all. The picker needs a catalogue that changes rarely,
-not live data, and we do not deduct stock. Direct SQL is workable now that
-the address is known, but it buys freshness we do not need in exchange for
-a connection that can see the company's inventory, costs and sales history.
+inbound exposure at all, no credential for us to hold and no allowlist to
+maintain. The picker needs a catalogue that changes rarely, not live data,
+and we do not deduct stock.
+
+Direct SQL buys freshness we have no use for, in exchange for a permanent
+inbound hole into the company's inventory, costing and sales history,
+guarded by a filter that is shared with strangers. The recommendation is
+now stronger than it was, not weaker.

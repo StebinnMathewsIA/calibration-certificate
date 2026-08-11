@@ -273,10 +273,17 @@ workspace, which is exactly what an allowlist needs. This is the right
 answer if the live SQL connection is wanted.
 
 Dashboard: **Networking > Dedicated IPs > + Create Dedicated IPs**. Name
-it, pick **the region the service runs in**, choose the scope, and the
-dashboard shows the monthly cost before you commit. Render "provisions your
-new IP set within a few minutes". Needs the **Pro workspace plan or higher**
-and an Admin role.
+it, pick **the region the service runs in**, choose the scope. Render
+"provisions your new IP set within a few minutes".
+
+**Cost: $100 per month per IP set**, and that sits on top of the **Pro
+workspace plan or higher**, which is a separate charge, not an alternative
+to it. One set covers one region. Also needs an Admin role.
+
+A set is "three static IPv4 addresses, one per availability zone", which
+explains what we measured: each deploy placed the container in a different
+zone, so it came up behind a different NAT address. The rotation was never
+random, it was one address per zone all along.
 
 Two things to get right:
 
@@ -295,6 +302,14 @@ Once the set is live, verify it rather than assume: call
 chase, no credential for us to hold, and no Render plan change. The
 catalogue is slow-changing reference data and we never deduct stock, so
 this meets the requirement in full.
+
+### Which one
+
+The export, unless something other than the parts catalogue needs the live
+connection. $1,200 a year plus a workspace plan upgrade is a lot to pay for
+a list of stock codes that changes rarely, and it buys freshness the picker
+has no use for. The calculus changes the moment a second consumer appears
+that genuinely needs live Syspro; it has not yet.
 
 ### The allowlist cannot be the only control (#134 is separate, see #133)
 

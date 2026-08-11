@@ -132,6 +132,7 @@ def syspro_timing(
     _require_configured(settings)
 
     import time
+    from decimal import Decimal
 
     from ..syspro.client import SysproClient
     from ..syspro.ingest import q_all_stock, q_changed_since, q_max_timestamp, q_timestamp_shape
@@ -139,6 +140,17 @@ def syspro_timing(
     client = SysproClient(settings)
     database = settings.syspro_database
     out: dict = {}
+
+    def jsonable(value):
+        """A SQL Server rowversion arrives as raw bytes, which FastAPI
+        cannot serialise: the first run of this endpoint returned a 500
+        for exactly that reason, which was itself the answer about what
+        the column is. Hex keeps it comparable and readable."""
+        if isinstance(value, (bytes, bytearray)):
+            return "0x" + bytes(value).hex().upper()
+        if isinstance(value, Decimal):
+            return float(value)
+        return value
 
     def timed(name: str, sql: str, params=None, limit=None) -> None:
         began = time.monotonic()
@@ -148,7 +160,7 @@ def syspro_timing(
                 "ok": True,
                 "seconds": round(time.monotonic() - began, 2),
                 "rowCount": len(rows),
-                "sample": rows[:4],
+                "sample": [{k: jsonable(v) for k, v in r.items()} for r in rows[:4]],
             }
         except SysproError as exc:
             out[name] = {"ok": False, "seconds": round(time.monotonic() - began, 2), "error": str(exc)}
@@ -157,8 +169,15 @@ def syspro_timing(
     timed("maxTimestamp", q_max_timestamp(database))
 
     high_water = None
-    if out.get("maxTimestamp", {}).get("ok") and out["maxTimestamp"]["sample"]:
-        high_water = out["maxTimestamp"]["sample"][0].get("high_water")
+    if out.get("maxTimestamp", {}).get("ok"):
+        # Re-read raw: the reported sample is hexed for JSON, and the
+        # predicate needs the column's own type or the server will coerce
+        # it and lose any chance of using an index.
+        try:
+            raw = client.rows(q_max_timestamp(database))
+            high_water = raw[0].get("high_water") if raw else None
+        except SysproError:
+            high_water = None
 
     # First rows only. Time to FIRST ROW is what decides whether the server
     # streams or materialises, which is the thing that bit us before.

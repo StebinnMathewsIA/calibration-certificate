@@ -197,6 +197,107 @@ ORDER BY Warehouse
 """
 
 
+def diagnose(settings: Settings) -> dict:
+    """Isolate WHERE a refused connection is refused.
+
+    Written because the probe told us the firewall had opened (a fast
+    protocol-level refusal replaced a 30-second packet drop) and then had
+    nothing more to say. `Adaptive Server connection failed` is FreeTDS's
+    catch-all: it covers a failed TLS negotiation, a TDS version the
+    server will not speak, and a login the server rejects before it will
+    say why. Those need different fixes and guessing between them costs a
+    deploy each.
+
+    Two parts. A raw TCP connect, which separates the network from
+    everything above it for certain. Then a small matrix of encryption
+    and TDS settings, each reported with its own error, plus a variant
+    that omits the database: a login whose default database is not
+    accessible fails AT LOGIN, which looks nothing like a database
+    problem and is a real possibility for an account we did not create."""
+    import socket
+    import time
+
+    host = settings.syspro_host
+    port = settings.syspro_port
+    out: dict[str, Any] = {"host": host, "port": port}
+
+    started = time.monotonic()
+    try:
+        with socket.create_connection((host, port), timeout=15):
+            out["tcp"] = {"ok": True, "seconds": round(time.monotonic() - started, 2)}
+    except Exception as exc:
+        out["tcp"] = {
+            "ok": False,
+            "seconds": round(time.monotonic() - started, 2),
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+        out["attempts"] = []
+        return out
+
+    try:
+        import pymssql
+    except ImportError as exc:
+        out["attempts"] = [{"error": f"pymssql is not installed: {exc}"}]
+        return out
+
+    # Ordered cheapest-explanation-first. `use_database` False drops the
+    # database from the login packet entirely.
+    matrix = [
+        {"encryption": "request", "use_database": True},
+        {"encryption": "off", "use_database": True},
+        {"encryption": "require", "use_database": True},
+        {"encryption": "request", "use_database": False},
+        {"encryption": "off", "use_database": False},
+        {"encryption": "off", "use_database": False, "tds_version": "7.0"},
+    ]
+
+    attempts: list[dict] = []
+    for spec in matrix:
+        kwargs: dict[str, Any] = {
+            "server": host,
+            "port": str(port),
+            "user": settings.syspro_user,
+            "password": settings.syspro_password or "",
+            "login_timeout": 8,
+            "timeout": 8,
+            "encryption": spec["encryption"],
+        }
+        if spec["use_database"] and settings.syspro_database:
+            kwargs["database"] = settings.syspro_database
+        if spec.get("tds_version"):
+            kwargs["tds_version"] = spec["tds_version"]
+
+        label = {k: v for k, v in spec.items()}
+        began = time.monotonic()
+        try:
+            connection = pymssql.connect(**kwargs)
+            try:
+                cursor = connection.cursor(as_dict=True)
+                cursor.execute("SELECT DB_NAME() AS database_name, SUSER_SNAME() AS login_name")
+                row = cursor.fetchone()
+                cursor.close()
+            finally:
+                connection.close()
+            attempts.append(
+                {**label, "ok": True, "seconds": round(time.monotonic() - began, 2), "result": row}
+            )
+            # First success is the answer; no reason to keep knocking.
+            break
+        except Exception as exc:
+            attempts.append(
+                {
+                    **label,
+                    "ok": False,
+                    "seconds": round(time.monotonic() - began, 2),
+                    "error": f"{type(exc).__name__}: {_safe(str(exc), settings)}",
+                }
+            )
+
+    out["attempts"] = attempts
+    out["connected"] = any(a.get("ok") for a in attempts)
+    return out
+
+
 def probe(settings: Settings, sample: int = 20) -> dict:
     """Connect and report what is reachable, step by step.
 

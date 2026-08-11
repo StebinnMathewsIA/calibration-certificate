@@ -13,7 +13,12 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query
 
 from ..config import Settings, get_settings
 from ..syspro import SysproError
-from ..syspro.client import Q_CATALOGUE, SysproClient, probe as run_probe
+from ..syspro.client import (
+    Q_CATALOGUE,
+    SysproClient,
+    diagnose as run_diagnose,
+    probe as run_probe,
+)
 
 router = APIRouter(prefix="/v1/syspro", tags=["syspro"])
 
@@ -40,6 +45,20 @@ def syspro_probe(
     _require_sync_token(authorization, settings)
     _require_configured(settings)
     return run_probe(settings, sample=sample)
+
+
+@router.get("/diagnose")
+def syspro_diagnose(
+    authorization: str | None = Header(default=None),
+    settings: Settings = Depends(get_settings),
+) -> dict:
+    """Where exactly a refused connection is refused: raw TCP first, then a
+    matrix of encryption and TDS settings. FreeTDS reports a failed TLS
+    negotiation, an unsupported TDS version and a rejected login with the
+    same message, and those need different fixes."""
+    _require_sync_token(authorization, settings)
+    _require_configured(settings)
+    return run_diagnose(settings)
 
 
 @router.get("/catalogue")

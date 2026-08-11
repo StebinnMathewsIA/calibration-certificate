@@ -111,3 +111,48 @@ def test_error_message_carries_no_credential():
 
     settings = Settings(syspro_user="STAFF", syspro_password="hunter2")
     assert "hunter2" not in _safe("login failed for STAFF/hunter2", settings)
+
+
+# --- paging (#136) ---
+
+
+def test_first_page_has_no_keyset_predicate():
+    from app.syspro.ingest import q_catalogue_page
+
+    sql = q_catalogue_page(_DB, 100)
+    assert_select(sql)
+    assert "TOP (100)" in sql
+    assert "w.StockCode >" not in sql
+
+
+def test_later_pages_carry_the_keyset():
+    from app.syspro.ingest import q_catalogue_page
+
+    sql = q_catalogue_page(_DB, 100, after_code="ABC", after_warehouse="AA")
+    assert_select(sql)
+    # OFFSET/FETCH arrived in SQL Server 2012 and this server is 2008 R2,
+    # so keyset is the only option, not merely the better one.
+    assert "OFFSET" not in sql.upper()
+    assert "w.StockCode > %s" in sql
+
+
+def test_page_size_is_bounded():
+    from app.syspro.ingest import q_catalogue_page
+
+    for bad in (0, -1, 50001):
+        with pytest.raises(SysproError):
+            q_catalogue_page(_DB, bad)
+
+
+def test_numeric_cast_refuses_rubbish_rather_than_zeroing():
+    from decimal import Decimal
+
+    from app.syspro.ingest import _num
+
+    # TDS 7.0 delivers numerics as strings, so every value needs this.
+    assert _num("18.000000") == Decimal("18.000000")
+    assert _num(" 151.03 ") == Decimal("151.03")
+    assert _num(None) is None
+    # None means "reject the row". A zero would read as an empty van.
+    assert _num("not a number") is None
+    assert _num("") is None

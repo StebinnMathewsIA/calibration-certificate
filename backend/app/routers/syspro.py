@@ -10,9 +10,13 @@ single 500 would hide which one we are looking at."""
 import hmac
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 from ..config import Settings, get_settings
+from ..db import get_db
 from ..syspro import SysproError
+from ..syspro.ingest import load_state, run_load
 from ..syspro.client import (
     SysproClient,
     diagnose as run_diagnose,
@@ -59,6 +63,56 @@ def syspro_diagnose(
     _require_sync_token(authorization, settings)
     _require_configured(settings)
     return run_diagnose(settings)
+
+
+@router.post("/load")
+def syspro_load(
+    authorization: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> dict:
+    """Pull the whole catalogue into `syspro_stock` and rebuild the parts
+    register from it. Single-flight: two loads would fight over the same
+    keyset and double the memory on an instance that already overruns."""
+    _require_sync_token(authorization, settings)
+    _require_configured(settings)
+    try:
+        return run_load(db, settings)
+    except SysproError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from None
+
+
+@router.get("/status")
+def syspro_status(
+    authorization: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> dict:
+    _require_sync_token(authorization, settings)
+    last = db.execute(
+        text(
+            """
+            SELECT id, started_at, finished_at, state, rows_seen, rows_written,
+                   rows_rejected, warehouses, stock_codes, pages, error
+              FROM syspro_loads ORDER BY id DESC LIMIT 1
+            """
+        )
+    ).mappings().first()
+    counts = db.execute(
+        text(
+            """
+            SELECT (SELECT count(*) FROM syspro_stock)::int AS syspro_rows,
+                   (SELECT count(*) FROM stock_items WHERE source = 'syspro')::int AS syspro_items,
+                   (SELECT count(*) FROM stock_items WHERE source = 'onkey')::int AS onkey_items
+            """
+        )
+    ).mappings().one()
+    return {
+        "configured": bool(settings.syspro_host),
+        "lastLoad": dict(last) if last else None,
+        "counts": dict(counts),
+        "inFlight": load_state(),
+    }
 
 
 @router.get("/catalogue")

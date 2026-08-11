@@ -632,3 +632,11 @@ None of this has been on a device yet.
 - [ ] Signing off a work order moves it to "Completed today"
 - [ ] The header count and the day list agree
 - [ ] The section is empty the next morning
+
+## Manager job card, no van (#131)
+
+- [ ] Signed in as a technician with no van, the parts picker still shows
+      the full register
+- [ ] The Parts used card says nothing on this job card is booked to OnKey
+- [ ] Sign-off succeeds and the job card prints travel, labour and parts
+- [ ] Nothing appears in the OnKey outbox for that work order

@@ -6,14 +6,22 @@ services:
   - type: web
     name: prowalco-calibration-api
     runtime: docker
-    # Paid plan is REQUIRED, not a nicety: Prowalco's firewall allowlists
-    # this service's outbound address so the Syspro sync can reach their
-    # SQL Server (docs/SYSPRO-INTEGRATION.md). Free instances do not
-    # guarantee a stable egress address across restarts, and a rotated
-    # address fails the allowlist silently. It also removes the cold
-    # starts that make every OnKey probe wait on a spin-up.
-    # Re-run .github/workflows/egress-ip.yml after ANY plan or region
-    # change and tell Prowalco's IT the new address BEFORE the change.
+    # A paid plan removes the cold starts that make every OnKey probe wait
+    # on a spin-up. That is the reason it is here.
+    #
+    # It does NOT give a stable outbound address, which this comment used
+    # to claim. Measured 2026-08-11: a deploy moved the service from
+    # 74.220.48.176 to 74.220.48.172, while a dozen memory-limit restarts
+    # had not moved it at all. A paid plan gives a stable RANGE. Dedicated
+    # outbound IPs are a separate paid add-on and are the only thing that
+    # gives a stable address.
+    #
+    # So Prowalco's firewall allowlist for the Syspro connection breaks on
+    # every deploy, silently, as a timeout (docs/SYSPRO-INTEGRATION.md,
+    # #133). Re-run .github/workflows/egress-ip.yml after ANY deploy, plan
+    # or region change, and tell Prowalco IT the new address.
+    #
+    # Memory: 'starter' is 512 MB and the OnKey sync overruns it (#134).
     plan: starter
     dockerfilePath: ./backend/Dockerfile
     dockerContext: .

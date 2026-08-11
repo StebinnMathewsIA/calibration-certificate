@@ -197,14 +197,58 @@ dashboard claims and what a packet arrives as are two different things, and
 an allowlist built on the wrong one fails silently.
 
 **Nine samples returned one address**, so the service is not egressing from
-a pool today. That can change on a plan or region change, which is why
-`.github/workflows/egress-ip.yml` exists and why it has to be re-run and
-communicated BEFORE any such change.
+a pool within one instance lifetime. It does move between them: see below.
 
 The reply sent to Prowalco IT on 2026-08-11 repeated `74.220.48.56` and
 described it as our backend's outbound address. It is not. A correction
 naming `74.220.48.176` has to follow, or the port forward stays shut to us
 and the failure looks like a network problem rather than a wrong entry.
+
+### The address moves on deploy: measured, 2026-08-11
+
+Prowalco IT corrected the allowlist to `74.220.48.176`. We then deployed the
+connector, and the deploy moved us off it.
+
+| When | Address | Samples |
+|---|---|---|
+| Before the deploy | `74.220.48.176` | 9, over ~24 hours |
+| After the deploy | `74.220.48.172` | 14 |
+
+The distinction that matters, because it is not the obvious one:
+
+- **A memory-limit restart did not move it.** The address held at `.176`
+  across roughly a dozen of them in 24 hours (#134).
+- **A deploy did.** A new image is a new container, and it came up behind a
+  different NAT address.
+
+Render guarantees neither. It promises the range and says explicitly that
+any service "might use any IP address within its associated ranges". So the
+stability we measured is a property of how it happens to work today, not a
+contract, and it should not be built on.
+
+**The consequence is the important part: every backend deploy breaks the
+Syspro allowlist**, and breaks it silently, as a timeout indistinguishable
+from a network fault. We deploy often. A single-address allowlist against
+this service is not a workable long-term transport, whatever is done about
+the credential.
+
+Note this invalidates the reasoning in `render.yaml`, which claims a paid
+plan gives a stable egress address for exactly this purpose. A paid plan
+gives a stable *range*. Dedicated outbound IPs, a separate paid add-on, are
+what gives a stable address.
+
+### Getting a first output anyway
+
+One successful pull is enough to unblock the parts picker. The catalogue is
+slow-changing reference data, not a live feed, so a fragile address is a
+problem for a recurring sync and not for landing the catalogue once.
+
+So: have both `74.220.48.176` and `74.220.48.172` allowlisted, pull once,
+store it, and decide the ongoing transport without the picker waiting on it.
+
+Do not ask for the whole Render range as a fix. It is shared with every
+other Render customer in the region, and combined with a passwordless login
+that is the worst available combination.
 
 ### The allowlist cannot be the only control (#134 is separate, see #133)
 

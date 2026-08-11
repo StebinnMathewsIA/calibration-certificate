@@ -640,3 +640,36 @@ None of this has been on a device yet.
 - [ ] The Parts used card says nothing on this job card is booked to OnKey
 - [ ] Sign-off succeeds and the job card prints travel, labour and parts
 - [ ] Nothing appears in the OnKey outbox for that work order
+
+## Syspro stock, scoped to the van (#136, #137)
+
+- [ ] Signed in as a technician with a verified van, the parts picker
+      shows only that van's stock, in-stock items first with the quantity
+      against each
+- [ ] An item the van carries at zero is still listed and still bookable,
+      below the in-stock ones
+- [ ] Searching something the van does not carry says how many parts were
+      searched, rather than showing an empty list with no explanation
+- [ ] Signed in as a technician with no van, the picker still shows the
+      whole register and sign-off still books nothing (#131)
+- [ ] Signed in as a technician whose van is not set, the picker shows the
+      whole register and says the van is not set
+- [ ] Signed in as a manager whose OnKey name IS mapped, the picker spans
+      their technicians' vans
+
+### Manager name mapping: needs Prowalco to confirm
+
+Four of the six people named as a manager in OnKey have no technician
+record of their own, so their sign-in email cannot be matched to the name
+OnKey knows them by. Between them they lead 50 technicians. Until each is
+mapped, those managers sign in and are told their team cannot be resolved,
+with the reason given.
+
+`SELECT * FROM manager_names_unmapped;` is the live work list. Map each
+with `SELECT manager_name_set('<email>', '<name as OnKey spells it>');`.
+
+- [ ] Prowalco confirms the sign-in email for each of the four unmapped
+      manager names
+- [ ] Each is mapped, and `manager_names_unmapped` returns no rows
+- [ ] Each of those managers signs in and sees their own team's vans, and
+      not another manager's

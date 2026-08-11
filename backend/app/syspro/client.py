@@ -114,6 +114,35 @@ class SysproClient:
     def __init__(self, settings: Settings):
         self._settings = settings
 
+    def stream(
+        self,
+        sql: str,
+        params: Sequence[Any] | None = None,
+        batch_size: int = 5000,
+    ) -> Iterator[list[dict]]:
+        """Yield batches as the server produces them, holding one batch.
+
+        The reason this exists rather than `rows()` with paging: a keyset
+        page needs an ORDER BY, and ordering the InvWarehouse/InvMaster
+        join on a 2008 R2 box never returned. An unordered stream of the
+        same data comes back immediately, because the server can emit
+        rows as it finds them instead of materialising and sorting the
+        whole join first."""
+        assert_select(sql)
+        with _connect(self._settings) as connection:
+            cursor = connection.cursor(as_dict=True)
+            try:
+                cursor.execute(sql, tuple(params) if params else None)
+                while True:
+                    chunk = cursor.fetchmany(batch_size)
+                    if not chunk:
+                        return
+                    yield list(chunk)
+            except Exception as exc:
+                raise SysproError(f"{type(exc).__name__}: {_safe(str(exc), self._settings)}") from None
+            finally:
+                cursor.close()
+
     def rows(self, sql: str, params: Sequence[Any] | None = None, limit: int | None = None) -> list[dict]:
         assert_select(sql)
         with _connect(self._settings) as connection:

@@ -1,17 +1,24 @@
 """Load the Syspro catalogue into `syspro_stock` (#136).
 
-Two constraints shape this and neither is a preference.
+Three constraints shape this and none of them is a preference.
 
-The server is SQL Server 2008 R2, so `OFFSET ... FETCH` does not exist:
-it arrived in 2012. Paging is keyset on (StockCode, Warehouse), which is
-also the right choice anyway, since OFFSET on a large join re-scans the
-whole thing every page and this runs against someone else's production
-box.
+**No ORDER BY.** The first attempt paged by keyset, which needs a sort,
+and the very first page never returned: eight minutes without emitting a
+row. Ordering the InvWarehouse/InvMaster join makes a 2008 R2 server
+materialise and sort the whole thing before it can answer. The same data
+unordered streams immediately, because rows can be emitted as they are
+found. So this streams and does not page.
 
-The backend has 512 MB and already overruns it (#134). Each page is
-written and released before the next is fetched, so the load never holds
-the catalogue in memory. Accumulating pages and writing once at the end
-would be simpler and would restart the API.
+**Only the warehouses we need.** Syspro has 158 warehouses: branch
+stores, bins and vans together. We care about vans, and pulling only
+those cuts the volume by more than half and is better manners toward
+somebody else's production database. The list comes from
+`technician_warehouses`, which is also exactly the set #137 and #138 ask
+about.
+
+**Bounded memory.** The backend has 512 MB and already overruns it
+(#134). Batches are written and released as they arrive, so the load
+never holds the catalogue.
 """
 from __future__ import annotations
 
@@ -25,35 +32,28 @@ from sqlalchemy.orm import Session
 from ..config import Settings
 from .client import SysproClient, SysproError, qualify
 
-# One page. Measured: 20,000 rows crossed the wire in 7 seconds, so this is
-# comfortably inside any timeout while keeping the working set small.
-PAGE_SIZE = 20000
-# A stop, not a target. A catalogue that needs more pages than this has
-# changed shape and someone should look rather than let a loop run.
-MAX_PAGES = 200
+# Rows held at once. Small enough that the working set stays trivial,
+# large enough that the round trips to Postgres are not the bottleneck.
+BATCH_SIZE = 5000
+# A stop, not a target. If the van warehouses ever return more rows than
+# this, the shape of the data has changed and somebody should look rather
+# than let a loop run against Prowalco's server.
+MAX_ROWS = 2_000_000
 
 
-def q_catalogue_page(
-    database: str,
-    page_size: int = PAGE_SIZE,
-    after_code: str | None = None,
-    after_warehouse: str | None = None,
-) -> str:
-    """One keyset page, ordered by (StockCode, Warehouse).
+def q_warehouse_stock(database: str, warehouse_count: int) -> str:
+    """Every stock row for a given set of warehouses.
 
-    `page_size` is interpolated because TOP takes a literal here and the
-    value is ours, not a caller's; it is bounds-checked regardless. The
-    keyset values are data and are passed as parameters."""
+    NO ORDER BY, deliberately. See the module docstring: sorting this join
+    on a 2008 R2 server does not return, and nothing downstream needs the
+    rows in order, since they go into a table with its own indexes."""
     db = qualify(database)
-    size = int(page_size)
-    if not 1 <= size <= 50000:
-        raise SysproError(f"page size {size} is out of range")
-    where = "WHERE w.QtyOnHand IS NOT NULL"
-    if after_code is not None:
-        where += " AND (w.StockCode > %s OR (w.StockCode = %s AND w.Warehouse > %s))"
+    count = int(warehouse_count)
+    if not 1 <= count <= 500:
+        raise SysproError(f"warehouse count {count} is out of range")
+    placeholders = ", ".join(["%s"] * count)
     return f"""
-SELECT TOP ({size})
-       '{db}'         AS company,
+SELECT '{db}'         AS company,
        w.StockCode    AS stock_code,
        w.Warehouse    AS warehouse,
        m.Description  AS description,
@@ -62,8 +62,7 @@ SELECT TOP ({size})
        w.UnitCost     AS unit_cost
 FROM {db}.dbo.InvWarehouse w
 LEFT JOIN {db}.dbo.InvMaster m ON m.StockCode = w.StockCode
-{where}
-ORDER BY w.StockCode, w.Warehouse
+WHERE w.Warehouse IN ({placeholders})
 """
 
 
@@ -101,7 +100,7 @@ _UPSERT = text(
 
 
 def load_stock(db: Session, settings: Settings) -> dict:
-    """Full load, page by page. Returns the load record."""
+    """Full load: one streaming query over the van warehouses."""
     database = qualify(settings.syspro_database)
     client = SysproClient(settings)
 
@@ -110,27 +109,31 @@ def load_stock(db: Session, settings: Settings) -> dict:
     ).scalar()
     db.commit()
 
-    seen = written = rejected = pages = 0
-    after_code: str | None = None
-    after_warehouse: str | None = None
+    warehouses = [
+        row[0]
+        for row in db.execute(
+            text(
+                """
+                SELECT DISTINCT warehouse_code
+                  FROM technician_warehouses
+                 WHERE status = 'verified' AND warehouse_code IS NOT NULL
+                 ORDER BY warehouse_code
+                """
+            )
+        ).all()
+    ]
+    if not warehouses:
+        raise SysproError("no verified van warehouses to load")
+
+    seen = written = rejected = batches = 0
     complete = False
 
     try:
-        while pages < MAX_PAGES:
-            sql = q_catalogue_page(database, PAGE_SIZE, after_code, after_warehouse)
-            params = (
-                None
-                if after_code is None
-                else (after_code, after_code, after_warehouse)
-            )
-            rows = client.rows(sql, params=params)
-            pages += 1
-            if not rows:
-                complete = True
-                break
-
+        sql = q_warehouse_stock(database, len(warehouses))
+        for chunk in client.stream(sql, params=warehouses, batch_size=BATCH_SIZE):
+            batches += 1
             batch: list[dict] = []
-            for row in rows:
+            for row in chunk:
                 seen += 1
                 quantity = _num(row.get("qty_on_hand"))
                 if quantity is None:
@@ -161,17 +164,11 @@ def load_stock(db: Session, settings: Settings) -> dict:
                 db.commit()
                 written += len(batch)
 
-            # Keyset advances on the RAW last row, not the last accepted
-            # one. Advancing on an accepted row would re-read a rejected
-            # row for ever, or skip past it, depending on which side of
-            # the boundary it fell.
-            last = rows[-1]
-            after_code = (last.get("stock_code") or "").strip()
-            after_warehouse = (last.get("warehouse") or "").strip()
-
-            if len(rows) < PAGE_SIZE:
-                complete = True
-                break
+            if seen > MAX_ROWS:
+                raise SysproError(
+                    f"stopped after {seen} rows, more than expected for {len(warehouses)} vans"
+                )
+        complete = True
 
         summary = db.execute(
             text(
@@ -186,18 +183,22 @@ def load_stock(db: Session, settings: Settings) -> dict:
 
         derived = 0
         if complete:
-            # Rows Syspro no longer returns are gone. Only safe on a
-            # COMPLETE load: pruning after a partial one would delete
-            # stock that simply had not been reached yet.
+            # Rows Syspro no longer returns are gone. Two guards on this.
+            # Only after a COMPLETE load, because pruning a partial one
+            # deletes stock that had simply not arrived yet. And only for
+            # the warehouses this load actually covered, so a van that is
+            # not in the list keeps its rows instead of being silently
+            # emptied by a load that never asked about it.
             db.execute(
                 text(
                     """
                     DELETE FROM syspro_stock
                      WHERE company = :company
+                       AND warehouse = ANY(:warehouses)
                        AND last_seen_at < (SELECT started_at FROM syspro_loads WHERE id = :id)
                     """
                 ),
-                {"company": database, "id": load_id},
+                {"company": database, "warehouses": warehouses, "id": load_id},
             )
             derived = db.execute(text("SELECT syspro_derive_stock_items()")).scalar() or 0
             db.commit()
@@ -221,7 +222,7 @@ def load_stock(db: Session, settings: Settings) -> dict:
                 "rejected": rejected,
                 "warehouses": summary["warehouses"],
                 "codes": summary["stock_codes"],
-                "pages": pages,
+                "pages": batches,
                 "id": load_id,
             },
         )
@@ -230,7 +231,7 @@ def load_stock(db: Session, settings: Settings) -> dict:
         return {
             "loadId": load_id,
             "state": "succeeded" if complete else "partial",
-            "pages": pages,
+            "pages": batches,
             "rowsSeen": seen,
             "rowsWritten": written,
             "rowsRejected": rejected,
@@ -254,7 +255,7 @@ def load_stock(db: Session, settings: Settings) -> dict:
                 "error": str(exc)[:2000],
                 "seen": seen,
                 "written": written,
-                "pages": pages,
+                "pages": batches,
                 "id": load_id,
             },
         )

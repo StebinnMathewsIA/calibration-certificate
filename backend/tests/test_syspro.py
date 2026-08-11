@@ -113,35 +113,34 @@ def test_error_message_carries_no_credential():
     assert "hunter2" not in _safe("login failed for STAFF/hunter2", settings)
 
 
-# --- paging (#136) ---
+# --- streaming load (#136) ---
 
 
-def test_first_page_has_no_keyset_predicate():
-    from app.syspro.ingest import q_catalogue_page
+def test_the_load_query_has_no_order_by():
+    from app.syspro.ingest import q_warehouse_stock
 
-    sql = q_catalogue_page(_DB, 100)
+    # This is the whole fix. Keyset paging needed an ORDER BY, and
+    # ordering this join on a 2008 R2 server never returned a first row.
+    sql = q_warehouse_stock(_DB, 3)
     assert_select(sql)
-    assert "TOP (100)" in sql
-    assert "w.StockCode >" not in sql
+    assert "ORDER BY" not in sql.upper()
+    assert sql.count("%s") == 3
 
 
-def test_later_pages_carry_the_keyset():
-    from app.syspro.ingest import q_catalogue_page
+def test_the_load_query_filters_to_the_given_warehouses():
+    from app.syspro.ingest import q_warehouse_stock
 
-    sql = q_catalogue_page(_DB, 100, after_code="ABC", after_warehouse="AA")
-    assert_select(sql)
-    # OFFSET/FETCH arrived in SQL Server 2012 and this server is 2008 R2,
-    # so keyset is the only option, not merely the better one.
-    assert "OFFSET" not in sql.upper()
-    assert "w.StockCode > %s" in sql
+    sql = q_warehouse_stock(_DB, 85)
+    assert "WHERE w.Warehouse IN (" in sql
+    assert sql.count("%s") == 85
 
 
-def test_page_size_is_bounded():
-    from app.syspro.ingest import q_catalogue_page
+def test_warehouse_count_is_bounded():
+    from app.syspro.ingest import q_warehouse_stock
 
-    for bad in (0, -1, 50001):
+    for bad in (0, -1, 501):
         with pytest.raises(SysproError):
-            q_catalogue_page(_DB, bad)
+            q_warehouse_stock(_DB, bad)
 
 
 def test_numeric_cast_refuses_rubbish_rather_than_zeroing():

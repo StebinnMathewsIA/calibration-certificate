@@ -673,3 +673,31 @@ with `SELECT manager_name_set('<email>', '<name as OnKey spells it>');`.
 - [ ] Each is mapped, and `manager_names_unmapped` returns no rows
 - [ ] Each of those managers signs in and sees their own team's vans, and
       not another manager's
+
+## Stock tab (#138) and allocation (#139)
+
+- [ ] A technician with a verified van sees a Stock tab showing their own
+      van, with the van named in the header
+- [ ] Items are in-stock first, with the quantity and unit against each
+- [ ] Searching a code or a description filters the van
+- [ ] The header says when the stock was last loaded from Syspro
+- [ ] A technician with no van sees a statement that they hold no stock,
+      not an empty list
+- [ ] A technician whose van is not set is told so
+- [ ] A manager sees their allocated technicians, each with van and an
+      in-stock count, and tapping one opens that technician's stock
+- [ ] A manager with nobody allocated is told that, rather than shown an
+      empty list
+- [ ] A technician cannot reach another technician's stock. Verify against
+      the RPC directly, not only the screen: `app_van_stock` with somebody
+      else's staff code must return `allowed: false`
+
+### Allocation still to do
+
+72 of 100 technicians are unallocated, because only two managers could be
+derived from OnKey. Allocation is ours now (#139), so this is data entry
+rather than an integration problem.
+
+- [ ] Prowalco confirms which manager owns each unallocated technician
+- [ ] `SELECT * FROM technician_allocations_unallocated;` returns no rows
+- [ ] Each manager signs in and sees their own technicians, and no others

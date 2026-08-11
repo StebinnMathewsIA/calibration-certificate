@@ -400,12 +400,88 @@ export async function getOpsAlerts(token: string | null): Promise<OpsAlert[] | n
 
 /** A part the vans actually carry (#105). vanCount is a relevance signal,
  * not a stock figure: the thing 26 vans hold is more likely the thing in
- * this technician's hand than a catalogue entry nobody stocks. */
+ * this technician's hand than a catalogue entry nobody stocks.
+ *
+ * quantity and inStock arrive once the picker is scoped to a real van
+ * (#137). They are null for a technician with no van, who sees the whole
+ * register for reference and cannot book from it anyway. */
 export interface StockItem {
   itemCode: string;
   description: string | null;
   unit: string;
   vanCount: number;
+  quantity?: number | null;
+  inStock?: boolean | null;
+}
+
+/** What the caller's parts list is scoped to, and why (#137).
+ *
+ * `reason` is written to be shown to a person. A manager with nobody
+ * allocated needs to read "no technicians are allocated to you yet", not
+ * infer it from an empty list. */
+export interface StockScope {
+  mode: 'van' | 'team' | 'all' | 'no_van' | 'unverified';
+  reason: string;
+  vanCode: string | null;
+  vanDescription: string | null;
+  warehouses: string[];
+  lastLoadedAt: string | null;
+}
+
+/** One technician's van, as a manager sees it in the stock tab (#138). */
+export interface TeamVan {
+  staffCode: string;
+  technicianName: string | null;
+  vanCode: string | null;
+  vanDescription: string | null;
+  vanStatus: 'verified' | 'no_van' | 'unverified';
+  inStock: number;
+  carried: number;
+}
+
+export interface VanStockLine {
+  itemCode: string;
+  description: string | null;
+  unit: string;
+  quantity: number;
+  inStock: boolean;
+}
+
+export interface VanStock {
+  allowed: boolean;
+  staffCode?: string;
+  vanCode?: string | null;
+  vanDescription?: string | null;
+  vanStatus?: 'verified' | 'no_van' | 'unverified';
+  lastLoadedAt?: string | null;
+  reason?: string;
+  items: VanStockLine[];
+}
+
+export async function getStockScope(token: string | null): Promise<StockScope> {
+  return await fetchThrough('stock:scope', () => rpc<StockScope>('app_stock_scope', token));
+}
+
+/** The vans the caller may look at: their own, or their team's. */
+export async function getTeamVans(token: string | null): Promise<TeamVan[]> {
+  return await fetchThrough('stock:vans', () => rpc<TeamVan[]>('app_team_vans', token));
+}
+
+/** One van's stock. Cached per technician and query, because the yard
+ * where this gets read before driving out is not where the signal is. */
+export async function getVanStock(
+  token: string | null,
+  staffCode: string | null,
+  query: string,
+): Promise<VanStock> {
+  const q = query.trim();
+  return await fetchThrough(`stock:van:${staffCode ?? 'me'}:${q.toLowerCase() || '*'}`, () =>
+    rpc<VanStock>('app_van_stock', token, {
+      p_staff_code: staffCode,
+      p_query: q,
+      p_limit: q ? 100 : 300,
+    }),
+  );
 }
 
 /** Cached per query so a forecourt with no signal still finds the parts the

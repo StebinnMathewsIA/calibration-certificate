@@ -129,3 +129,28 @@ export function SitesTabIcon({ color, focused }: { color: string; focused?: bool
     </Svg>
   );
 }
+
+/** Panel van with a crate in the back — the Stock tab (#138).
+ *
+ * A van rather than a box or a shelf, because that is literally what the
+ * tab shows: the stock on this technician's vehicle, keyed to a Syspro
+ * warehouse that IS the van. */
+export function StockTabIcon({ color, focused }: { color: string; focused?: boolean }) {
+  const sw = focused ? 2.2 : 1.8;
+  return (
+    <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
+      {/* Body and cab, one stroke so the silhouette reads at 24px */}
+      <Path
+        d="M2.5 6.5 h11 v10 h-11 z M13.5 9.5 h3.6 l2.9 3.2 v3.8 h-6.5 z"
+        stroke={color}
+        strokeWidth={sw}
+        strokeLinejoin="round"
+      />
+      {/* Crate in the load bay */}
+      <Rect x={5} y={9.5} width={5} height={4} rx={0.6} stroke={color} strokeWidth={sw} />
+      {/* Wheels */}
+      <Circle cx={7} cy={18.2} r={1.7} stroke={color} strokeWidth={sw} />
+      <Circle cx={16.6} cy={18.2} r={1.7} stroke={color} strokeWidth={sw} />
+    </Svg>
+  );
+}

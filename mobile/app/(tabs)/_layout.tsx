@@ -4,6 +4,7 @@ import {
   BrandWordmark,
   InsightsTabIcon,
   SitesTabIcon,
+  StockTabIcon,
   WorkOrdersTabIcon,
 } from '../../src/components/BrandHeader';
 import { colors } from '../../src/components/ui';
@@ -42,6 +43,15 @@ export default function TabsLayout() {
           // Sites shares the in-content header pattern with Home (#42).
           headerShown: false,
           tabBarIcon: ({ color, focused }) => <SitesTabIcon color={color} focused={focused} />,
+        }}
+      />
+      <Tabs.Screen
+        name="stock"
+        options={{
+          title: 'Stock',
+          // Same in-content header pattern as Home and Sites.
+          headerShown: false,
+          tabBarIcon: ({ color, focused }) => <StockTabIcon color={color} focused={focused} />,
         }}
       />
       <Tabs.Screen

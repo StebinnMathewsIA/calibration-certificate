@@ -80,22 +80,67 @@ def _num(value: Any) -> Decimal | None:
         return None
 
 
-_UPSERT = text(
-    """
-    INSERT INTO syspro_stock
-        (company, stock_code, warehouse, description, unit,
-         quantity_on_hand, unit_cost, last_seen_at)
-    VALUES
-        (:company, :stock_code, :warehouse, :description, :unit,
-         :quantity_on_hand, :unit_cost, now())
-    ON CONFLICT (company, stock_code, warehouse) DO UPDATE
-       SET description = excluded.description,
-           unit = excluded.unit,
-           quantity_on_hand = excluded.quantity_on_hand,
-           unit_cost = excluded.unit_cost,
-           last_seen_at = now()
-    """
+_COLUMNS = (
+    "company",
+    "stock_code",
+    "warehouse",
+    "description",
+    "unit",
+    "quantity_on_hand",
+    "unit_cost",
 )
+# Rows per INSERT statement. 1,000 rows x 7 columns is 7,000 bound
+# parameters, comfortably inside Postgres's 65,535 limit.
+_WRITE_CHUNK = 1000
+
+
+def _upsert_many(db: Session, rows: list[dict]) -> int:
+    """One multi-row INSERT per chunk, rather than one statement per row.
+
+    This is the difference between a load that finishes and one that does
+    not. Handing SQLAlchemy a list and letting executemany deal with it
+    issues a separate statement per row, and against a Supabase instance
+    across the network that is a round trip per row: the first attempt
+    managed roughly eighty rows a minute. Syspro was never the slow part.
+
+    Rows are deduplicated on the conflict key first, because a single
+    statement cannot touch the same row twice: Postgres rejects the whole
+    batch with "cannot affect row a second time"."""
+    unique: dict[tuple, dict] = {}
+    for row in rows:
+        unique[(row["company"], row["stock_code"], row["warehouse"])] = row
+    batch = list(unique.values())
+
+    written = 0
+    for start in range(0, len(batch), _WRITE_CHUNK):
+        part = batch[start : start + _WRITE_CHUNK]
+        tuples = ", ".join(
+            "(" + ", ".join(f":{column}_{index}" for column in _COLUMNS) + ", now())"
+            for index in range(len(part))
+        )
+        params: dict[str, Any] = {}
+        for index, row in enumerate(part):
+            for column in _COLUMNS:
+                params[f"{column}_{index}"] = row[column]
+        db.execute(
+            text(
+                f"""
+                INSERT INTO syspro_stock
+                    (company, stock_code, warehouse, description, unit,
+                     quantity_on_hand, unit_cost, last_seen_at)
+                VALUES {tuples}
+                ON CONFLICT (company, stock_code, warehouse) DO UPDATE
+                   SET description = excluded.description,
+                       unit = excluded.unit,
+                       quantity_on_hand = excluded.quantity_on_hand,
+                       unit_cost = excluded.unit_cost,
+                       last_seen_at = now()
+                """
+            ),
+            params,
+        )
+        written += len(part)
+    return written
 
 
 def load_stock(db: Session, settings: Settings) -> dict:
@@ -181,9 +226,8 @@ def load_stock(db: Session, settings: Settings) -> dict:
                 )
 
             if batch:
-                db.execute(_UPSERT, batch)
+                written += _upsert_many(db, batch)
                 db.commit()
-                written += len(batch)
 
             if seen > MAX_ROWS:
                 raise SysproError(

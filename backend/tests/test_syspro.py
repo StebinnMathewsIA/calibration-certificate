@@ -158,3 +158,40 @@ def test_numeric_cast_refuses_rubbish_rather_than_zeroing():
     # None means "reject the row". A zero would read as an empty van.
     assert _num("not a number") is None
     assert _num("") is None
+
+
+def test_the_upsert_batches_rows_into_one_statement():
+    # One statement per row meant a network round trip per row against
+    # Supabase, which ran at roughly eighty rows a minute. Syspro was
+    # never the slow part.
+    from app.syspro.ingest import _COLUMNS, _WRITE_CHUNK
+
+    assert _WRITE_CHUNK * len(_COLUMNS) < 65535  # Postgres bound-parameter limit
+
+
+def test_the_upsert_deduplicates_within_a_batch():
+    from decimal import Decimal
+
+    from app.syspro.ingest import _upsert_many
+
+    captured = []
+
+    class FakeDb:
+        def execute(self, statement, params):
+            captured.append(params)
+
+    row = {
+        "company": "SysproCompanyRSA",
+        "stock_code": "100-058",
+        "warehouse": "AA",
+        "description": "x",
+        "unit": "EA",
+        "quantity_on_hand": Decimal("1"),
+        "unit_cost": Decimal("2"),
+    }
+    # Postgres rejects a whole statement that touches one row twice, with
+    # "cannot affect row a second time", so duplicates must go first.
+    written = _upsert_many(FakeDb(), [dict(row), dict(row)])
+    assert written == 1
+    assert captured[0]["stock_code_0"] == "100-058"
+    assert "stock_code_1" not in captured[0]

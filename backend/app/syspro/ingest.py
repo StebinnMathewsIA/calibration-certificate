@@ -9,12 +9,14 @@ materialise and sort the whole thing before it can answer. The same data
 unordered streams immediately, because rows can be emitted as they are
 found. So this streams and does not page.
 
-**Only the warehouses we need.** Syspro has 158 warehouses: branch
-stores, bins and vans together. We care about vans, and pulling only
-those cuts the volume by more than half and is better manners toward
-somebody else's production database. The list comes from
-`technician_warehouses`, which is also exactly the set #137 and #138 ask
-about.
+**No WHERE either, and this one is counter-intuitive.** Filtering to the
+85 van warehouses server-side, which should have been less work, was
+about fifty times SLOWER: 5,000 rows in five minutes against 20,000 in
+seven seconds unfiltered. The index on InvWarehouse does not lead with
+Warehouse, so the filter buys no seek, and the plan it produces stops the
+server streaming. What this server is fast at is scanning and emitting.
+So we ask for everything and drop the non-van rows here, where a string
+comparison costs nothing.
 
 **Bounded memory.** The backend has 512 MB and already overruns it
 (#134). Batches are written and released as they arrive, so the load
@@ -41,17 +43,15 @@ BATCH_SIZE = 5000
 MAX_ROWS = 2_000_000
 
 
-def q_warehouse_stock(database: str, warehouse_count: int) -> str:
-    """Every stock row for a given set of warehouses.
+def q_all_stock(database: str) -> str:
+    """The whole catalogue, unordered and unfiltered.
 
-    NO ORDER BY, deliberately. See the module docstring: sorting this join
-    on a 2008 R2 server does not return, and nothing downstream needs the
-    rows in order, since they go into a table with its own indexes."""
+    Both absences are deliberate and both were measured. An ORDER BY makes
+    the server sort the entire join before answering and it never returns.
+    A WHERE on Warehouse produces a plan that stops it streaming and runs
+    roughly fifty times slower than no filter at all. What is left is the
+    thing this server does well: scan and emit."""
     db = qualify(database)
-    count = int(warehouse_count)
-    if not 1 <= count <= 500:
-        raise SysproError(f"warehouse count {count} is out of range")
-    placeholders = ", ".join(["%s"] * count)
     return f"""
 SELECT '{db}'         AS company,
        w.StockCode    AS stock_code,
@@ -62,7 +62,6 @@ SELECT '{db}'         AS company,
        w.UnitCost     AS unit_cost
 FROM {db}.dbo.InvWarehouse w
 LEFT JOIN {db}.dbo.InvMaster m ON m.StockCode = w.StockCode
-WHERE w.Warehouse IN ({placeholders})
 """
 
 
@@ -104,6 +103,20 @@ def load_stock(db: Session, settings: Settings) -> dict:
     database = qualify(settings.syspro_database)
     client = SysproClient(settings)
 
+    # A load whose process was restarted mid-flight leaves a row saying
+    # 'running' for ever, and the next reader cannot tell that from a load
+    # that really is in flight. The in-process lock died with the process;
+    # this cleans up what it left behind.
+    db.execute(
+        text(
+            """
+            UPDATE syspro_loads
+               SET state = 'abandoned', finished_at = now(),
+                   error = 'the process restarted while this load was running'
+             WHERE state = 'running'
+            """
+        )
+    )
     load_id = db.execute(
         text("INSERT INTO syspro_loads (state) VALUES ('running') RETURNING id")
     ).scalar()
@@ -125,16 +138,24 @@ def load_stock(db: Session, settings: Settings) -> dict:
     if not warehouses:
         raise SysproError("no verified van warehouses to load")
 
-    seen = written = rejected = batches = 0
+    wanted = set(warehouses)
+    seen = written = rejected = skipped = batches = 0
     complete = False
 
     try:
-        sql = q_warehouse_stock(database, len(warehouses))
-        for chunk in client.stream(sql, params=warehouses, batch_size=BATCH_SIZE):
+        sql = q_all_stock(database)
+        for chunk in client.stream(sql, batch_size=BATCH_SIZE):
             batches += 1
             batch: list[dict] = []
             for row in chunk:
                 seen += 1
+                if (row.get("warehouse") or "").strip() not in wanted:
+                    # Branch stores, bins and the rest of Syspro's 158
+                    # warehouses. Discarded here rather than in the query,
+                    # because asking the server to filter costs fifty
+                    # times more than reading and dropping the row.
+                    skipped += 1
+                    continue
                 quantity = _num(row.get("qty_on_hand"))
                 if quantity is None:
                     # Refused, not defaulted. A zero here would read as an
@@ -235,6 +256,7 @@ def load_stock(db: Session, settings: Settings) -> dict:
             "rowsSeen": seen,
             "rowsWritten": written,
             "rowsRejected": rejected,
+            "rowsSkippedNotAVan": skipped,
             "storedRows": summary["rows"],
             "warehouses": summary["warehouses"],
             "stockCodes": summary["stock_codes"],

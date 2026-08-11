@@ -116,31 +116,34 @@ def test_error_message_carries_no_credential():
 # --- streaming load (#136) ---
 
 
-def test_the_load_query_has_no_order_by():
-    from app.syspro.ingest import q_warehouse_stock
+def test_the_load_query_has_neither_order_by_nor_where():
+    from app.syspro.ingest import q_all_stock
 
-    # This is the whole fix. Keyset paging needed an ORDER BY, and
-    # ordering this join on a 2008 R2 server never returned a first row.
-    sql = q_warehouse_stock(_DB, 3)
+    # Both absences were measured, not assumed. An ORDER BY makes the
+    # 2008 R2 server sort the whole join before answering and it never
+    # returns. A WHERE on Warehouse produced a plan roughly fifty times
+    # slower than no filter at all: 5,000 rows in five minutes against
+    # 20,000 in seven seconds.
+    sql = q_all_stock(_DB)
     assert_select(sql)
     assert "ORDER BY" not in sql.upper()
-    assert sql.count("%s") == 3
+    assert "WHERE" not in sql.upper()
+    assert "%s" not in sql
 
 
-def test_the_load_query_filters_to_the_given_warehouses():
-    from app.syspro.ingest import q_warehouse_stock
+def test_the_load_query_names_the_company_database():
+    from app.syspro.ingest import q_all_stock
 
-    sql = q_warehouse_stock(_DB, 85)
-    assert "WHERE w.Warehouse IN (" in sql
-    assert sql.count("%s") == 85
+    sql = q_all_stock(_DB)
+    assert "SysproCompanyRSA.dbo.InvWarehouse" in sql
+    assert "SysproCompanyRSA.dbo.InvMaster" in sql
 
 
-def test_warehouse_count_is_bounded():
-    from app.syspro.ingest import q_warehouse_stock
+def test_the_load_query_refuses_a_bad_database():
+    from app.syspro.ingest import q_all_stock
 
-    for bad in (0, -1, 501):
-        with pytest.raises(SysproError):
-            q_warehouse_stock(_DB, bad)
+    with pytest.raises(SysproError):
+        q_all_stock("master; DROP TABLE x")
 
 
 def test_numeric_cast_refuses_rubbish_rather_than_zeroing():

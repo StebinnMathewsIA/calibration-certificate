@@ -762,3 +762,31 @@ each is one `manager_reports_to_set()` call to change.
       really covering that gap
 - [ ] Pause the schedule for 40 minutes and confirm `syspro_stale` appears
       in the ops alerts
+
+## Roster from OnKey (#141)
+
+`onkey_roster_refresh()` sets who is current from `FIELDOPS - USERS`, with
+`FIELDOPS - STAFF` as the fallback for an employee who has no OnKey login.
+First run: **83 current, 17 former**, 8 in neither report.
+
+Fetches run nightly at 00:53 and 00:59 UTC, and the refresh at 01:09.
+
+- [ ] A technician marked inactive in OnKey drops out of their manager's
+      team on the next refresh, and their old work orders still show their
+      name
+- [ ] A technician reactivated in OnKey comes back
+- [ ] Deleting the report rows and running the refresh changes nothing: it
+      must refuse an empty report rather than retire everybody
+
+### Seven vans belong to people who have left
+
+`technician_allocations_former_with_van` lists 7 verified vans whose
+technician is now `former`. Their stock is still loaded, because the Syspro
+load reads the warehouse register rather than the roster, but nobody's team
+view shows it.
+
+That is either a van somebody else now drives, or a stale mapping. Both
+matter to the stock figures and neither is safe to guess at.
+
+- [ ] Prowalco says, for each of the seven, whether the van has a new
+      driver or the mapping should be retired

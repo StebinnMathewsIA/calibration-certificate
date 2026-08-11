@@ -127,8 +127,36 @@ def _run_sync_background(settings: Settings, mode: str, state: dict, running_fla
         }
         _record_run(mode, "failed", started_at, error=message)
     finally:
+        # Hand the OnKey session lease back the moment the run ends (#134).
+        #
+        # Nothing released it before, so it was held until it expired on
+        # the clock, and the clock was set to 95 seconds against a sweep
+        # that takes fifteen minutes. That is how two exports ended up in
+        # one 512 MB process: the lease lapsed mid-sweep and the next
+        # two-minutely job found it free.
+        #
+        # Releasing on completion lets the lease be set to a genuine upper
+        # bound on the work instead of a guess that has to be short enough
+        # not to stall the pipeline. Best effort on purpose: if this
+        # fails, the expiry still frees it, and a sync that worked must
+        # not be reported as failed because the release did not.
+        try:
+            _release_lease(mode)
+        except Exception:  # noqa: BLE001 — the expiry is the safety net
+            pass
         db.close()
         running_flag["running"] = False
+
+
+def _release_lease(mode: str) -> None:
+    session = SessionLocal()
+    try:
+        session.execute(
+            text("SELECT onkey_release_session_lease(:holder)"), {"holder": f"sync:{mode}"}
+        )
+        session.commit()
+    finally:
+        session.close()
 
 
 def _run_backfill_background(settings: Settings) -> None:

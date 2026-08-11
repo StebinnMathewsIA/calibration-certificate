@@ -1,8 +1,13 @@
 # Syspro integration: van stock
 
-Prepared 2026-08-03. Prowalco confirmed that **Syspro is the system of
-record for van stock**, not OnKey. This document is the design and the
-open questions; nothing here is built yet.
+Prepared 2026-08-03, **built and running as at 2026-08-11**. Prowalco
+confirmed that **Syspro is the system of record for van stock**, not OnKey.
+
+Read this file bottom-up if you are in a hurry. The early sections are the
+design as it was planned, and several of their conclusions were overturned
+once we could read the real data. Each is marked where it was superseded;
+they are kept because the reasoning behind a wrong call is worth having when
+the next one comes along.
 
 ## Why this exists
 
@@ -62,8 +67,14 @@ stay in the architecture rather than everything moving to Supabase.
 
 ### Measured egress address
 
-**`74.220.48.56/32`** (2026-08-05, Render Starter plan). This is the
-address to allowlist on the Syspro firewall.
+> **SUPERSEDED 2026-08-11.** The address moved on every deploy, three times
+> in one afternoon, because Render's shared outbound range assigns one
+> address per availability zone. The workspace now has a dedicated IP set,
+> which is what actually pins it. See "Dedicated IP set" below. The
+> paragraphs here are kept because the reasoning that produced them, measure
+> it rather than read it off a dashboard, was right and is still right.
+
+**`74.220.48.56/32`** (2026-08-05, Render Starter plan).
 
 Measured by the service reporting its own outbound address
 (`GET /v1/onkey/egress-ip`, workflow `egress-ip.yml`), not read off a
@@ -94,9 +105,9 @@ send Prowalco's IT the new address BEFORE the change, not after.
    the other 74) and stock item codes match Syspro's warehouse and stock
    codes directly? If not, OnKey's ExternalReference fields are the
    designed place for another system's key and should be probed.
-3. **Refresh cadence.** Van stock changes as parts are issued. Hourly is
-   probably enough; the picker should show when the figure was last
-   refreshed so a technician can judge it.
+3. **Refresh cadence.** ANSWERED 2026-08-11: incremental every ten minutes
+   on the rowversion, full load nightly. See "Cadence" at the end. The
+   picker and the stock tab both show when the figure was last refreshed.
 4. **Write-back scope.** Sashern's note said to say what is needed if we
    write back to Syspro. Answering question 1 answers this too.
 
@@ -126,6 +137,13 @@ balances per warehouse. None of it belongs in a parts picker.
 matters, silently, with a KeyError only if you happen to name it.
 
 ### The OnKey join does not work on this data
+
+> **WRONG, and corrected 2026-08-11.** Tested against the live catalogue
+> rather than the 20-row sample: **all 85 van warehouse codes match**, and
+> **483 of our 507 OnKey stock codes exist in Syspro**. The sample that
+> produced the finding below was almost entirely branch stores, so it
+> answered a different question from the one being asked. The lesson worth
+> keeping is about the sample, not about the join.
 
 The spec has carried an unverified assumption that the two systems could be
 joined on warehouse code plus stock code. Tested against the sample and our

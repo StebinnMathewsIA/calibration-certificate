@@ -712,3 +712,40 @@ that groups by warehouse code alone will double this van.
 
 - [ ] Prowalco confirms whether that van is shared or one of the two
       mappings is wrong
+
+## Managers of managers (#140)
+
+Hierarchy in place, verified against live data:
+
+| Signed in as | Technicians visible |
+|---|---|
+| Senior (top of tree) | 100 |
+| Senior (second level) | 100 |
+| Mid-level manager with two managers under them | 30 |
+| Branch manager | 13 |
+
+- [ ] A senior manager sees every technician beneath them, at any depth
+- [ ] A branch manager's own scope is unchanged
+- [ ] A technician outside the caller's tree is refused by `app_van_stock`
+- [ ] The scope reason names both the technician count and the number of
+      managers beneath
+
+### The unallocated holder
+
+Technicians nobody has claimed are allocated to a reserved holder that
+reports into the tree, so "not yet allocated" is a visible state rather
+than an absence. 22 technicians sit there now.
+
+- [ ] A senior manager can see the unallocated technicians and open their
+      stock
+- [ ] A newly synced technician with no manager lands on the holder rather
+      than nowhere (`allocation_sweep_unallocated()`)
+
+### Hierarchy edges to confirm with Prowalco
+
+OnKey's own data says two branch managers report to a third. The remaining
+placements were made so the senior people see the whole organisation, and
+each is one `manager_reports_to_set()` call to change.
+
+- [ ] Prowalco confirms the reporting lines, in particular which of the
+      branch managers report to whom

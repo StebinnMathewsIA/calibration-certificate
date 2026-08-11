@@ -1,0 +1,223 @@
+"""Syspro SQL Server client: named SELECTs only, no caller-supplied SQL.
+
+We never write to Syspro. That is a promise the code keeps rather than an
+intention it holds: every statement runs through `assert_select`, the
+queries are module constants, and nothing on the call path accepts SQL
+from a request.
+"""
+from __future__ import annotations
+
+import re
+from contextlib import contextmanager
+from typing import Any, Iterator, Sequence
+
+from ..config import Settings
+
+
+class SysproError(RuntimeError):
+    """Anything that stopped us reading. Carries no credential."""
+
+
+# A statement is acceptable only if it is a single SELECT. Comments are
+# stripped first so that "-- x\nDELETE" cannot masquerade as a comment,
+# and the trailing-semicolon case is allowed but a second statement is
+# not: batching is how a read path turns into a write path.
+_LINE_COMMENT = re.compile(r"--[^\n]*")
+_BLOCK_COMMENT = re.compile(r"/\*.*?\*/", re.DOTALL)
+_FORBIDDEN = re.compile(
+    r"\b(insert|update|delete|merge|drop|truncate|alter|create|grant|revoke|exec|execute|sp_\w+|xp_\w+|into)\b",
+    re.IGNORECASE,
+)
+
+
+def strip_comments(sql: str) -> str:
+    return _BLOCK_COMMENT.sub(" ", _LINE_COMMENT.sub(" ", sql)).strip()
+
+
+def assert_select(sql: str) -> None:
+    """Raise unless `sql` is exactly one SELECT statement.
+
+    Defence in depth. Today every query is a constant in this module, so
+    this can only fire on a future edit, which is precisely when it is
+    worth having."""
+    bare = strip_comments(sql)
+    if not bare:
+        raise SysproError("empty statement")
+    body = bare.rstrip().rstrip(";")
+    if ";" in body:
+        raise SysproError("batched statements are not allowed on the Syspro read path")
+    if not re.match(r"^\s*(select|with)\b", body, re.IGNORECASE):
+        raise SysproError("only SELECT is allowed on the Syspro read path")
+    found = _FORBIDDEN.search(body)
+    if found:
+        raise SysproError(f"'{found.group(0)}' is not allowed on the Syspro read path")
+
+
+@contextmanager
+def _connect(settings: Settings) -> Iterator[Any]:
+    if not settings.syspro_host:
+        raise SysproError("SYSPRO_HOST is not set")
+    try:
+        import pymssql
+    except ImportError as exc:  # pragma: no cover - image always carries it
+        raise SysproError(f"pymssql is not installed: {exc}") from exc
+
+    try:
+        connection = pymssql.connect(
+            server=settings.syspro_host,
+            port=str(settings.syspro_port),
+            user=settings.syspro_user,
+            # The login we were issued has no password (#133). An empty
+            # string is the correct value to send, not None, which makes
+            # FreeTDS attempt integrated auth and fail obscurely.
+            password=settings.syspro_password or "",
+            database=settings.syspro_database or None,
+            login_timeout=settings.syspro_login_timeout,
+            timeout=settings.syspro_query_timeout,
+            as_dict=True,
+            # SQL Server encrypts the login packet regardless; this asks
+            # for the whole session to be encrypted where the server
+            # allows it. It cannot force a server that refuses.
+            encryption="request",
+        )
+    except Exception as exc:
+        # Never let a driver exception carry the connection string.
+        raise SysproError(f"{type(exc).__name__}: {_safe(str(exc), settings)}") from None
+    try:
+        yield connection
+    finally:
+        try:
+            connection.close()
+        except Exception:  # pragma: no cover - closing a dead socket
+            pass
+
+
+def _safe(message: str, settings: Settings) -> str:
+    """Strip anything credential-shaped out of a driver message."""
+    for secret in (settings.syspro_password, settings.syspro_user):
+        if secret:
+            message = message.replace(secret, "***")
+    return message[:400]
+
+
+class SysproClient:
+    """Open connection per use. The catalogue is pulled a few times a day,
+    so a pool would be complexity with nothing to show for it."""
+
+    def __init__(self, settings: Settings):
+        self._settings = settings
+
+    def rows(self, sql: str, params: Sequence[Any] | None = None, limit: int | None = None) -> list[dict]:
+        assert_select(sql)
+        with _connect(self._settings) as connection:
+            cursor = connection.cursor(as_dict=True)
+            try:
+                cursor.execute(sql, tuple(params) if params else None)
+                if limit is None:
+                    return list(cursor.fetchall())
+                out: list[dict] = []
+                for row in cursor:
+                    out.append(row)
+                    if len(out) >= limit:
+                        break
+                return out
+            except Exception as exc:
+                raise SysproError(f"{type(exc).__name__}: {_safe(str(exc), self._settings)}") from None
+            finally:
+                cursor.close()
+
+
+# ---------------------------------------------------------------------------
+# Named queries
+# ---------------------------------------------------------------------------
+
+# What the login can actually see. With a read-only account whose grants we
+# did not set, this has to be discovered rather than assumed: a query
+# against a table we cannot read fails as a permission error that reads
+# like a missing table.
+Q_IDENTITY = """
+SELECT @@VERSION AS server_version,
+       DB_NAME() AS database_name,
+       SUSER_SNAME() AS login_name,
+       CONVERT(varchar(30), SYSUTCDATETIME(), 126) AS server_utc
+"""
+
+# Prowalco gave us a server and a login, not a database name. Syspro names
+# its company databases per company (SysproCompanyX and similar), so the
+# name has to be discovered rather than guessed: connecting to the wrong
+# one fails as "invalid object name InvWarehouse", which reads like a
+# permissions problem and is not.
+Q_DATABASES = """
+SELECT name AS database_name
+FROM sys.databases
+WHERE HAS_DBACCESS(name) = 1
+ORDER BY name
+"""
+
+Q_VISIBLE_TABLES = """
+SELECT TABLE_SCHEMA AS table_schema, TABLE_NAME AS table_name
+FROM INFORMATION_SCHEMA.TABLES
+WHERE TABLE_NAME IN ('InvWarehouse', 'InvMaster', 'InvWhControl')
+ORDER BY TABLE_NAME
+"""
+
+# The catalogue the picker needs, and nothing else. InvWarehouse carries
+# 122 columns of sales history and aged balances (docs/SYSPRO-INTEGRATION.md);
+# none of it belongs in a parts list, so it is not selected.
+Q_CATALOGUE = """
+SELECT w.StockCode      AS stock_code,
+       w.Warehouse      AS warehouse,
+       m.Description    AS description,
+       m.StockUom       AS unit,
+       w.QtyOnHand      AS qty_on_hand,
+       w.UnitCost       AS unit_cost
+FROM InvWarehouse w
+LEFT JOIN InvMaster m ON m.StockCode = w.StockCode
+WHERE w.QtyOnHand IS NOT NULL
+"""
+
+Q_WAREHOUSES = """
+SELECT Warehouse AS warehouse, COUNT(*) AS stock_codes
+FROM InvWarehouse
+GROUP BY Warehouse
+ORDER BY Warehouse
+"""
+
+
+def probe(settings: Settings, sample: int = 20) -> dict:
+    """Connect and report what is reachable, step by step.
+
+    Deliberately does not raise on a failed step. The point of a probe is
+    to say WHICH part failed: a timeout means the allowlist still does not
+    have us, a login error means the credential, and a permission error on
+    one table means the grants. Collapsing those into one 500 is how a
+    diagnosis turns into a guess."""
+    client = SysproClient(settings)
+    result: dict[str, Any] = {
+        "host": settings.syspro_host or None,
+        "port": settings.syspro_port,
+        "database": settings.syspro_database or None,
+        "user": settings.syspro_user or None,
+        "steps": {},
+    }
+    steps: dict[str, Any] = result["steps"]
+
+    for name, sql, limit in (
+        ("identity", Q_IDENTITY, None),
+        ("databases", Q_DATABASES, 100),
+        ("visible_tables", Q_VISIBLE_TABLES, None),
+        ("warehouses", Q_WAREHOUSES, 50),
+        ("catalogue_sample", Q_CATALOGUE, sample),
+    ):
+        try:
+            rows = client.rows(sql, limit=limit)
+            steps[name] = {"ok": True, "rowCount": len(rows), "rows": rows}
+        except SysproError as exc:
+            steps[name] = {"ok": False, "error": str(exc)}
+            # A failed identity step means there is no connection at all,
+            # so the rest would only repeat the same timeout.
+            if name == "identity":
+                break
+
+    result["connected"] = bool(steps.get("identity", {}).get("ok"))
+    return result

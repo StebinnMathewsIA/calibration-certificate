@@ -60,3 +60,19 @@ services:
       # report/dataset settings default in code (config.py).
       - key: ONKEY_SYNC_TOKEN
         sync: false
+      # Syspro stock catalogue (#135), read-only. Set these in the Render
+      # Environment, never here: the repository is public. Leave SYSPRO_HOST
+      # unset to disable the endpoints entirely.
+      # SYSPRO_PASSWORD is empty because the login Prowalco issued has no
+      # password. That is recorded in docs/SYSPRO-INTEGRATION.md and #133,
+      # and it is meant to be temporary.
+      - key: SYSPRO_HOST
+        sync: false
+      - key: SYSPRO_PORT
+        sync: false
+      - key: SYSPRO_DATABASE
+        sync: false
+      - key: SYSPRO_USER
+        sync: false
+      - key: SYSPRO_PASSWORD
+        sync: false

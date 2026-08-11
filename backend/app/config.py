@@ -92,6 +92,23 @@ class Settings(BaseSettings):
     # weekend of changes with a few hundred rows.
     onkey_recent_window_days: int = 2
 
+    # Syspro stock catalogue (#135), read-only. Values live in Render's
+    # Environment, never here: this repository is public and the server
+    # sits behind nothing but a source IP allowlist (#133). Empty host
+    # disables the endpoints entirely, which is the state in CI and local
+    # dev. SYSPRO_PASSWORD is empty on purpose, because the login Prowalco
+    # issued has no password; that is recorded, not endorsed.
+    syspro_host: str = ""
+    syspro_port: int = 1433
+    syspro_database: str = ""
+    syspro_user: str = ""
+    syspro_password: str = ""
+    # The forward crosses a VPN, so a first packet is slower than a LAN
+    # connection would be, and a stale allowlist shows up as a timeout
+    # rather than a refusal. Long enough to distinguish the two.
+    syspro_login_timeout: int = 30
+    syspro_query_timeout: int = 120
+
     # Device binding (#51). Enforcement is flag-gated for a safe rollout:
     # off (default) verifies+audits device signatures when present but never
     # blocks; on requires a valid signature from an active enrolled device.

@@ -13,3 +13,6 @@ httpx>=0.27
 psycopg2-binary>=2.9
 boto3>=1.34
 zeep>=4.2
+# Syspro SQL Server, read-only (#135). Ships a cp311 manylinux wheel, so
+# no FreeTDS build stage and no extra apt packages in the image.
+pymssql>=2.3

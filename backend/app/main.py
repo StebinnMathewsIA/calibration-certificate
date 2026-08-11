@@ -6,7 +6,7 @@ from sqlalchemy import text
 from .config import get_settings, validate_settings
 from .db import get_engine
 from .pdf_store import SupabaseStoragePdfStore
-from .routers import analysis, certificates, devices, onkey, technicians, workorders
+from .routers import analysis, certificates, devices, onkey, syspro, technicians, workorders
 
 
 @asynccontextmanager
@@ -54,6 +54,7 @@ app.include_router(workorders.router)
 app.include_router(devices.router)
 app.include_router(onkey.router)
 app.include_router(technicians.router)
+app.include_router(syspro.router)
 
 
 @app.get("/healthz")

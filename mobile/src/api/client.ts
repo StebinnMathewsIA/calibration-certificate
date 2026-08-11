@@ -377,6 +377,9 @@ export interface JobCardBundle {
    * own clock. Prefills the labour hours so nobody guesses. */
   workedMinutes: number;
   workRequired: string | null;
+  /** Why this technician's costing will not book, said before they are
+   * standing in front of a client (#131). Null when it will. */
+  costingNote: string | null;
   chargeItems: ChargeItem[];
   jobCard: JobCardState | null;
   document: JobCardDocument;

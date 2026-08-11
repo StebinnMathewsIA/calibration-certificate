@@ -498,6 +498,16 @@ export default function JobCardScreen() {
       </SectionCard>
 
       <SectionCard title="Parts used">
+        {/* A technician with no van holds no stock, so nothing they record
+            here is issued from anywhere (#131). The list stays open and
+            the parts still print: they were fitted, and whose stock they
+            came from is a costing question, not a question about what
+            happened on site. */}
+        {bundle.costingNote ? (
+          <Text style={{ color: colors.amber, fontSize: 12, marginBottom: 8 }}>
+            {bundle.costingNote}
+          </Text>
+        ) : null}
         {parts.map((p, i) => (
           <View
             key={`${p.itemCode}-${i}`}

@@ -790,3 +790,25 @@ matter to the stock figures and neither is safe to guess at.
 
 - [ ] Prowalco says, for each of the seven, whether the van has a new
       driver or the mapping should be retired
+
+## Dispensers on the work order load (#143)
+
+- [ ] Opening a work order with a site fills "Dispensers on site" within a
+      moment, allocated dispenser highlighted and marked "This job"
+- [ ] Airplane mode: the card shows the last cached dispensers
+- [ ] A work order with no site says so rather than loading
+
+## One progressive lifecycle button (#144)
+
+- [ ] Not started: the only lifecycle control is "On my way"
+- [ ] On the way: "Start work" as the big button, "Cannot get there"
+      beside it
+- [ ] "Cannot get there" confirms, puts the job back as not started, and
+      sends nothing to the office
+- [ ] "Start work" applies the transition and then opens the job card
+- [ ] Started: "Complete" as the big button, "Pause" beside it, and Pause
+      still requires a reason
+- [ ] Paused: "Resume" as the big button, "Complete" beside it
+- [ ] Paused for a blocking reason: no lifecycle buttons, the explanation
+      shows instead
+- [ ] Resume does not open the job card

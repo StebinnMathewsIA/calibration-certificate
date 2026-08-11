@@ -1,31 +1,33 @@
 /**
- * The four lifecycle verbs as one icon row (#122).
+ * One primary button that carries the job forward (#144).
  *
- * They were three stacked full-width buttons sitting BELOW the description
- * and the map, so they took a third of the screen and the technician had to
- * scroll past the job to reach the thing they came to tap. The actions
- * somebody uses twenty times a day should be the most reachable control on
- * the page, not the largest.
+ * This replaces the four-icon row from #122, on the owner's direction
+ * after using it on site. The row showed every verb at once, disabled
+ * where it did not apply, and that produced two failures. A job only ever
+ * has one next step, On my way, then Start, then Complete, so four
+ * choices were three too many. And the disabled buttons created a trap:
+ * from "on the way", the button wired to the stand-down confirmation
+ * (#127) was itself disabled, so a technician who could not reach site
+ * had no reachable way to say so and was funnelled into Pause, whose
+ * reasons are about work in progress and can hand the job back for good.
  *
- * Every action for the job is always PRESENT, with the ones that do not
- * apply disabled rather than removed. A control that moves under your thumb
- * between visits is a control you tap wrong, and a technician glancing at
- * this row should be able to see what the job's stage allows without
- * counting buttons.
+ * So: one large primary naming the next step, and at most one smaller
+ * action beside it for the thing that is NOT the next step (Cannot get
+ * there while travelling, Pause while working, Complete while paused).
  *
- * Icons are drawn in the brand's hand-made SVG line style (BrandHeader.tsx)
- * and every one carries an accessibilityLabel, because an icon-only control
- * without one is unusable with a screen reader.
+ * Icons stay in the brand's hand-made SVG line style, beside the label
+ * rather than instead of it, and everything carries an
+ * accessibilityLabel.
  */
 import React from 'react';
 import { Pressable, Text, View } from 'react-native';
-import Svg, { Circle, Line, Path, Rect } from 'react-native-svg';
+import Svg, { Circle, Line, Path } from 'react-native-svg';
 import { colors, fonts } from './ui';
 import type { WoState } from '../api/client';
 
-type Verb = 'on_the_way' | 'start' | 'pause' | 'stop';
+export type LifecycleVerb = 'on_the_way' | 'start' | 'pause' | 'stop' | 'stand_down';
 
-const SIZE = 26;
+const SIZE = 22;
 
 function VanIcon({ color }: { color: string }) {
   return (
@@ -85,47 +87,66 @@ function CompleteIcon({ color }: { color: string }) {
   );
 }
 
-const ICONS: Record<Verb, (p: { color: string }) => React.JSX.Element> = {
-  on_the_way: VanIcon,
-  start: PlayIcon,
-  pause: PauseIcon,
-  stop: CompleteIcon,
-};
+/** The van turning back: the stand-down affordance (#127), reachable at
+ * last. A cross rather than a fuller drawing, because at 22px beside a
+ * label the mark has to read at a glance and "not going" is what it
+ * says. */
+function CannotIcon({ color }: { color: string }) {
+  return (
+    <Svg width={SIZE} height={SIZE} viewBox="0 0 24 24" fill="none">
+      <Circle cx={12} cy={12} r={9} stroke={color} strokeWidth={1.8} />
+      <Line x1={9} y1={9} x2={15} y2={15} stroke={color} strokeWidth={1.8} strokeLinecap="round" />
+      <Line x1={15} y1={9} x2={9} y2={15} stroke={color} strokeWidth={1.8} strokeLinecap="round" />
+    </Svg>
+  );
+}
 
-/** Short, because it sits under a 26px icon and a technician reads it at
- * arm's length in daylight. The accessibilityLabel carries the full
- * sentence. */
-const LABEL: Record<Verb, string> = {
-  on_the_way: 'On the way',
-  start: 'Start',
-  pause: 'Pause',
-  stop: 'Complete',
-};
+interface Action {
+  verb: LifecycleVerb;
+  label: string;
+  spoken: string;
+  Icon: (p: { color: string }) => React.JSX.Element;
+}
 
-const SPOKEN: Record<Verb, string> = {
-  on_the_way: 'On the way to site',
-  start: 'Start work',
-  pause: 'Pause work',
-  stop: 'Work complete',
-};
-
-/** Which verbs the state machine allows from here. Mirrors the server's
- * rules deliberately narrowly: this decides what is TAPPABLE, the server
- * decides what is true. */
-function allowed(state: WoState, blocksResume: boolean): Set<Verb> {
+/** The next step, and at most one alternative beside it. Mirrors the
+ * server's state machine deliberately narrowly: this decides what is
+ * TAPPABLE, the server decides what is true. */
+function actionsFor(
+  state: WoState,
+  blocksResume: boolean,
+): { primary: Action | null; side: Action | null } {
   switch (state) {
     case 'not_started':
-      return new Set<Verb>(['on_the_way', 'start']);
+      return {
+        primary: { verb: 'on_the_way', label: 'On my way', spoken: 'On my way to site', Icon: VanIcon },
+        side: null,
+      };
     case 'on_the_way':
-      return new Set<Verb>(['start', 'pause']);
+      return {
+        primary: { verb: 'start', label: 'Start work', spoken: 'Start work and open the job card', Icon: PlayIcon },
+        side: {
+          verb: 'stand_down',
+          label: 'Cannot get there',
+          spoken: 'Cannot get there, put the job back on my list',
+          Icon: CannotIcon,
+        },
+      };
     case 'started':
-      return new Set<Verb>(['pause', 'stop']);
+      return {
+        primary: { verb: 'stop', label: 'Complete', spoken: 'Work complete', Icon: CompleteIcon },
+        side: { verb: 'pause', label: 'Pause', spoken: 'Pause work', Icon: PauseIcon },
+      };
     case 'paused':
-      // A pause reason like incomplete-for-spares bars the technician from
-      // resuming; the office reopens it.
-      return blocksResume ? new Set<Verb>() : new Set<Verb>(['start', 'stop']);
+      // A pause reason like incomplete-for-spares bars the technician
+      // from resuming; the office reopens it. The screen explains that,
+      // so this renders nothing rather than a dead button.
+      if (blocksResume) return { primary: null, side: null };
+      return {
+        primary: { verb: 'start', label: 'Resume', spoken: 'Resume work', Icon: PlayIcon },
+        side: { verb: 'stop', label: 'Complete', spoken: 'Work complete', Icon: CompleteIcon },
+      };
     default:
-      return new Set<Verb>();
+      return { primary: null, side: null };
   }
 }
 
@@ -138,50 +159,70 @@ export function LifecycleActions({
   state: WoState;
   blocksResume?: boolean;
   busy?: boolean;
-  onAction: (verb: Verb) => void;
+  onAction: (verb: LifecycleVerb) => void;
 }) {
-  const can = allowed(state, blocksResume);
-  const verbs: Verb[] = ['on_the_way', 'start', 'pause', 'stop'];
+  const { primary, side } = actionsFor(state, blocksResume);
+  if (!primary) return null;
+
   return (
-    <View style={{ flexDirection: 'row', gap: 6, marginBottom: 12 }}>
-      {verbs.map((v) => {
-        const Icon = ICONS[v];
-        const enabled = can.has(v) && !busy;
-        const tint = enabled ? colors.navy : colors.muted;
-        return (
-          <Pressable
-            key={v}
-            onPress={() => enabled && onAction(v)}
-            disabled={!enabled}
-            accessibilityRole="button"
-            accessibilityLabel={SPOKEN[v]}
-            accessibilityState={{ disabled: !enabled }}
+    <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
+      <Pressable
+        onPress={() => !busy && onAction(primary.verb)}
+        disabled={busy}
+        accessibilityRole="button"
+        accessibilityLabel={primary.spoken}
+        accessibilityState={{ disabled: busy }}
+        style={{
+          flex: 2,
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 8,
+          paddingVertical: 14,
+          borderRadius: 12,
+          backgroundColor: colors.green,
+          opacity: busy ? 0.6 : 1,
+        }}
+      >
+        <primary.Icon color={colors.navy} />
+        <Text style={{ fontSize: 15, color: colors.navy, fontFamily: fonts.bodyMedium }}>
+          {primary.label}
+        </Text>
+      </Pressable>
+      {side ? (
+        <Pressable
+          onPress={() => !busy && onAction(side.verb)}
+          disabled={busy}
+          accessibilityRole="button"
+          accessibilityLabel={side.spoken}
+          accessibilityState={{ disabled: busy }}
+          style={{
+            flex: 1,
+            alignItems: 'center',
+            justifyContent: 'center',
+            paddingVertical: 8,
+            paddingHorizontal: 6,
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: colors.line,
+            backgroundColor: '#fff',
+            opacity: busy ? 0.6 : 1,
+          }}
+        >
+          <side.Icon color={colors.navy} />
+          <Text
             style={{
-              flex: 1,
-              alignItems: 'center',
-              paddingVertical: 10,
-              borderRadius: 12,
-              borderWidth: 1,
-              borderColor: enabled ? colors.line : 'transparent',
-              backgroundColor: enabled ? '#fff' : 'transparent',
-              opacity: enabled ? 1 : 0.45,
+              marginTop: 2,
+              fontSize: 11,
+              color: colors.navy,
+              fontFamily: fonts.bodyMedium,
+              textAlign: 'center',
             }}
           >
-            <Icon color={tint} />
-            <Text
-              style={{
-                marginTop: 4,
-                fontSize: 11,
-                color: tint,
-                fontFamily: fonts.bodyMedium,
-                textAlign: 'center',
-              }}
-            >
-              {LABEL[v]}
-            </Text>
-          </Pressable>
-        );
-      })}
+            {side.label}
+          </Text>
+        </Pressable>
+      ) : null}
     </View>
   );
 }

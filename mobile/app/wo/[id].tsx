@@ -108,6 +108,32 @@ export default function WorkOrderLifecycleScreen() {
   // sync (migration 047), where the register is actually fresh.
   const [divergence, setDivergence] = useState<WoDivergence | null>(null);
   const [dispensers, setDispensers] = useState<DispenserResolved[] | null>(null);
+  const [dispensersFailed, setDispensersFailed] = useState(false);
+
+  // The fetch the card was always waiting for (#143). setDispensers was
+  // declared and never called, so the card said "Loading" for ever. Keyed
+  // on the site rather than folded into load(), because the site id is
+  // only known once the work order has arrived. Same cache key as the
+  // site screen, so the two share one offline copy.
+  const siteId = wo?.siteId ?? null;
+  React.useEffect(() => {
+    if (!siteId) return;
+    let alive = true;
+    setDispensersFailed(false);
+    fetchThrough(`site-dispensers:${siteId}`, () => listSiteDispensers(accessToken, siteId), {
+      onFresh: (list) => alive && setDispensers(list),
+    })
+      .then((list) => alive && setDispensers(list))
+      .catch(() => {
+        // "Could not load" and "loading" are different situations, and a
+        // card that shows the second while meaning the first is how this
+        // bug stayed invisible.
+        if (alive) setDispensersFailed(true);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [accessToken, siteId]);
 
   const load = useCallback(() => {
     setLoadState((s) => (s === 'ready' ? s : 'loading'));
@@ -184,10 +210,14 @@ export default function WorkOrderLifecycleScreen() {
     );
   }
 
+  // Returns whether the transition applied, because Start work opens the
+  // job card afterwards (#144) and opening it on a refused transition
+  // would put the technician in a job card for work the server does not
+  // believe has started.
   const apply = async (
     event: 'on_the_way' | 'start' | 'pause' | 'stop' | 'sign_off',
     opts: { reason?: string; note?: string } = {},
-  ) => {
+  ): Promise<boolean> => {
     setBusy(true);
     try {
       // Location is best-effort context on the transition, never a gate.
@@ -218,11 +248,13 @@ export default function WorkOrderLifecycleScreen() {
       setPausing(false);
       setChosenReason(null);
       setNote('');
+      return true;
     } catch (err) {
       Alert.alert(
         'Could not update the work order',
         err instanceof Error ? err.message : String(err),
       );
+      return false;
     } finally {
       setBusy(false);
     }
@@ -301,12 +333,23 @@ export default function WorkOrderLifecycleScreen() {
           busy={busy}
           onAction={(verb) => {
             // Pause needs a reason before it can be applied, so it opens
-            // the sheet. On the way, tapped while already on the way, means
-            // standing down: the technician is telling us they cannot get
-            // there (#127).
+            // the sheet. Cannot-get-there is its own verb now (#144): it
+            // used to ride on the disabled On-the-way button, which made
+            // the #127 stand-down unreachable in exactly the state it
+            // existed for.
             if (verb === 'pause') setPausing(true);
-            else if (verb === 'on_the_way' && state === 'on_the_way') confirmStandDown();
-            else void apply(verb);
+            else if (verb === 'stand_down') confirmStandDown();
+            else if (verb === 'start' && state === 'on_the_way') {
+              // Starting the job opens the job card, so the technician
+              // lands where the information gets captured (#144). Resume
+              // from a pause deliberately does not: they were already
+              // somewhere.
+              void apply('start').then((applied) => {
+                if (applied) {
+                  router.push({ pathname: '/jobcard/[id]', params: { id: wo.id } });
+                }
+              });
+            } else void apply(verb);
           }}
         />
       </View>
@@ -484,8 +527,16 @@ export default function WorkOrderLifecycleScreen() {
           which parts to load. All of it was already held, and reachable
           only after arriving and picking a dispenser. */}
       <SectionCard title="Dispensers on site">
-        {dispensers === null ? (
-          <Text style={{ color: colors.muted, fontSize: 12 }}>Loading…</Text>
+        {!wo.siteId ? (
+          <Text style={{ color: colors.muted, fontSize: 12 }}>
+            This work order has no site on record yet, so dispensers cannot be listed.
+          </Text>
+        ) : dispensers === null ? (
+          <Text style={{ color: dispensersFailed ? colors.amber : colors.muted, fontSize: 12 }}>
+            {dispensersFailed
+              ? 'Could not load the dispensers for this site. Pull back and reopen to retry.'
+              : 'Loading…'}
+          </Text>
         ) : dispensers.length === 0 ? (
           <Text style={{ color: colors.muted, fontSize: 12 }}>
             No dispensers on record for this site yet.

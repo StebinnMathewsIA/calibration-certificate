@@ -14,10 +14,10 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from ..config import Settings, get_settings
 from ..syspro import SysproError
 from ..syspro.client import (
-    Q_CATALOGUE,
     SysproClient,
     diagnose as run_diagnose,
     probe as run_probe,
+    q_catalogue,
 )
 
 router = APIRouter(prefix="/v1/syspro", tags=["syspro"])
@@ -72,7 +72,7 @@ def syspro_catalogue(
     _require_sync_token(authorization, settings)
     _require_configured(settings)
     try:
-        rows = SysproClient(settings).rows(Q_CATALOGUE, limit=limit)
+        rows = SysproClient(settings).rows(q_catalogue(settings.syspro_database), limit=limit)
     except SysproError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from None
     return {"rowCount": len(rows), "limit": limit, "rows": rows}

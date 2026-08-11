@@ -7,19 +7,29 @@ the login we were given sits behind nothing but a source IP allowlist
 import pytest
 
 from app.syspro.client import (
-    Q_CATALOGUE,
     Q_DATABASES,
     Q_IDENTITY,
-    Q_VISIBLE_TABLES,
-    Q_WAREHOUSES,
     SysproError,
     assert_select,
+    q_catalogue,
+    q_visible_tables,
+    q_warehouses,
+    qualify,
     strip_comments,
 )
 
+_DB = "SysproCompanyRSA"
+
 
 @pytest.mark.parametrize(
-    "sql", [Q_IDENTITY, Q_DATABASES, Q_VISIBLE_TABLES, Q_CATALOGUE, Q_WAREHOUSES]
+    "sql",
+    [
+        Q_IDENTITY,
+        Q_DATABASES,
+        q_visible_tables(_DB),
+        q_catalogue(_DB),
+        q_warehouses(_DB),
+    ],
 )
 def test_shipped_queries_pass_the_guard(sql):
     assert_select(sql)
@@ -69,6 +79,30 @@ def test_comment_stripping_leaves_the_statement():
 def test_empty_is_refused():
     with pytest.raises(SysproError):
         assert_select("   -- nothing here\n  ")
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["Sys pro", "master;DROP", "1Company", "", "dbo.InvMaster", "Company-RSA", "Company'"],
+)
+def test_a_bad_database_identifier_is_refused(name):
+    # The name comes from configuration rather than a request, so this is
+    # not the last line of defence. Interpolating an unvalidated
+    # identifier into SQL is still a habit worth not having.
+    with pytest.raises(SysproError):
+        qualify(name)
+
+
+def test_a_good_database_identifier_passes():
+    assert qualify("SysproCompanyRSA") == "SysproCompanyRSA"
+    assert qualify("SysproCompanyH") == "SysproCompanyH"
+
+
+def test_queries_name_the_company_database():
+    # The login lands in master, so an unqualified table name would
+    # resolve there and fail as "invalid object name".
+    assert "SysproCompanyRSA.dbo.InvWarehouse" in q_catalogue(_DB)
+    assert "SysproCompanyRSA.INFORMATION_SCHEMA.TABLES" in q_visible_tables(_DB)
 
 
 def test_error_message_carries_no_credential():

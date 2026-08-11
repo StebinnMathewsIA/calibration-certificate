@@ -110,6 +110,16 @@ class Settings(BaseSettings):
     syspro_database: str = "SysproCompanyRSA"
     syspro_user: str = ""
     syspro_password: str = ""
+    # Measured against the live endpoint, not chosen. Everything from
+    # FreeTDS's modern default down to TDS 7.1 is refused with error 20002;
+    # only 7.0 with encryption off completes the handshake, and only when
+    # the database is left out of the login packet. Whether that is an old
+    # SQL Server or the port forward mangling the modern pre-login
+    # handshake is an open question for Prowalco IT (#135). Re-run
+    # /v1/syspro/diagnose after any change on their side: a newer version
+    # would be better, since TDS 7.0 predates several data types.
+    syspro_tds_version: str = "7.0"
+    syspro_encryption: str = "off"
     # The forward crosses a VPN, so a first packet is slower than a LAN
     # connection would be, and a stale allowlist shows up as a timeout
     # rather than a refusal. Long enough to distinguish the two.

@@ -62,24 +62,31 @@ def _connect(settings: Settings) -> Iterator[Any]:
     except ImportError as exc:  # pragma: no cover - image always carries it
         raise SysproError(f"pymssql is not installed: {exc}") from exc
 
+    kwargs: dict[str, Any] = {
+        "server": settings.syspro_host,
+        "port": str(settings.syspro_port),
+        "user": settings.syspro_user,
+        # The login we were issued has no password (#133). An empty string
+        # is the correct value to send, not None, which makes FreeTDS
+        # attempt integrated auth and fail obscurely.
+        "password": settings.syspro_password or "",
+        "login_timeout": settings.syspro_login_timeout,
+        "timeout": settings.syspro_query_timeout,
+        "as_dict": True,
+        # Measured, not chosen. Everything from the modern default down to
+        # TDS 7.1 is refused by this endpoint with FreeTDS error 20002, and
+        # only 7.0 with encryption off completes the handshake. See
+        # /v1/syspro/diagnose and docs/SYSPRO-INTEGRATION.md.
+        "encryption": settings.syspro_encryption,
+    }
+    if settings.syspro_tds_version:
+        kwargs["tds_version"] = settings.syspro_tds_version
+    # The database is NOT sent in the login packet. The login lands in its
+    # own default database (master) and the queries name the company
+    # database explicitly instead, which is the combination proven to
+    # work here.
     try:
-        connection = pymssql.connect(
-            server=settings.syspro_host,
-            port=str(settings.syspro_port),
-            user=settings.syspro_user,
-            # The login we were issued has no password (#133). An empty
-            # string is the correct value to send, not None, which makes
-            # FreeTDS attempt integrated auth and fail obscurely.
-            password=settings.syspro_password or "",
-            database=settings.syspro_database or None,
-            login_timeout=settings.syspro_login_timeout,
-            timeout=settings.syspro_query_timeout,
-            as_dict=True,
-            # SQL Server encrypts the login packet regardless; this asks
-            # for the whole session to be encrypted where the server
-            # allows it. It cannot force a server that refuses.
-            encryption="request",
-        )
+        connection = pymssql.connect(**kwargs)
     except Exception as exc:
         # Never let a driver exception carry the connection string.
         raise SysproError(f"{type(exc).__name__}: {_safe(str(exc), settings)}") from None
@@ -144,9 +151,9 @@ SELECT @@VERSION AS server_version,
 
 # Prowalco gave us a server and a login, not a database name. Syspro names
 # its company databases per company (SysproCompanyX and similar), so the
-# name has to be discovered rather than guessed: connecting to the wrong
-# one fails as "invalid object name InvWarehouse", which reads like a
-# permissions problem and is not.
+# name has to be discovered rather than guessed: naming the wrong one fails
+# as "invalid object name InvWarehouse", which reads like a permissions
+# problem and is not.
 Q_DATABASES = """
 SELECT name AS database_name
 FROM sys.databases
@@ -154,44 +161,70 @@ WHERE HAS_DBACCESS(name) = 1
 ORDER BY name
 """
 
-Q_VISIBLE_TABLES = """
+# The company database is named in every query rather than sent in the
+# login packet, because the login lands in master and only the no-database
+# login completes the handshake against this endpoint.
+_IDENTIFIER = re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
+
+
+def qualify(database: str) -> str:
+    """Validate a database name before it is interpolated into SQL.
+
+    The value comes from configuration rather than a request, so this is
+    not the last line of defence, but interpolating an unvalidated
+    identifier into SQL is a habit worth not having."""
+    if not _IDENTIFIER.match(database or ""):
+        raise SysproError(f"'{database}' is not a valid database identifier")
+    return database
+
+
+def q_visible_tables(database: str) -> str:
+    return f"""
 SELECT TABLE_SCHEMA AS table_schema, TABLE_NAME AS table_name
-FROM INFORMATION_SCHEMA.TABLES
+FROM {qualify(database)}.INFORMATION_SCHEMA.TABLES
 WHERE TABLE_NAME IN ('InvWarehouse', 'InvMaster', 'InvWhControl')
 ORDER BY TABLE_NAME
 """
 
-# The catalogue the picker needs, and nothing else. InvWarehouse carries
-# 122 columns of sales history and aged balances (docs/SYSPRO-INTEGRATION.md);
-# none of it belongs in a parts list, so it is not selected.
-#
-# Schema-qualified with dbo on purpose. The login's default schema is not
-# ours to assume, and an unqualified name that resolves somewhere
-# unexpected fails as "invalid object name", which reads like a
-# permissions problem.
-#
-# `company` comes from DB_NAME() so every row says which company database
-# it came from. Prowalco runs SysproCompanyRSA and, for Lesotho,
-# SysproCompanyH. We only pull RSA today, because every van warehouse we
-# have mapped is RSA, but a catalogue whose rows cannot say where they
-# came from is one that cannot take the second company later without
-# guesswork.
-Q_CATALOGUE = """
-SELECT DB_NAME()        AS company,
-       w.StockCode      AS stock_code,
-       w.Warehouse      AS warehouse,
-       m.Description    AS description,
-       m.StockUom       AS unit,
-       w.QtyOnHand      AS qty_on_hand,
-       w.UnitCost       AS unit_cost
-FROM dbo.InvWarehouse w
-LEFT JOIN dbo.InvMaster m ON m.StockCode = w.StockCode
+
+def q_catalogue(database: str) -> str:
+    """The catalogue the picker needs, and nothing else.
+
+    InvWarehouse carries 122 columns of sales history and aged balances
+    (docs/SYSPRO-INTEGRATION.md); none of it belongs in a parts list, so
+    none of it is selected.
+
+    Schema-qualified with dbo on purpose. The login's default schema is
+    not ours to assume, and an unqualified name that resolves somewhere
+    unexpected fails as "invalid object name", which reads like a
+    permissions problem.
+
+    `company` is the database name as a literal rather than DB_NAME(),
+    which would say `master`. Prowalco runs SysproCompanyRSA and, for
+    Lesotho, SysproCompanyH. We only pull RSA today, because every van
+    warehouse we have mapped is RSA, but a catalogue whose rows cannot say
+    where they came from is one that cannot take the second company later
+    without guesswork."""
+    db = qualify(database)
+    return f"""
+SELECT '{db}'         AS company,
+       w.StockCode    AS stock_code,
+       w.Warehouse    AS warehouse,
+       m.Description  AS description,
+       m.StockUom     AS unit,
+       w.QtyOnHand    AS qty_on_hand,
+       w.UnitCost     AS unit_cost
+FROM {db}.dbo.InvWarehouse w
+LEFT JOIN {db}.dbo.InvMaster m ON m.StockCode = w.StockCode
 WHERE w.QtyOnHand IS NOT NULL
 """
 
-Q_WAREHOUSES = """
+
+def q_warehouses(database: str) -> str:
+    db = qualify(database)
+    return f"""
 SELECT Warehouse AS warehouse, COUNT(*) AS stock_codes
-FROM dbo.InvWarehouse
+FROM {db}.dbo.InvWarehouse
 GROUP BY Warehouse
 ORDER BY Warehouse
 """
@@ -240,15 +273,19 @@ def diagnose(settings: Settings) -> dict:
         out["attempts"] = [{"error": f"pymssql is not installed: {exc}"}]
         return out
 
-    # Ordered cheapest-explanation-first. `use_database` False drops the
-    # database from the login packet entirely.
+    # Newest protocol first, so the FIRST success is the best available
+    # rather than merely the first that works. TDS 7.0 predates several
+    # data types, so settling for it when 7.2 would connect is a bug that
+    # only shows up later as a truncated or mistyped column.
     matrix = [
         {"encryption": "request", "use_database": True},
         {"encryption": "off", "use_database": True},
-        {"encryption": "require", "use_database": True},
-        {"encryption": "request", "use_database": False},
-        {"encryption": "off", "use_database": False},
+        {"encryption": "off", "use_database": False, "tds_version": "7.4"},
+        {"encryption": "off", "use_database": False, "tds_version": "7.3"},
+        {"encryption": "off", "use_database": False, "tds_version": "7.2"},
+        {"encryption": "off", "use_database": False, "tds_version": "7.1"},
         {"encryption": "off", "use_database": False, "tds_version": "7.0"},
+        {"encryption": "off", "use_database": True, "tds_version": "7.0"},
     ]
 
     attempts: list[dict] = []
@@ -316,12 +353,13 @@ def probe(settings: Settings, sample: int = 20) -> dict:
     }
     steps: dict[str, Any] = result["steps"]
 
+    database = settings.syspro_database
     for name, sql, limit in (
         ("identity", Q_IDENTITY, None),
         ("databases", Q_DATABASES, 100),
-        ("visible_tables", Q_VISIBLE_TABLES, None),
-        ("warehouses", Q_WAREHOUSES, 50),
-        ("catalogue_sample", Q_CATALOGUE, sample),
+        ("visible_tables", q_visible_tables(database), None),
+        ("warehouses", q_warehouses(database), 50),
+        ("catalogue_sample", q_catalogue(database), sample),
     ):
         try:
             rows = client.rows(sql, limit=limit)

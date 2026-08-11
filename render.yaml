@@ -10,16 +10,18 @@ services:
     # on a spin-up. That is the reason it is here.
     #
     # It does NOT give a stable outbound address, which this comment used
-    # to claim. Measured 2026-08-11: a deploy moved the service from
-    # 74.220.48.176 to 74.220.48.172, while a dozen memory-limit restarts
-    # had not moved it at all. A paid plan gives a stable RANGE. Dedicated
-    # outbound IPs are a separate paid add-on and are the only thing that
-    # gives a stable address.
+    # to claim. Measured 2026-08-11: three deploys produced three different
+    # addresses, one per availability zone, while a dozen memory-limit
+    # restarts had not moved it at all.
     #
-    # So Prowalco's firewall allowlist for the Syspro connection breaks on
-    # every deploy, silently, as a timeout (docs/SYSPRO-INTEGRATION.md,
-    # #133). Re-run .github/workflows/egress-ip.yml after ANY deploy, plan
-    # or region change, and tell Prowalco IT the new address.
+    # RESOLVED 2026-08-11: the workspace now has a DEDICATED IP set, which
+    # is what actually pins the address. Prowalco IT allowlists all three
+    # of its addresses, so a placement into any zone still lands inside the
+    # allowlist and deploys no longer break the Syspro connection.
+    #
+    # Do not drop the dedicated IP set without telling Prowalco IT first.
+    # Losing it fails as a timeout, which looks like a network fault and
+    # not like a billing change (docs/SYSPRO-INTEGRATION.md, #133).
     #
     # Memory: 'starter' is 512 MB and the OnKey sync overruns it (#134).
     plan: starter

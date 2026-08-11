@@ -305,11 +305,32 @@ this meets the requirement in full.
 
 ### Which one
 
-The export, unless something other than the parts catalogue needs the live
-connection. $1,200 a year plus a workspace plan upgrade is a lot to pay for
-a list of stock codes that changes rarely, and it buys freshness the picker
-has no use for. The calculus changes the moment a second consumer appears
-that genuinely needs live Syspro; it has not yet.
+The recommendation was the export, on cost. The owner bought a dedicated IP
+set on 2026-08-11, so the live connection is the chosen route and this
+section is history rather than a live decision. The export stays documented
+because it remains the fallback if the connection is ever pulled.
+
+## Dedicated IP set: live and verified, 2026-08-11
+
+The set is provisioned and in use. Verified rather than assumed: six calls
+to `/v1/onkey/egress-ip` returned an address from the set, on a different
+/24 from the shared pool we were on all afternoon. It took effect without a
+redeploy.
+
+**The three addresses are not written here**, for the same reason the
+endpoint is not: this repository is public, and an address that is on
+Prowalco's firewall allowlist in front of a passwordless login is not
+something to publish. The authoritative source is the Render dashboard,
+**Networking > Dedicated IPs**, and Prowalco IT's firewall. Duplicating
+them into a document just creates a copy that goes stale.
+
+What this fixes: deploys no longer move us out of the allowlist. All three
+addresses belong to this workspace, so a placement into any zone still
+lands inside the allowlisted set.
+
+What it does not fix: the login still has no password (#133). The allowlist
+is now a real control rather than a coincidence, but it is still the only
+one.
 
 ### The allowlist cannot be the only control (#134 is separate, see #133)
 

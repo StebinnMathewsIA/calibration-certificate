@@ -18,13 +18,14 @@ import { Redirect, useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import {
+  AllocationManager,
   StockScope,
-  TeamVan,
   VanStock,
+  getAllocationTree,
   getStockScope,
-  getTeamVans,
   getVanStock,
 } from '../../src/api/client';
+import { ManagerTree } from '../../src/components/ManagerTree';
 import { useAuth } from '../../src/auth/AuthContext';
 import { GreetingHeader } from '../../src/components/GreetingHeader';
 import { SyncBanner } from '../../src/components/SyncBanner';
@@ -155,7 +156,7 @@ export default function StockTab() {
   const router = useRouter();
 
   const [scope, setScope] = useState<StockScope | null>(null);
-  const [vans, setVans] = useState<TeamVan[]>([]);
+  const [tree, setTree] = useState<AllocationManager[]>([]);
   const [stock, setStock] = useState<VanStock | null>(null);
   const [query, setQuery] = useState('');
   const [busy, setBusy] = useState(true);
@@ -170,7 +171,7 @@ export default function StockTab() {
         const nextScope = await getStockScope(accessToken);
         setScope(nextScope);
         if (nextScope.mode === 'team' || nextScope.mode === 'all') {
-          setVans(await getTeamVans(accessToken));
+          setTree(await getAllocationTree(accessToken));
         } else {
           setStock(await getVanStock(accessToken, null, q));
         }
@@ -193,24 +194,6 @@ export default function StockTab() {
   );
 
   const isTeam = scope?.mode === 'team' || scope?.mode === 'all';
-
-  /** Vans grouped under their manager, holder ("Unallocated") last. A
-   * single group arrives expanded, because collapsing the only thing on
-   * the screen is a tap tax with no legibility gain. */
-  const groups = useMemo(() => {
-    const byManager = new Map<string, { name: string; vans: TeamVan[] }>();
-    for (const van of vans) {
-      const key = van.managerEmail ?? '';
-      const existing = byManager.get(key);
-      if (existing) existing.vans.push(van);
-      else byManager.set(key, { name: van.managerName ?? key, vans: [van] });
-    }
-    return [...byManager.entries()]
-      .map(([email, g]) => ({ email, ...g }))
-      .sort((a, b) =>
-        a.name === 'Unallocated' ? 1 : b.name === 'Unallocated' ? -1 : a.name.localeCompare(b.name),
-      );
-  }, [vans]);
 
   if (loading) return null;
   if (!identity) return <Redirect href="/" />;
@@ -253,96 +236,36 @@ export default function StockTab() {
             onSearch={() => void load(query)}
             busy={busy}
           />
-        ) : busy && vans.length === 0 ? (
+        ) : busy && tree.length === 0 ? (
           <SectionCard title="Vans">
             <ActivityIndicator color={colors.navy} />
           </SectionCard>
-        ) : vans.length === 0 ? (
+        ) : tree.length === 0 ? (
           <SectionCard title="Vans">
             <Text style={{ color: colors.muted }}>
               {scope?.reason ?? 'No technicians are allocated to you yet'}
             </Text>
           </SectionCard>
         ) : (
-          groups.map((group) => {
-            const expanded = open[group.email] ?? groups.length === 1;
-            return (
-              <SectionCard key={group.email} title="">
-                <Pressable
-                  onPress={() => setOpen((o) => ({ ...o, [group.email]: !expanded }))}
-                  accessibilityRole="button"
-                  accessibilityLabel={`${group.name}, ${group.vans.length} vans`}
-                  accessibilityState={{ expanded }}
-                  style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}
-                >
-                  <Text
-                    style={{
-                      flex: 1,
-                      fontSize: 16,
-                      color: colors.navy,
-                      fontFamily: fonts.bodyMedium,
-                    }}
-                  >
-                    {group.name}
-                  </Text>
-                  <Text style={{ fontSize: 12, color: colors.muted }}>
-                    {group.vans.length} van{group.vans.length === 1 ? '' : 's'}
-                  </Text>
-                  <Chevron open={expanded} />
-                </Pressable>
-                {expanded
-                  ? group.vans.map((van) => (
-                      <Pressable
-                        key={van.staffCode}
-                        onPress={() =>
-                          router.push({
-                            pathname: '/van/[staff]',
-                            params: {
-                              staff: van.staffCode,
-                              name: van.technicianName ?? van.staffCode,
-                            },
-                          })
-                        }
-                        accessibilityRole="button"
-                        accessibilityLabel={`Open stock for ${van.technicianName ?? van.staffCode}`}
-                        style={{
-                          flexDirection: 'row',
-                          alignItems: 'center',
-                          gap: 10,
-                          paddingVertical: 10,
-                          borderTopWidth: 1,
-                          borderTopColor: colors.line,
-                          marginTop: 8,
-                        }}
-                      >
-                        <View style={{ flex: 1 }}>
-                          <Text style={{ fontFamily: fonts.bodyMedium, color: colors.ink }}>
-                            {van.technicianName ?? van.staffCode}
-                          </Text>
-                          <Text style={{ fontSize: 12, color: colors.muted }}>
-                            {van.vanStatus === 'no_van'
-                              ? 'Holds no van stock'
-                              : van.vanDescription ?? van.vanCode ?? 'Van not set'}
-                          </Text>
-                        </View>
-                        <View style={{ alignItems: 'flex-end' }}>
-                          <Text
-                            style={{
-                              fontFamily: fonts.bodyMedium,
-                              fontVariant: ['tabular-nums'],
-                              color: colors.ink,
-                            }}
-                          >
-                            {van.inStock}
-                          </Text>
-                          <Text style={{ fontSize: 11, color: colors.muted }}>in stock</Text>
-                        </View>
-                      </Pressable>
-                    ))
-                  : null}
-              </SectionCard>
-            );
-          })
+          <SectionCard title="Teams">
+            {/* The whole reporting chain, nested (#147). Managers render
+                at their level van or no van, because the hierarchy is
+                structure, not stock; each manager's technicians expand
+                beneath them. */}
+            <ManagerTree
+              managers={tree}
+              showStock
+              onTechnicianPress={(tech) =>
+                router.push({
+                  pathname: '/van/[staff]',
+                  params: {
+                    staff: tech.staffCode,
+                    name: tech.technicianName ?? tech.staffCode,
+                  },
+                })
+              }
+            />
+          </SectionCard>
         )}
       </ScrollView>
     </View>

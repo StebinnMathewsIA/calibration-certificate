@@ -14,6 +14,7 @@ import {
   setRole,
 } from '../src/api/client';
 import { useAuth } from '../src/auth/AuthContext';
+import { ManagerTree } from '../src/components/ManagerTree';
 import { Badge, Button, SectionCard, colors, fonts, styles } from '../src/components/ui';
 
 const inputStyle = {
@@ -141,12 +142,10 @@ export default function AdminScreen() {
         />
       </SectionCard>
 
-      {/* The reporting tree (#146), backed by technician_allocations and
-          manager_hierarchy (#139, #140): the store that scopes stock and
-          teams. The editor this replaces wrote to the OLD view-as
-          allocation store from #77, which scopes view-as only, so it was
-          two stores with one UI pointed at the wrong one. Detail and
-          moves live on the technician page. */}
+      {/* The reporting tree (#146, nested per the owner's reference in
+          #147), backed by technician_allocations and manager_hierarchy:
+          the store that scopes stock and teams. Rendered by the same
+          component as the stock tab, so the two cannot drift apart. */}
       <SectionCard title="Technician allocations">
         <Text style={{ color: colors.muted, fontSize: 12, marginBottom: 6 }}>
           Who reports to whom. Tap a technician for detail, and to move them to another
@@ -159,66 +158,12 @@ export default function AdminScreen() {
             No managers are recorded in the hierarchy yet.
           </Text>
         ) : (
-          tree.map((m) => {
-            const expanded = openManagers[m.email] ?? false;
-            return (
-              <View key={m.email} style={{ borderTopWidth: 1, borderTopColor: colors.line }}>
-                <Pressable
-                  onPress={() => setOpenManagers((o) => ({ ...o, [m.email]: !expanded }))}
-                  accessibilityRole="button"
-                  accessibilityLabel={`${m.name}, ${m.technicians.length} technicians`}
-                  accessibilityState={{ expanded }}
-                  style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 10 }}
-                >
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 15, color: colors.navy, fontFamily: fonts.bodyMedium }}>
-                      {m.name}
-                    </Text>
-                    {m.reportsTo ? (
-                      <Text style={{ fontSize: 11, color: colors.muted }}>
-                        reports to {m.reportsTo}
-                      </Text>
-                    ) : null}
-                  </View>
-                  <Text style={{ fontSize: 12, color: colors.muted }}>
-                    {m.technicians.length}
-                  </Text>
-                  <Text style={{ fontSize: 12, color: colors.muted }}>{expanded ? '▴' : '▾'}</Text>
-                </Pressable>
-                {expanded
-                  ? m.technicians.map((t) => (
-                      <Pressable
-                        key={t.staffCode}
-                        onPress={() =>
-                          router.push({ pathname: '/technician/[staff]', params: { staff: t.staffCode } })
-                        }
-                        accessibilityRole="button"
-                        accessibilityLabel={`Open ${t.technicianName ?? t.staffCode}`}
-                        style={{
-                          paddingVertical: 8,
-                          paddingLeft: 12,
-                          // Former technicians dim rather than vanish: an
-                          // admin is exactly who needs to see them (#141).
-                          opacity: t.rosterStatus === 'former' ? 0.5 : 1,
-                        }}
-                      >
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                          <Text style={{ flex: 1, fontSize: 14, color: colors.ink }}>
-                            {t.technicianName ?? t.staffCode}
-                          </Text>
-                          {t.rosterStatus === 'former' ? <Badge text="Former" tone="warn" /> : null}
-                        </View>
-                        <Text style={{ fontSize: 11, color: colors.muted }}>
-                          {t.vanStatus === 'no_van'
-                            ? 'Holds no van stock'
-                            : t.vanDescription ?? t.vanCode ?? 'Van not set'}
-                        </Text>
-                      </Pressable>
-                    ))
-                  : null}
-              </View>
-            );
-          })
+          <ManagerTree
+            managers={tree}
+            onTechnicianPress={(t) =>
+              router.push({ pathname: '/technician/[staff]', params: { staff: t.staffCode } })
+            }
+          />
         )}
       </SectionCard>
     </ScrollView>

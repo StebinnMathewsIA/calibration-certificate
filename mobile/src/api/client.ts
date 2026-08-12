@@ -457,6 +457,8 @@ export interface AllocationManager {
     vanCode: string | null;
     vanDescription: string | null;
     vanStatus: 'verified' | 'no_van' | 'unverified';
+    inStock: number;
+    carried: number;
   }[];
 }
 

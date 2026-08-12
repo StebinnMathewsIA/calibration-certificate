@@ -835,3 +835,22 @@ matter to the stock figures and neither is safe to guess at.
 - [ ] As a manager (not admin): detail shows, no move control, and calling
       the move RPC directly is refused
 - [ ] The old allocation editor is gone from admin
+
+## Reporting tree in the stock tab and admin (#147)
+
+The edges are corrected from the technician master list: the five branch
+managers under the mid-level manager, who reports to the senior pair. The
+master list itself carries exactly this (five rows naming him as manager,
+one row naming his own).
+
+- [ ] The stock tab team view shows the nested tree: senior at top, the
+      mid-level manager beneath, the five branch managers under him,
+      technicians expanding under each
+- [ ] Managers appear at their level whether or not they hold a van
+- [ ] The role line reads "Administrator" with nothing after it
+- [ ] Tapping a technician in the stock tab opens their van's stock
+- [ ] The admin allocation view shows the same tree, and tapping a
+      technician opens their detail page
+- [ ] The mid-level manager signs in and sees all five branches, 78
+      technicians
+- [ ] A branch manager signs in and sees only their own technicians

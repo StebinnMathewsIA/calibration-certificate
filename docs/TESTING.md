@@ -863,3 +863,14 @@ one row naming his own).
       and read the "Last app error" card: that is the diagnosis
 - [ ] Deliberately break nothing: the "Last app error" card only appears
       after an error has been recorded
+
+## Roster propagation (#149)
+
+- [ ] The morning after next: `select jobname, count(*) from
+      cron.job_run_details d join cron.job j on j.jobid=d.jobid where
+      jobname like 'onkey-%fetch' or jobname='onkey-roster-refresh' group
+      by 1` shows all three fired overnight
+- [ ] A deactivation made in OnKey during the day is visible in the app
+      the next morning with nobody pressing anything
+- [ ] `roster_status_audit` carries one row per flip, and nothing changes
+      roster_status without appearing there

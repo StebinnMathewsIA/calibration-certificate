@@ -26,6 +26,7 @@ import {
   getVanStock,
 } from '../../src/api/client';
 import { ManagerTree } from '../../src/components/ManagerTree';
+import { TreeBoundary } from '../../src/components/TreeBoundary';
 import { useAuth } from '../../src/auth/AuthContext';
 import { GreetingHeader } from '../../src/components/GreetingHeader';
 import { SyncBanner } from '../../src/components/SyncBanner';
@@ -252,6 +253,7 @@ export default function StockTab() {
                 at their level van or no van, because the hierarchy is
                 structure, not stock; each manager's technicians expand
                 beneath them. */}
+            <TreeBoundary>
             <ManagerTree
               managers={tree}
               showStock
@@ -265,6 +267,7 @@ export default function StockTab() {
                 })
               }
             />
+            </TreeBoundary>
           </SectionCard>
         )}
       </ScrollView>

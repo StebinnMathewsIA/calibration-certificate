@@ -15,6 +15,8 @@ import {
 } from '../src/api/client';
 import { useAuth } from '../src/auth/AuthContext';
 import { ManagerTree } from '../src/components/ManagerTree';
+import { TreeBoundary } from '../src/components/TreeBoundary';
+import { CrashRecord, clearCrash, lastCrash } from '../src/diag/crashJournal';
 import { Badge, Button, SectionCard, colors, fonts, styles } from '../src/components/ui';
 
 const inputStyle = {
@@ -37,6 +39,11 @@ export default function AdminScreen() {
   const [newEmail, setNewEmail] = useState('');
   const [newRole, setNewRole] = useState<'manager' | 'admin'>('manager');
   const [busy, setBusy] = useState(false);
+  const [crash, setCrash] = useState<CrashRecord | null>(null);
+
+  useEffect(() => {
+    setCrash(lastCrash());
+  }, []);
 
   useEffect(() => {
     listRoles(accessToken).then(setRoles).catch(() => {});
@@ -66,6 +73,29 @@ export default function AdminScreen() {
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={{ paddingBottom: 40 }}>
+      {crash ? (
+        <SectionCard title="Last app error">
+          <Text style={{ color: colors.red, fontSize: 12 }}>
+            {crash.at.slice(0, 16).replace('T', ' ')}
+            {crash.isFatal ? ' (fatal)' : ''}
+          </Text>
+          <Text style={{ color: colors.ink, fontSize: 12, marginTop: 4 }}>{crash.message}</Text>
+          {crash.stack ? (
+            <Text style={{ color: colors.muted, fontSize: 10, marginTop: 4 }} numberOfLines={8}>
+              {crash.stack}
+            </Text>
+          ) : null}
+          <Button
+            title="Clear"
+            kind="secondary"
+            onPress={() => {
+              clearCrash();
+              setCrash(null);
+            }}
+          />
+        </SectionCard>
+      ) : null}
+
       <SectionCard title="Roles">
         <Text style={{ color: colors.muted, fontSize: 12, marginBottom: 6 }}>
           Managers can view-as their allocated technicians and search the certificate archive.
@@ -158,12 +188,14 @@ export default function AdminScreen() {
             No managers are recorded in the hierarchy yet.
           </Text>
         ) : (
+          <TreeBoundary>
           <ManagerTree
             managers={tree}
             onTechnicianPress={(t) =>
               router.push({ pathname: '/technician/[staff]', params: { staff: t.staffCode } })
             }
           />
+          </TreeBoundary>
         )}
       </SectionCard>
     </ScrollView>

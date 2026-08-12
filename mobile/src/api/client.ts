@@ -481,7 +481,7 @@ export interface TechnicianDetail {
 }
 
 export async function getAllocationTree(token: string | null): Promise<AllocationManager[]> {
-  const out = await fetchThrough('alloc:tree', () =>
+  const out = await fetchThrough('alloc:tree:v2', () =>
     rpc<{ managers: AllocationManager[] }>('app_allocation_tree', token),
   );
   return out.managers;

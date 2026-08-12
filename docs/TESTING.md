@@ -854,3 +854,12 @@ one row naming his own).
 - [ ] The mid-level manager signs in and sees all five branches, 78
       technicians
 - [ ] A branch manager signs in and sees only their own technicians
+
+## Dead bottom navigation (#148)
+
+- [ ] Force-quit the app and reopen it TWICE (a downloaded update applies
+      on the second launch), then confirm the bottom tabs respond
+- [ ] If navigation dies again, note which tap killed it, then open Admin
+      and read the "Last app error" card: that is the diagnosis
+- [ ] Deliberately break nothing: the "Last app error" card only appears
+      after an error has been recorded

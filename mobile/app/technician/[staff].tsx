@@ -75,7 +75,7 @@ export default function TechnicianDetailScreen() {
                 // The stock tab and the tree both cache their scope, and
                 // an allocation that moved is exactly what those caches
                 // are now wrong about.
-                dropCache('alloc:tree');
+                dropCache('alloc:tree:v2');
                 dropCache('stock:vans');
                 dropCache('stock:scope');
               })

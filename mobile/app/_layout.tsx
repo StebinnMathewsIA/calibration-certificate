@@ -13,6 +13,12 @@ import { useSignQueue } from '../src/queue/useSignQueue';
 import { useSync } from '../src/sync/useSync';
 import { HeaderBackButton } from '../src/components/HeaderBackButton';
 import { colors, fonts } from '../src/components/ui';
+import { installCrashJournal } from '../src/diag/crashJournal';
+
+// Fatal JS errors leave a record on the device (#148). Installed at module
+// scope, before anything renders, so a crash during the first frame is
+// still caught.
+installCrashJournal();
 
 function QueueRunner() {
   useSignQueue();

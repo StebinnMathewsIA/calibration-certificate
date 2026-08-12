@@ -68,6 +68,8 @@ export default function RootLayout() {
         <Stack.Screen name="verification/[id]/sign" options={{ title: 'Review & sign' }} />
         <Stack.Screen name="verification/[id]/queued" options={{ title: 'Signing status' }} />
         <Stack.Screen name="profile" options={{ title: 'My profile' }} />
+        <Stack.Screen name="van/[staff]" options={{ title: 'Van stock' }} />
+        <Stack.Screen name="technician/[staff]" options={{ title: 'Technician' }} />
         <Stack.Screen
           name="signature"
           // Locked: no swipe-to-dismiss and no back button, so a downward

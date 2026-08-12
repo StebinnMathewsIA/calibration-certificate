@@ -3,18 +3,18 @@
  * technicians to managers. Every rule is enforced server-side (admin-only
  * SQL guards, last-admin protection) — this screen is just the hands.
  */
+import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { Alert, ScrollView, Text, TextInput, View } from 'react-native';
+import { Alert, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import {
+  AllocationManager,
   RoleEntry,
-  listAllocations,
+  getAllocationTree,
   listRoles,
-  listTechnicians,
-  setAllocation,
   setRole,
 } from '../src/api/client';
 import { useAuth } from '../src/auth/AuthContext';
-import { Badge, Button, SectionCard, colors, styles } from '../src/components/ui';
+import { Badge, Button, SectionCard, colors, fonts, styles } from '../src/components/ui';
 
 const inputStyle = {
   borderWidth: 1,
@@ -29,23 +29,19 @@ const inputStyle = {
 
 export default function AdminScreen() {
   const { accessToken } = useAuth();
+  const router = useRouter();
   const [roles, setRoles] = useState<RoleEntry[] | null>(null);
-  const [allocations, setAllocations] = useState<Record<string, string[]>>({});
-  const [techs, setTechs] = useState<{ staffCode: string; name: string | null }[]>([]);
+  const [tree, setTree] = useState<AllocationManager[] | null>(null);
+  const [openManagers, setOpenManagers] = useState<Record<string, boolean>>({});
   const [newEmail, setNewEmail] = useState('');
   const [newRole, setNewRole] = useState<'manager' | 'admin'>('manager');
-  const [allocManager, setAllocManager] = useState<string | null>(null);
-  const [allocFilter, setAllocFilter] = useState('');
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     listRoles(accessToken).then(setRoles).catch(() => {});
-    listAllocations(accessToken)
-      .then((a) => setAllocations(a ?? {}))
-      .catch(() => {});
-    listTechnicians(accessToken)
-      .then((l) => setTechs(l ?? []))
-      .catch(() => {});
+    getAllocationTree(accessToken)
+      .then(setTree)
+      .catch(() => setTree([]));
   }, [accessToken]);
 
   const run = async (fn: () => Promise<void>) => {
@@ -66,8 +62,6 @@ export default function AdminScreen() {
       </Text>
     );
   }
-
-  const allocated = allocManager ? (allocations[allocManager] ?? []) : [];
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={{ paddingBottom: 40 }}>
@@ -147,74 +141,85 @@ export default function AdminScreen() {
         />
       </SectionCard>
 
+      {/* The reporting tree (#146), backed by technician_allocations and
+          manager_hierarchy (#139, #140): the store that scopes stock and
+          teams. The editor this replaces wrote to the OLD view-as
+          allocation store from #77, which scopes view-as only, so it was
+          two stores with one UI pointed at the wrong one. Detail and
+          moves live on the technician page. */}
       <SectionCard title="Technician allocations">
         <Text style={{ color: colors.muted, fontSize: 12, marginBottom: 6 }}>
-          An allocated manager's view-as is limited to their technicians; a manager with no
-          allocation may view anyone.
+          Who reports to whom. Tap a technician for detail, and to move them to another
+          manager.
         </Text>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-          {roles.map((r) => (
-            <Button
-              key={r.email}
-              title={`${r.email.split('@')[0]} (${(allocations[r.email] ?? []).length})`}
-              kind={allocManager === r.email ? 'primary' : 'secondary'}
-              onPress={() => setAllocManager(allocManager === r.email ? null : r.email)}
-            />
-          ))}
-        </View>
-        {allocManager ? (
-          <View style={{ marginTop: 8 }}>
-            <TextInput
-              style={inputStyle}
-              value={allocFilter}
-              onChangeText={setAllocFilter}
-              placeholder="Search technicians"
-            />
-            {techs
-              .filter((t) => {
-                const q = allocFilter.trim().toLowerCase();
-                if (!q) return allocated.includes(t.staffCode);
-                return (
-                  (t.name ?? '').toLowerCase().includes(q) ||
-                  t.staffCode.toLowerCase().includes(q)
-                );
-              })
-              .slice(0, 15)
-              .map((t) => {
-                const on = allocated.includes(t.staffCode);
-                return (
-                  <Text
-                    key={t.staffCode}
-                    onPress={() =>
-                      busy
-                        ? undefined
-                        : void run(async () =>
-                            setAllocations(
-                              await setAllocation(accessToken, allocManager, t.staffCode, !on),
-                            ),
-                          )
-                    }
-                    style={{
-                      paddingVertical: 8,
-                      borderTopWidth: 1,
-                      borderColor: colors.line,
-                      color: on ? colors.greenText : colors.ink,
-                      fontSize: 14,
-                    }}
-                  >
-                    {on ? '✓ ' : '○ '}
-                    {t.name ?? t.staffCode}{' '}
-                    <Text style={{ color: colors.muted, fontSize: 12 }}>({t.staffCode})</Text>
+        {tree === null ? (
+          <Text style={{ color: colors.muted, fontSize: 12 }}>Loading…</Text>
+        ) : tree.length === 0 ? (
+          <Text style={{ color: colors.muted, fontSize: 12 }}>
+            No managers are recorded in the hierarchy yet.
+          </Text>
+        ) : (
+          tree.map((m) => {
+            const expanded = openManagers[m.email] ?? false;
+            return (
+              <View key={m.email} style={{ borderTopWidth: 1, borderTopColor: colors.line }}>
+                <Pressable
+                  onPress={() => setOpenManagers((o) => ({ ...o, [m.email]: !expanded }))}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${m.name}, ${m.technicians.length} technicians`}
+                  accessibilityState={{ expanded }}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 10 }}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 15, color: colors.navy, fontFamily: fonts.bodyMedium }}>
+                      {m.name}
+                    </Text>
+                    {m.reportsTo ? (
+                      <Text style={{ fontSize: 11, color: colors.muted }}>
+                        reports to {m.reportsTo}
+                      </Text>
+                    ) : null}
+                  </View>
+                  <Text style={{ fontSize: 12, color: colors.muted }}>
+                    {m.technicians.length}
                   </Text>
-                );
-              })}
-            {!allocFilter.trim() && allocated.length === 0 ? (
-              <Text style={{ color: colors.muted, fontSize: 12, marginTop: 6 }}>
-                No technicians allocated — search above to add some.
-              </Text>
-            ) : null}
-          </View>
-        ) : null}
+                  <Text style={{ fontSize: 12, color: colors.muted }}>{expanded ? '▴' : '▾'}</Text>
+                </Pressable>
+                {expanded
+                  ? m.technicians.map((t) => (
+                      <Pressable
+                        key={t.staffCode}
+                        onPress={() =>
+                          router.push({ pathname: '/technician/[staff]', params: { staff: t.staffCode } })
+                        }
+                        accessibilityRole="button"
+                        accessibilityLabel={`Open ${t.technicianName ?? t.staffCode}`}
+                        style={{
+                          paddingVertical: 8,
+                          paddingLeft: 12,
+                          // Former technicians dim rather than vanish: an
+                          // admin is exactly who needs to see them (#141).
+                          opacity: t.rosterStatus === 'former' ? 0.5 : 1,
+                        }}
+                      >
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                          <Text style={{ flex: 1, fontSize: 14, color: colors.ink }}>
+                            {t.technicianName ?? t.staffCode}
+                          </Text>
+                          {t.rosterStatus === 'former' ? <Badge text="Former" tone="warn" /> : null}
+                        </View>
+                        <Text style={{ fontSize: 11, color: colors.muted }}>
+                          {t.vanStatus === 'no_van'
+                            ? 'Holds no van stock'
+                            : t.vanDescription ?? t.vanCode ?? 'Van not set'}
+                        </Text>
+                      </Pressable>
+                    ))
+                  : null}
+              </View>
+            );
+          })
+        )}
       </SectionCard>
     </ScrollView>
   );

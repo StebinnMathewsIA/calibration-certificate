@@ -428,15 +428,89 @@ export interface StockScope {
   lastLoadedAt: string | null;
 }
 
-/** One technician's van, as a manager sees it in the stock tab (#138). */
+/** One technician's van, as a manager sees it in the stock tab (#138).
+ * Carries its manager (#145) so the tab can group by team without a
+ * second call; the unallocated holder arrives named "Unallocated". */
 export interface TeamVan {
   staffCode: string;
   technicianName: string | null;
   vanCode: string | null;
   vanDescription: string | null;
   vanStatus: 'verified' | 'no_van' | 'unverified';
+  managerEmail: string;
+  managerName: string;
   inStock: number;
   carried: number;
+}
+
+/** A node of the reporting tree (#146). Flat with a parent pointer,
+ * because collapsible sections group better from a flat list than from
+ * nested JSON. */
+export interface AllocationManager {
+  email: string;
+  name: string;
+  reportsTo: string | null;
+  technicians: {
+    staffCode: string;
+    technicianName: string | null;
+    rosterStatus: 'current' | 'former';
+    vanCode: string | null;
+    vanDescription: string | null;
+    vanStatus: 'verified' | 'no_van' | 'unverified';
+  }[];
+}
+
+export interface TechnicianDetail {
+  allowed: boolean;
+  staffCode?: string;
+  technicianName?: string | null;
+  email?: string | null;
+  rosterStatus?: 'current' | 'former';
+  managerEmail?: string;
+  managerName?: string;
+  allocationSource?: string;
+  allocationUpdatedAt?: string | null;
+  allocationUpdatedBy?: string | null;
+  vanCode?: string | null;
+  vanDescription?: string | null;
+  vanStatus?: 'verified' | 'no_van' | 'unverified';
+  inStock?: number | null;
+  carried?: number | null;
+}
+
+export async function getAllocationTree(token: string | null): Promise<AllocationManager[]> {
+  const out = await fetchThrough('alloc:tree', () =>
+    rpc<{ managers: AllocationManager[] }>('app_allocation_tree', token),
+  );
+  return out.managers;
+}
+
+export async function getTechnicianDetail(
+  token: string | null,
+  staffCode: string,
+): Promise<TechnicianDetail> {
+  return await rpc<TechnicianDetail>('app_technician_detail', token, {
+    p_staff_code: staffCode,
+  });
+}
+
+export async function getAllocationTargets(
+  token: string | null,
+): Promise<{ email: string; name: string }[]> {
+  return await rpc<{ email: string; name: string }[]>('app_allocation_targets', token);
+}
+
+/** Admin only, and the RPC enforces that itself: the screen hiding the
+ * control is presentation, the server is the rule. */
+export async function moveAllocation(
+  token: string | null,
+  staffCode: string,
+  managerEmail: string,
+): Promise<TechnicianDetail> {
+  return await rpc<TechnicianDetail>('app_allocation_move', token, {
+    p_staff_code: staffCode,
+    p_manager_email: managerEmail,
+  });
 }
 
 export interface VanStockLine {

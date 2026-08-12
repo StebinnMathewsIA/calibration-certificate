@@ -812,3 +812,26 @@ matter to the stock figures and neither is safe to guess at.
 - [ ] Paused for a blocking reason: no lifecycle buttons, the explanation
       shows instead
 - [ ] Resume does not open the job card
+
+## Stock tab reshape (#145)
+
+- [ ] The role scope shows bottom-left under the header, the Syspro
+      freshness bottom-right, neither inside a card
+- [ ] As admin: one collapsible section per manager plus Unallocated,
+      counts correct, collapsed by default
+- [ ] Tapping a van opens its own screen with search and quantities
+- [ ] Opening /van with another technician's staff code as a plain
+      technician shows the refusal, not an empty van
+- [ ] A technician's own view is unchanged: their van inline with search
+
+## Allocation hierarchy and technician detail (#146)
+
+- [ ] Admin sees the tree in the admin screen, holder as its own group,
+      former technicians dimmed with a Former badge
+- [ ] Tapping a technician opens the detail page: roster status, van,
+      stock counts, manager, and when the allocation last changed
+- [ ] As admin: Move to another manager works, and the stock tab groups
+      reflect it immediately after the move
+- [ ] As a manager (not admin): detail shows, no move control, and calling
+      the move RPC directly is refused
+- [ ] The old allocation editor is gone from admin

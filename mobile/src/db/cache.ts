@@ -64,3 +64,11 @@ export async function fetchThrough<T>(
   writeCache(key, fresh);
   return fresh;
 }
+
+/** Remove a cached key outright, for when an edit has just made it wrong
+ * (an allocation move changes what the stock tab and the tree should
+ * show). Dropping beats overwriting here because the next reader takes
+ * the fresh network path instead of a stale copy. */
+export function dropCache(key: string): void {
+  db.runSync('DELETE FROM api_cache WHERE cache_key = ?', [key]);
+}

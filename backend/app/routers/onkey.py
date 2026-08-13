@@ -41,6 +41,12 @@ _sync_state: dict = {"running": False, "last": None}
 # exactly the staleness the fast lane exists to remove.
 _recent_lock = threading.Lock()
 _recent_state: dict = {"running": False, "last": None}
+# The nightly roster sync (#149): both FieldOps reports plus the refresh
+# in ONE background job, because three separate pg_cron slots meant three
+# chances to lose the worker-slot lottery, and both fetches lost it on
+# their first night.
+_roster_lock = threading.Lock()
+_roster_state: dict = {"running": False, "last": None}
 
 
 def _record_run(
@@ -163,6 +169,53 @@ def _run_backfill_background(settings: Settings) -> None:
     _run_sync_background(settings, "backfill", _backfill_state, _backfill_state)
 
 
+def _run_roster_background(settings: Settings) -> None:
+    """Fetch FIELDOPS - USERS and FIELDOPS - STAFF, then set the roster
+    from them (#141, #149). One OnKey session for both fetches, one run
+    record, and the session lease released on the way out like every
+    other sync mode."""
+    db = SessionLocal()
+    started_at = datetime.now(timezone.utc)
+    try:
+        from ..workorders.onkey_sync import OnKeySoapClient
+
+        counts: dict = {}
+        with OnKeySoapClient(settings) as client:
+            for code in ("FIELDOPS - USERS", "FIELDOPS - STAFF"):
+                rows = _fetch_report_rows(client, code, None, 5000, {})
+                counts[code] = {"fetched": len(rows), "stored": _store_report_rows(db, code, rows)}
+        refresh = db.execute(text("SELECT onkey_roster_refresh()")).scalar()
+        db.commit()
+        _roster_state["last"] = {
+            "ok": True,
+            "reports": counts,
+            "refresh": refresh,
+            "finishedAt": datetime.now(timezone.utc).isoformat(),
+        }
+        _record_run(
+            "roster",
+            "succeeded",
+            started_at,
+            rows_fetched=sum(c["fetched"] for c in counts.values()),
+            detail={"reports": counts, "refresh": refresh},
+        )
+    except Exception as exc:  # noqa: BLE001 — reported via /status and the run record
+        message = f"{type(exc).__name__}: {str(exc)[:500]}"
+        _roster_state["last"] = {
+            "ok": False,
+            "error": message,
+            "finishedAt": datetime.now(timezone.utc).isoformat(),
+        }
+        _record_run("roster", "failed", started_at, error=message)
+    finally:
+        try:
+            _release_lease("roster")
+        except Exception:  # noqa: BLE001 — the expiry is the safety net
+            pass
+        db.close()
+        _roster_state["running"] = False
+
+
 def _require_sync_token(authorization: str | None, settings: Settings) -> None:
     if not settings.onkey_sync_token:
         raise HTTPException(status_code=403, detail="OnKey sync is not enabled (ONKEY_SYNC_TOKEN unset)")
@@ -173,12 +226,27 @@ def _require_sync_token(authorization: str | None, settings: Settings) -> None:
 
 @router.post("/sync")
 def sync(
-    mode: str = Query(default="incremental", pattern="^(recent|incremental|backfill|derive)$"),
+    mode: str = Query(default="incremental", pattern="^(recent|incremental|backfill|derive|roster)$"),
     authorization: str | None = Header(default=None),
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> dict:
     _require_sync_token(authorization, settings)
+
+    if mode == "roster":
+        with _roster_lock:
+            if _roster_state["running"]:
+                return {"mode": "roster", "accepted": False, "reason": "a roster sync is already running"}
+            _roster_state["running"] = True
+        threading.Thread(
+            target=_run_roster_background, args=(settings,), daemon=True, name="onkey-roster"
+        ).start()
+        return {
+            "mode": "roster",
+            "accepted": True,
+            "note": "running in background — poll /v1/onkey/status",
+            "last": _roster_state["last"],
+        }
 
     if mode == "backfill":
         with _backfill_lock:
@@ -282,6 +350,56 @@ class ReportProbe(BaseModel):
     parameters: dict[str, str] = Field(default_factory=dict)
 
 
+def _fetch_report_rows(client, report_code: str, data_set_name: str | None,
+                       max_records: int, parameters: dict) -> list[dict]:
+    """Run an Analyser export and parse its rows. Raises RuntimeError with
+    a readable message on every failure mode, because the caller may be a
+    background thread with nobody watching an HTTP response."""
+    parameter_type = client._export_client.get_type("ns0:ExportQueryParameter")  # noqa: SLF001
+    parameter_array = client._export_client.get_type("ns0:ArrayOfExportQueryParameter")  # noqa: SLF001
+    try:
+        response = client._export_service.ExportData(  # noqa: SLF001
+            _soapheaders={"SessionId": client._session_id},  # noqa: SLF001
+            ReportCode=report_code,
+            DataSetName=data_set_name or report_code,
+            MaxRecordCount=max_records,
+            Parameters=parameter_array(
+                [parameter_type(Name=k, Value=v) for k, v in parameters.items()]
+            ),
+        )
+    except Exception as exc:
+        raise RuntimeError(f"OnKey export raised {type(exc).__name__}: {str(exc)[:400]}") from exc
+    if getattr(response, "Errors", None):
+        raise RuntimeError(f"OnKey export failed: {response.Errors}")
+    data = getattr(getattr(response, "DataSet", None), "Data", None)
+    if not data:
+        raise RuntimeError(
+            "OnKey export returned no DataSet.Data. Check the report's DataSetName "
+            "matches the report code and that Is For Export is ticked."
+        )
+    from ..workorders.onkey_sync import parse_export_xml
+
+    return parse_export_xml(data)
+
+
+def _store_report_rows(db: Session, report_code: str, rows: list[dict]) -> int:
+    from ..workorders.onkey_sync import row_content_hash
+
+    stored = 0
+    for row in rows:
+        result = db.execute(
+            text(
+                "INSERT INTO onkey_report_rows (report_code, row_hash, data, last_seen_at) "
+                "VALUES (:code, :h, cast(:data as jsonb), now()) "
+                "ON CONFLICT (report_code, row_hash) DO UPDATE SET last_seen_at = now()"
+            ),
+            {"code": report_code, "h": row_content_hash(row), "data": json.dumps(row, default=str)},
+        )
+        stored += result.rowcount or 0
+    db.commit()
+    return stored
+
+
 @router.post("/probe-report")
 def probe_report(
     body: ReportProbe,
@@ -296,59 +414,17 @@ def probe_report(
     onkey_report_rows, which is service-role only."""
     _require_sync_token(authorization, settings)
 
-    from ..workorders.onkey_sync import OnKeySoapClient, parse_export_xml, row_content_hash
+    from ..workorders.onkey_sync import OnKeySoapClient
 
     with OnKeySoapClient(settings) as client:
-        parameter_type = client._export_client.get_type("ns0:ExportQueryParameter")  # noqa: SLF001
-        parameter_array = client._export_client.get_type("ns0:ArrayOfExportQueryParameter")  # noqa: SLF001
         try:
-            response = client._export_service.ExportData(  # noqa: SLF001
-                _soapheaders={"SessionId": client._session_id},  # noqa: SLF001
-                ReportCode=body.reportCode,
-                DataSetName=body.dataSetName or body.reportCode,
-                MaxRecordCount=body.maxRecords,
-                Parameters=parameter_array(
-                    [parameter_type(Name=k, Value=v) for k, v in body.parameters.items()]
-                ),
+            rows = _fetch_report_rows(
+                client, body.reportCode, body.dataSetName, body.maxRecords, body.parameters
             )
-        except Exception as exc:  # surfaced so a bad report is diagnosable from the probe
-            raise HTTPException(
-                status_code=502,
-                detail=f"OnKey export raised {type(exc).__name__}: {str(exc)[:400]}",
-            ) from exc
-        if getattr(response, "Errors", None):
-            raise HTTPException(status_code=502, detail=f"OnKey export failed: {response.Errors}")
-        data = getattr(getattr(response, "DataSet", None), "Data", None)
-        if not data:
-            raise HTTPException(
-                status_code=502,
-                detail="OnKey export returned no DataSet.Data. Check the report's DataSetName "
-                "matches the report code and that Is For Export is ticked.",
-            )
-        try:
-            rows = parse_export_xml(data)
-        except Exception as exc:
-            raise HTTPException(
-                status_code=502,
-                detail=f"Could not parse the export XML: {type(exc).__name__}: {str(exc)[:300]}",
-            ) from exc
+        except RuntimeError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
 
-    inserted = 0
-    for row in rows:
-        result = db.execute(
-            text(
-                "INSERT INTO onkey_report_rows (report_code, row_hash, data, last_seen_at) "
-                "VALUES (:code, :h, cast(:data as jsonb), now()) "
-                "ON CONFLICT (report_code, row_hash) DO UPDATE SET last_seen_at = now()"
-            ),
-            {
-                "code": body.reportCode,
-                "h": row_content_hash(row),
-                "data": json.dumps(row, default=str),
-            },
-        )
-        inserted += result.rowcount or 0
-    db.commit()
+    inserted = _store_report_rows(db, body.reportCode, rows)
 
     columns: set[str] = set()
     for row in rows:

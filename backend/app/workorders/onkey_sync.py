@@ -15,6 +15,7 @@ re-pulling a window is a no-op for unchanged rows, so a 5-minute incremental
 poll writes only the delta the WOE001 interface can express.
 """
 import hashlib
+import io
 import json
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
@@ -44,11 +45,33 @@ _SPLIT_LEVELS = {"month": (31, "week"), "week": (7, "day"), "day": (1, None)}
 
 
 def parse_export_xml(xml_data: str) -> list[dict]:
-    """Dataset XML -> list of row dicts (tag -> text), all columns kept."""
-    root = ET.fromstring(xml_data)
+    """Dataset XML -> list of row dicts (tag -> text), all columns kept.
+
+    Streamed with iterparse rather than ET.fromstring (#134). This parser
+    runs every two minutes on the recent sync, and building the full DOM
+    held the raw XML string AND a tree several times its size at the same
+    moment, on an instance with little headroom: the repeated peak is what
+    kept tripping Render's memory limit. iterparse walks the document and
+    frees each record as soon as its dict is taken, so the peak is the
+    string plus one record."""
     rows: list[dict] = []
-    for record in root:
-        rows.append({fld.tag: fld.text for fld in record})
+    depth = 0
+    fields: dict | None = None
+    for event, elem in ET.iterparse(io.StringIO(xml_data), events=("start", "end")):
+        if event == "start":
+            depth += 1
+            if depth == 2:
+                fields = {}
+        else:
+            depth -= 1
+            if depth == 2 and fields is not None:
+                # A field of the current record closed.
+                fields[elem.tag] = elem.text
+            elif depth == 1 and fields is not None:
+                # The record itself closed: take the dict, free the tree.
+                rows.append(fields)
+                fields = None
+                elem.clear()
     return rows
 
 

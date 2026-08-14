@@ -147,7 +147,7 @@ _COLUMNS = (
 _WRITE_CHUNK = 1000
 
 
-def _upsert_many(db: Session, rows: list[dict]) -> int:
+def _upsert_many(db: Session, rows: list[dict], skip_unchanged: bool = False) -> int:
     """One multi-row INSERT per chunk, rather than one statement per row.
 
     This is the difference between a load that finishes and one that does
@@ -158,11 +158,34 @@ def _upsert_many(db: Session, rows: list[dict]) -> int:
 
     Rows are deduplicated on the conflict key first, because a single
     statement cannot touch the same row twice: Postgres rejects the whole
-    batch with "cannot affect row a second time"."""
+    batch with "cannot affect row a second time".
+
+    skip_unchanged (#134): Syspro's own overnight batch work bumps EVERY
+    row's rowversion around three times a night, so the incremental load
+    legitimately sees the whole table and then rewrote all 37,000-odd
+    covered rows with values identical to what Postgres already held.
+    With the guard, identical rows are left untouched, so the nightly
+    passes write only real changes. FULL loads must NOT skip: the prune
+    deletes rows whose last_seen_at predates the load, so a full pass has
+    to stamp every row it saw, changed or not. In skip mode the return
+    value counts rows actually written, which is what rows_written should
+    have meant all along."""
     unique: dict[tuple, dict] = {}
     for row in rows:
         unique[(row["company"], row["stock_code"], row["warehouse"])] = row
     batch = list(unique.values())
+
+    guard = (
+        """
+                 WHERE (syspro_stock.description, syspro_stock.unit,
+                        syspro_stock.quantity_on_hand, syspro_stock.unit_cost)
+                       IS DISTINCT FROM
+                       (excluded.description, excluded.unit,
+                        excluded.quantity_on_hand, excluded.unit_cost)
+        """
+        if skip_unchanged
+        else ""
+    )
 
     written = 0
     for start in range(0, len(batch), _WRITE_CHUNK):
@@ -175,7 +198,7 @@ def _upsert_many(db: Session, rows: list[dict]) -> int:
         for index, row in enumerate(part):
             for column in _COLUMNS:
                 params[f"{column}_{index}"] = row[column]
-        db.execute(
+        result = db.execute(
             text(
                 f"""
                 INSERT INTO syspro_stock
@@ -188,11 +211,16 @@ def _upsert_many(db: Session, rows: list[dict]) -> int:
                        quantity_on_hand = excluded.quantity_on_hand,
                        unit_cost = excluded.unit_cost,
                        last_seen_at = now()
+                {guard}
                 """
             ),
             params,
         )
-        written += len(part)
+        if skip_unchanged:
+            rowcount = getattr(result, "rowcount", None)
+            written += rowcount if rowcount is not None and rowcount >= 0 else len(part)
+        else:
+            written += len(part)
     return written
 
 
@@ -339,7 +367,7 @@ def load_stock(db: Session, settings: Settings, mode: str = "full") -> dict:
                 )
 
             if batch:
-                written += _upsert_many(db, batch)
+                written += _upsert_many(db, batch, skip_unchanged=(mode == "incremental"))
                 db.commit()
 
             if seen > MAX_ROWS:

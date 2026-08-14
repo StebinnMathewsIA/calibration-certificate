@@ -197,6 +197,45 @@ def test_the_upsert_deduplicates_within_a_batch():
     assert "stock_code_1" not in captured[0]
 
 
+def test_incremental_upsert_skips_identical_rows(sample_row=None):
+    """Syspro's overnight batch bumps every rowversion, so the incremental
+    sees the whole table (#134). The skip guard leaves identical rows
+    untouched and reports only rows actually written, via rowcount."""
+    from decimal import Decimal
+
+    from app.syspro.ingest import _upsert_many
+
+    statements = []
+
+    class FakeResult:
+        rowcount = 0  # Postgres says nothing changed
+
+    class FakeDb:
+        def execute(self, statement, params):
+            statements.append(str(statement))
+            return FakeResult()
+
+    row = {
+        "company": "SysproCompanyRSA",
+        "stock_code": "100-058",
+        "warehouse": "AA",
+        "description": "x",
+        "unit": "EA",
+        "quantity_on_hand": Decimal("1"),
+        "unit_cost": Decimal("2"),
+    }
+    written = _upsert_many(FakeDb(), [dict(row)], skip_unchanged=True)
+    assert written == 0
+    assert "IS DISTINCT FROM" in statements[0]
+
+    # A full load must stamp every row it saw, changed or not: the prune
+    # deletes anything last_seen_at left behind.
+    statements.clear()
+    written = _upsert_many(FakeDb(), [dict(row)], skip_unchanged=False)
+    assert written == 1
+    assert "IS DISTINCT FROM" not in statements[0]
+
+
 # --- incremental loads (#142) ---
 
 

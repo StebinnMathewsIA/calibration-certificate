@@ -368,6 +368,15 @@ export interface JobCardDocument {
   lines: { itemCode: string; description: string; quantity: number; unit: string }[];
 }
 
+/** One OnKey work task: what the office says must be done (#152). Shaped
+ * server-side to match the printed document's JobCardTask. */
+export interface JobCardTaskRow {
+  description: string | null;
+  done: boolean;
+  passed: boolean | null;
+  completedOn: string | null;
+}
+
 export interface JobCardBundle {
   workOrderId: string;
   workOrderCode: string | null;
@@ -380,6 +389,8 @@ export interface JobCardBundle {
   /** Why this technician's costing will not book, said before they are
    * standing in front of a client (#131). Null when it will. */
   costingNote: string | null;
+  /** Absent on bundles cached before #152 shipped; treat as empty. */
+  tasks?: JobCardTaskRow[];
   chargeItems: ChargeItem[];
   jobCard: JobCardState | null;
   document: JobCardDocument;
@@ -611,6 +622,17 @@ export async function getJobCard(
     () => rpc<JobCardBundle>('app_job_card_get', token, { p_work_order_id: workOrderId }),
     opts,
   );
+}
+
+/** Ask OnKey for this work order's tasks when the mirror has none (#152).
+ * The server returns the mirrored rows either way and never re-fetches
+ * rows it already holds. Can take tens of seconds (it rides the OnKey
+ * export), so call it in the background, never on the render path. */
+export async function fetchJobCardTasks(
+  token: string | null,
+  workOrderId: string,
+): Promise<{ fetched: boolean; reason?: string; tasks: JobCardTaskRow[] }> {
+  return await rpc('app_job_card_fetch_tasks', token, { p_work_order_id: workOrderId });
 }
 
 export async function saveJobCard(

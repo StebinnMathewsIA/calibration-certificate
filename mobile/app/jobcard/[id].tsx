@@ -27,8 +27,10 @@ import { Alert, ScrollView, StyleSheet, Text, TextInput, View } from 'react-nati
 import {
   JobCardBundle,
   JobCardPart,
+  JobCardTaskRow,
   JobCardVisit,
   StockItem,
+  fetchJobCardTasks,
   getJobCard,
   saveJobCard,
   searchStock,
@@ -38,7 +40,7 @@ import {
 import { useAuth } from '../../src/auth/AuthContext';
 import { Badge, Button, SectionCard, colors, fonts } from '../../src/components/ui';
 import { FormScrollView } from '../../src/components/FormScrollView';
-import { readCache } from '../../src/db/cache';
+import { readCache, writeCache } from '../../src/db/cache';
 import { JobCard } from '../../src/pdf/jobCardHtml';
 import { renderJobCardPdf } from '../../src/pdf/renderPdf';
 import { hasProfileSignature, voSignatureCacheKey } from '../../src/profile/profileStore';
@@ -60,9 +62,15 @@ const styles = StyleSheet.create({
 });
 const numField = styles.numField;
 
-/** Bundle to printable document. Tasks are empty for now: OnKey's task
- * table is where they live and we do not sync it yet, and the template
- * already prints nothing rather than the 31 blank rows the original had. */
+/** OnKey's placeholder row, on every work order and saying nothing. The
+ * print template filters it too; filtering here keeps the screen and the
+ * page telling the same story. */
+const isRealTask = (t: JobCardTaskRow): boolean =>
+  (t.description ?? '').trim().toLowerCase() !== 'default task';
+
+/** Bundle to printable document. Tasks come from the OnKey mirror via the
+ * bundle (#152); the template prints its task page only when real tasks
+ * exist, rather than the 31 blank rows the original had. */
 const toJobCard = (b: JobCardBundle): JobCard => ({
   workOrderCode: b.workOrderCode ?? '',
   siteCode: b.document.siteCode ?? '',
@@ -78,7 +86,12 @@ const toJobCard = (b: JobCardBundle): JobCard => ({
   workPerformed: b.jobCard?.workPerformed ?? null,
   visits: b.jobCard?.visits ?? [],
   lines: b.document.lines,
-  tasks: [],
+  tasks: (b.tasks ?? []).map((t) => ({
+    description: t.description ?? '',
+    done: t.done,
+    passed: t.passed,
+    completedOn: t.completedOn,
+  })),
   technicianName: b.document.technicianName ?? '',
   clientName: b.jobCard?.clientName ?? null,
   signedAt: b.jobCard?.signedAt ?? null,
@@ -208,6 +221,35 @@ export default function JobCardScreen() {
   }, [accessToken, id, seedFields]);
 
   useFocusEffect(useCallback(() => load(), [load]));
+
+  // Ask OnKey for the tasks when the bundle carries none (#152). Once per
+  // screen visit, in the background: the call rides the OnKey export and
+  // can take tens of seconds, and the server returns mirrored rows
+  // without re-fetching when they already exist. The result is written
+  // into the cached bundle so the next open, online or not, has them.
+  const taskFetchTried = React.useRef(false);
+  const [fetchingTasks, setFetchingTasks] = useState(false);
+  React.useEffect(() => {
+    if (!bundle || taskFetchTried.current) return;
+    if ((bundle.tasks ?? []).length > 0) return;
+    taskFetchTried.current = true;
+    setFetchingTasks(true);
+    fetchJobCardTasks(accessToken, String(id))
+      .then((out) => {
+        if (out.tasks.length === 0) return;
+        setBundle((prev) => {
+          if (!prev) return prev;
+          const next = { ...prev, tasks: out.tasks };
+          writeCache(`jobcard:${id}`, next);
+          return next;
+        });
+      })
+      .catch(() => {
+        // Offline or OnKey unreachable: the section says tasks are not
+        // loaded, which is the truth.
+      })
+      .finally(() => setFetchingTasks(false));
+  }, [bundle, accessToken, id]);
 
   // The register loads with nothing typed, so the field is a PICK LIST and
   // not a guessing game (#119). Debounced because a technician types a code
@@ -406,6 +448,47 @@ export default function JobCardScreen() {
             Stop the job before signing it off. You can fill this in now and sign later.
           </Text>
         ) : null}
+      </SectionCard>
+
+      {/* What the office says must be done (#152), from OnKey's task
+          table, mirrored so it shows offline once seen. The same rows
+          print on the job card document's task page. */}
+      <SectionCard title="Tasks">
+        {(() => {
+          const realTasks = (bundle.tasks ?? []).filter(isRealTask);
+          if (realTasks.length === 0) {
+            return (
+              <Text style={{ color: colors.muted, fontSize: 12 }}>
+                {fetchingTasks
+                  ? 'Loading the task list from OnKey…'
+                  : 'No tasks are recorded in OnKey for this work order.'}
+              </Text>
+            );
+          }
+          return realTasks.map((t, i) => (
+            <View
+              key={i}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'flex-start',
+                gap: 8,
+                borderTopWidth: i === 0 ? 0 : 1,
+                borderTopColor: colors.line,
+                paddingVertical: 8,
+              }}
+            >
+              <Badge text={t.done ? 'Done' : 'Open'} tone={t.done ? 'ok' : 'muted'} />
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: colors.ink, fontSize: 13 }}>{t.description}</Text>
+                {t.completedOn ? (
+                  <Text style={{ color: colors.muted, fontSize: 11, marginTop: 2 }}>
+                    Completed {t.completedOn}
+                  </Text>
+                ) : null}
+              </View>
+            </View>
+          ));
+        })()}
       </SectionCard>
 
       <SectionCard title="Visits">

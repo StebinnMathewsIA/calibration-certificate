@@ -917,3 +917,17 @@ skips the gate entirely.
 - [ ] Sign out and back in: the gate runs once after sign-in, and does
       NOT reappear on its own an hour later (token rotation must not
       retrigger it)
+
+## Tasks on the job card (#152)
+
+The OnKey task list now rides the job card bundle, shows on the screen,
+and prints on the document's task page. Tasks are fetched from OnKey the
+first time a job card is opened online.
+
+- [ ] Open a job card online: the Tasks section fills in (it may say
+      "Loading the task list from OnKey" for a few seconds first)
+- [ ] Reopen the same job card in airplane mode: the tasks still show
+- [ ] A work order whose only task is the "Default Task" placeholder
+      shows "No tasks are recorded", not the placeholder
+- [ ] Generate the job card document for a work order with a real task:
+      the task page prints with the task, its done state and date

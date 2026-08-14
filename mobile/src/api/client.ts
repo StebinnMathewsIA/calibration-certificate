@@ -581,6 +581,24 @@ export async function stockCount(token: string | null): Promise<number> {
   return await fetchThrough('stock:count', () => rpc<number>('app_stock_count', token));
 }
 
+/** The freshness gate's one call (#150): force the caches a technician
+ * acts on BEFORE driving anywhere to be current. Runs in parallel and
+ * tolerates individual failures: a fetch that cannot complete leaves its
+ * cached copy in place (the force path falls back), and the gate is
+ * bounded by its own timer, never by this promise. Everything else stays
+ * stale-while-revalidate once the technician is inside. */
+export async function refreshCoreCaches(token: string | null): Promise<void> {
+  await Promise.allSettled([
+    fetchThrough('wo:records', () => rpc<WorkOrderRecord[]>('app_wo_list', token), {
+      force: true,
+    }),
+    fetchThrough('stock:scope', () => rpc<StockScope>('app_stock_scope', token), {
+      force: true,
+    }),
+    fetchThrough('stock:vans', () => rpc<TeamVan[]>('app_team_vans', token), { force: true }),
+  ]);
+}
+
 const jobCardKey = (workOrderId: string) => `jobcard:${workOrderId}`;
 
 export async function getJobCard(

@@ -894,3 +894,26 @@ own site link when a caller omits it.
       admin can confirm in verification_records that work_order_id is set)
 - [ ] Airplane mode after having opened the work order online: the
       identity screen still prefills site and dispenser from the mirror
+
+## Freshness gate at launch and foreground (#150)
+
+Online means current before the screen settles: a branded "Checking for
+changes" state at app open, capped at ten seconds, then the app. Offline
+skips the gate entirely.
+
+- [ ] Cold open online: navy "Checking for changes" screen appears
+      briefly, then My day shows the current list (verify by changing a
+      work order server-side first)
+- [ ] Cold open in airplane mode: no gate, cached data immediately, the
+      offline banner shows
+- [ ] Background the app for over ten minutes, foreground it online: the
+      gate runs again, and the list on screen updates without switching
+      tabs
+- [ ] Background for under ten minutes: no gate on return
+- [ ] Switching tabs never shows the gate
+- [ ] On a very slow link: the gate yields at ten seconds to the cached
+      screen with a "showing your last synced copy" chip that disappears
+      when the refresh lands
+- [ ] Sign out and back in: the gate runs once after sign-in, and does
+      NOT reappear on its own an hour later (token rotation must not
+      retrigger it)

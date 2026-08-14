@@ -14,6 +14,7 @@ import { Pressable, Text, View } from 'react-native';
 import { WorkOrderRecord, listWorkOrderRecords } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import { fetchThrough } from '../db/cache';
+import { onFreshnessSettled } from '../sync/freshness';
 import { rankWorkOrders, type Ranked } from '../scheduling/rank';
 import { Badge, colors, fonts } from './ui';
 
@@ -122,6 +123,12 @@ export function MyDay({
   useEffect(() => {
     if (refreshSignal) void load(true);
   }, [refreshSignal, load]);
+
+  // The freshness gate (#150) just force-refreshed 'wo:records'. When the
+  // app foregrounds onto this screen there is no focus event, so without
+  // this the list would keep showing the pre-gate state until the next
+  // tab switch.
+  useEffect(() => onFreshnessSettled(() => void load()), [load]);
 
   const counts = useMemo(() => {
     const c: Record<Filter, number> = { all: 0, not_started: 0, active: 0, done: 0 };

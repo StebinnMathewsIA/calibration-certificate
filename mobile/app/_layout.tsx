@@ -11,6 +11,7 @@ import { AuthProvider } from '../src/auth/AuthContext';
 import { migrate } from '../src/db/database';
 import { useSignQueue } from '../src/queue/useSignQueue';
 import { useSync } from '../src/sync/useSync';
+import { FreshnessGate } from '../src/components/FreshnessGate';
 import { HeaderBackButton } from '../src/components/HeaderBackButton';
 import { colors, fonts } from '../src/components/ui';
 import { installCrashJournal } from '../src/diag/crashJournal';
@@ -89,6 +90,8 @@ export default function RootLayout() {
         />
         <Stack.Screen name="verification/[id]/issued" options={{ title: 'Certificate' }} />
       </Stack>
+      {/* After the Stack so the overlay renders above it (#150). */}
+      <FreshnessGate />
     </AuthProvider>
   );
 }

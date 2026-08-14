@@ -15,7 +15,7 @@
  * inline section somewhere below the fleet.
  */
 import { Redirect, useFocusEffect, useRouter } from 'expo-router';
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import {
   AllocationManager,
@@ -31,6 +31,7 @@ import { useAuth } from '../../src/auth/AuthContext';
 import { GreetingHeader } from '../../src/components/GreetingHeader';
 import { SyncBanner } from '../../src/components/SyncBanner';
 import { SectionCard, colors, fonts } from '../../src/components/ui';
+import { onFreshnessSettled } from '../../src/sync/freshness';
 
 /** A snapshot of somebody else's system needs a date on it. Without one,
  * a quantity invites a technician to drive to a depot on a figure that
@@ -193,6 +194,10 @@ export default function StockTab() {
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [load]),
   );
+
+  // Repaint from the caches the freshness gate (#150) just refreshed:
+  // foregrounding onto this tab fires no focus event.
+  useEffect(() => onFreshnessSettled(() => void load('')), [load]);
 
   const isTeam = scope?.mode === 'team' || scope?.mode === 'all';
 

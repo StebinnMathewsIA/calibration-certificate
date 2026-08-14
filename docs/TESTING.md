@@ -874,3 +874,23 @@ one row naming his own).
       the next morning with nobody pressing anything
 - [ ] `roster_status_audit` carries one row per flip, and nothing changes
       roster_status without appearing there
+
+## Verification prefill and asset carry from the work order (#151)
+
+The work order screen, the site screen, the dispenser identity screen and
+the component register now pass the site id and the work order id along
+the whole chain, and the identity screen falls back to the dispenser's
+own site link when a caller omits it.
+
+- [ ] Open a work order, tap a dispenser card: the identity screen's Site
+      details block arrives prefilled (oil company, site name, address)
+- [ ] On a work order that is against a specific asset (green "This job"
+      card), start work: the Verification card offers "Start verification
+      on MAKE MODEL" and it opens that dispenser directly
+- [ ] "Choose a different dispenser" still opens the site's dispenser
+      list, and a dispenser opened from there also prefills site details
+- [ ] Complete a verification started from a work order, then check the
+      job linkage: the certificate record carries the work order id (an
+      admin can confirm in verification_records that work_order_id is set)
+- [ ] Airplane mode after having opened the work order online: the
+      identity screen still prefills site and dispenser from the mirror

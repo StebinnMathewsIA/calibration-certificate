@@ -25,7 +25,9 @@ import {
 } from '../../src/certs/certStatus';
 
 export default function SiteDetailScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  // workOrderId rides along when this screen is opened from a work order
+  // (#151), so a verification started here still links to the job.
+  const { id, workOrderId } = useLocalSearchParams<{ id: string; workOrderId?: string }>();
   const { accessToken } = useAuth();
   const router = useRouter();
   const [site, setSite] = useState<SiteResolved | null>(null);
@@ -92,9 +94,14 @@ export default function SiteDetailScreen() {
    * where a verification is actually started. */
   const openDispenser = (d: DispenserResolved) => {
     const needsIdentity = !d.make || !d.model || !d.serialNumber;
+    // The site id travels with the push (#151): the identity screen used
+    // to receive nothing here, fetch the site with an undefined id, and
+    // render an empty Site details block over a site we know perfectly well.
     router.push({
       pathname: needsIdentity ? '/dispenser/[id]/identity' : '/dispenser/[id]/register',
-      params: { id: d.id },
+      params: workOrderId
+        ? { id: d.id, siteId: String(id), workOrderId }
+        : { id: d.id, siteId: String(id) },
     });
   };
 

@@ -293,6 +293,26 @@ export default function WorkOrderLifecycleScreen() {
     );
   };
 
+  /** Opens a dispenser carrying the WHOLE context (#151): the site id, so
+   * the identity screen can prefill oil company and address, and the work
+   * order id, so the verification is linked to this job. Both were being
+   * dropped, which is why the site block arrived empty and certificates
+   * started from here lost their work order. */
+  const openDispenser = (d: DispenserResolved) => {
+    const needsIdentity = !d.make || !d.model || !d.serialNumber;
+    router.push({
+      pathname: needsIdentity ? '/dispenser/[id]/identity' : '/dispenser/[id]/register',
+      params: { id: d.id, siteId: wo.siteId ?? d.siteId, workOrderId: wo.id },
+    });
+  };
+
+  // The dispenser this job is actually against (#151). When OnKey says the
+  // work order is for a specific asset and that asset is on our register,
+  // "Start a verification" goes straight to it instead of asking the
+  // technician to find it again in the site list.
+  const allocatedDispenser =
+    (wo.assetCode && dispensers?.find((d) => d.id === wo.assetCode)) || null;
+
   const confirmPause = () => {
     if (!chosenReason) {
       Alert.alert('Reason required', 'Choose why the work order is being paused.');
@@ -548,15 +568,7 @@ export default function WorkOrderLifecycleScreen() {
               return (
                 <Pressable
                   key={d.id}
-                  onPress={() =>
-                    router.push({
-                      pathname:
-                        !d.make || !d.model || !d.serialNumber
-                          ? '/dispenser/[id]/identity'
-                          : '/dispenser/[id]/register',
-                      params: { id: d.id },
-                    })
-                  }
+                  onPress={() => openDispenser(d)}
                   accessibilityRole="button"
                   accessibilityLabel={`Open dispenser ${d.id}`}
                   style={{
@@ -603,10 +615,35 @@ export default function WorkOrderLifecycleScreen() {
             Issue an NRCS verification certificate for a dispenser on this site. Standard and
             high flow are selected from the dispenser's data plate.
           </Text>
-          {wo.siteId ? (
+          {allocatedDispenser ? (
+            <>
+              <Button
+                title={`Start verification on ${
+                  [allocatedDispenser.make, allocatedDispenser.model].filter(Boolean).join(' ') ||
+                  allocatedDispenser.id
+                }`}
+                onPress={() => openDispenser(allocatedDispenser)}
+              />
+              <Button
+                title="Choose a different dispenser"
+                kind="secondary"
+                onPress={() =>
+                  router.push({
+                    pathname: '/site/[id]',
+                    params: { id: wo.siteId!, workOrderId: wo.id },
+                  })
+                }
+              />
+            </>
+          ) : wo.siteId ? (
             <Button
               title="Start a verification"
-              onPress={() => router.push({ pathname: '/site/[id]', params: { id: wo.siteId! } })}
+              onPress={() =>
+                router.push({
+                  pathname: '/site/[id]',
+                  params: { id: wo.siteId!, workOrderId: wo.id },
+                })
+              }
             />
           ) : (
             <Text style={{ color: colors.amber, fontSize: 12 }}>

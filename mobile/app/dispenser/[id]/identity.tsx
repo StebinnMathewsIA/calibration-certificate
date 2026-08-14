@@ -68,13 +68,19 @@ function Field({
 export default function DispenserIdentityScreen() {
   const { id, workOrderId, siteId } = useLocalSearchParams<{
     id: string;
-    workOrderId: string;
-    siteId: string;
+    workOrderId?: string;
+    siteId?: string;
   }>();
   const router = useRouter();
   const { accessToken } = useAuth();
   const [site, setSite] = useState<Partial<SiteResolved>>({});
   const [disp, setDisp] = useState<Partial<DispenserResolved>>({});
+  // The site id this screen actually works against. Normally the route
+  // param, but both callers shipped without it (#151), which fetched the
+  // site with an undefined id and silently swallowed the failure into an
+  // empty block. The dispenser record carries its own siteId, so resolve
+  // from it whenever the param is missing.
+  const [sid, setSid] = useState<string | null>(siteId ?? null);
   // Data plate + hoses are dispenser identity (#85), stored in the
   // per-dispenser register and prefilled every visit.
   const [detail, setDetail] = useState<DispenserDetail | null>(null);
@@ -94,12 +100,22 @@ export default function DispenserIdentityScreen() {
   useEffect(() => {
     (async () => {
       try {
-        const [s, d] = await Promise.all([
-          getSite(accessToken, siteId).catch(() => ({}) as SiteResolved),
-          getDispenser(accessToken, id),
-        ]);
-        setSite(s);
+        // Dispenser first: it is the source of the site id when the route
+        // param is missing (#151). Read through the mirror so a work order
+        // opened online still prefills at a zero-signal forecourt.
+        const d = await fetchThrough(`dispenser:${id}`, () => getDispenser(accessToken, id));
         setDisp(d);
+        const resolved = siteId || d.siteId || null;
+        setSid(resolved);
+        if (resolved) {
+          try {
+            const s = await fetchThrough(`site:${resolved}`, () => getSite(accessToken, resolved));
+            setSite(s);
+          } catch {
+            // Offline with no mirrored copy: the site fields start blank
+            // for manual entry, which is honest rather than silent.
+          }
+        }
       } catch (err) {
         Alert.alert('Could not load', err instanceof Error ? err.message : String(err));
       } finally {
@@ -126,6 +142,13 @@ export default function DispenserIdentityScreen() {
   if (!loaded) return <Text style={{ padding: 16 }}>Loading…</Text>;
 
   const saveAndContinue = async () => {
+    if (!sid) {
+      Alert.alert(
+        'No site on record',
+        'This dispenser is not linked to a site, so the site details cannot be saved. Open it from the site screen or the work order.',
+      );
+      return;
+    }
     if (!site.customerName || !site.siteName || !site.address) {
       Alert.alert('Site incomplete', 'Oil company, site name and address are required.');
       return;
@@ -179,8 +202,8 @@ export default function DispenserIdentityScreen() {
     setBusy(true);
     try {
       // Persist to our canonical store (seed -> fill -> persist).
-      await upsertSite(accessToken, siteId, {
-        id: siteId,
+      await upsertSite(accessToken, sid, {
+        id: sid,
         customerName: site.customerName!,
         siteName: site.siteName!,
         address: site.address!,
@@ -192,7 +215,7 @@ export default function DispenserIdentityScreen() {
         model: disp.model!,
         serialNumber: disp.serialNumber!,
         saApprovalNumber: disp.saApprovalNumber!,
-        siteId,
+        siteId: sid,
       });
       const nextDetail = {
         dispenserId: id,
@@ -218,7 +241,7 @@ export default function DispenserIdentityScreen() {
       writeCache(`dispenser-detail:${id}`, nextDetail);
       router.push({
         pathname: '/dispenser/[id]/register',
-        params: { id, workOrderId, siteId },
+        params: { id, workOrderId, siteId: sid },
       });
     } catch (err) {
       Alert.alert('Could not save', err instanceof Error ? err.message : String(err));

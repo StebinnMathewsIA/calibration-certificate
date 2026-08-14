@@ -73,8 +73,8 @@ const inputStyle = {
 export default function RegisterScreen() {
   const { id, workOrderId, siteId } = useLocalSearchParams<{
     id: string;
-    workOrderId: string;
-    siteId: string;
+    workOrderId?: string;
+    siteId?: string;
   }>();
   const router = useRouter();
   const { accessToken, identity } = useAuth();
@@ -206,11 +206,13 @@ export default function RegisterScreen() {
       }
 
       // Site/dispenser identity read through the offline cache (populated
-      // when the work order was opened online).
-      const [site, disp] = await Promise.all([
-        fetchThrough(`site:${siteId}`, () => getSite(accessToken, siteId)),
-        fetchThrough(`dispenser:${id}`, () => getDispenser(accessToken, id)),
-      ]);
+      // when the work order was opened online). The dispenser goes first:
+      // when the caller did not pass a siteId (#151), the dispenser's own
+      // record is what says which site this is, and without it the
+      // certificate's site block came out empty.
+      const disp = await fetchThrough(`dispenser:${id}`, () => getDispenser(accessToken, id));
+      const sid = siteId || disp.siteId;
+      const site = await fetchThrough(`site:${sid}`, () => getSite(accessToken, sid));
 
       // Number reservation is server-side; offline the draft starts
       // numberless and backfillCertificateNumbers() assigns it on reconnect.

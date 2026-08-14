@@ -5,8 +5,30 @@ ensures the private Storage bucket exists.
 Usage (from backend/, with .env configured — see docs/supabase-setup.md):
     .venv/bin/python scripts/apply_migrations.py
 
-Migrations are idempotent; re-running is safe.
+APPLIED MIGRATIONS ARE TRACKED and never re-run (#150). This script used
+to replay every file on every boot, trusting the files to be idempotent.
+They were, individually, but replay-on-boot has a failure mode that
+idempotence does not cover: a file that re-CREATEs a function or a cron
+schedule REVERTS any newer definition applied since, and one erroring
+file aborts the boot partway, leaving the database mid-era. That is not
+theory: a boot replay silently reverted the technician roster, put the
+sync cadence back to a retired schedule (every minute plus an hourly
+twenty-minute sweep, which is the overlap #134 exists to prevent), and
+failed every deploy for two days while Render quietly served the last
+good instance.
+
+The ledger is `schema_migrations`. A file is applied once, in its own
+transaction, and recorded. A failure still aborts (fail-fast is right for
+a NEW migration) but everything already recorded is never touched again.
+
+Databases that predate the ledger are BASELINED on first run: every file
+currently on disk is recorded as applied without being run, because the
+live schema is already at or beyond it, and replaying history into a
+newer present is exactly the bug this rewrite removes. Set
+MIGRATIONS_BASELINE=off to disable baselining for a genuinely empty
+database (first-ever setup), where every file should really run.
 """
+import os
 import sys
 from pathlib import Path
 
@@ -16,6 +38,14 @@ from sqlalchemy import create_engine  # noqa: E402
 
 from app.config import MIGRATIONS_DIR, get_settings, validate_settings  # noqa: E402
 from app.pdf_store import SupabaseStoragePdfStore  # noqa: E402
+
+LEDGER = """
+CREATE TABLE IF NOT EXISTS schema_migrations (
+    filename text PRIMARY KEY,
+    applied_at timestamptz NOT NULL DEFAULT now(),
+    baselined boolean NOT NULL DEFAULT false
+)
+"""
 
 
 def main() -> int:
@@ -28,19 +58,50 @@ def main() -> int:
         return 1
 
     engine = create_engine(settings.database_url)
-    for path in sorted(MIGRATIONS_DIR.glob("*.sql")):
-        sql = path.read_text()
-        # Raw DBAPI cursor with parameters=None: the SQL contains literal '%'
-        # (trigger error message), which psycopg2 would otherwise treat as a
-        # format placeholder.
-        raw = engine.raw_connection()
-        try:
-            cur = raw.cursor()
-            cur.execute(sql)
+
+    raw = engine.raw_connection()
+    try:
+        cur = raw.cursor()
+        cur.execute(LEDGER)
+        cur.execute("SELECT count(*) FROM schema_migrations")
+        ledger_rows = cur.fetchone()[0]
+        raw.commit()
+
+        files = sorted(MIGRATIONS_DIR.glob("*.sql"))
+
+        if ledger_rows == 0 and os.environ.get("MIGRATIONS_BASELINE", "on") != "off":
+            # First run against a database that already has history: record
+            # everything on disk as applied without running it. The live
+            # schema got here through these files (applied manually or by
+            # the old replay), and running the past into the present is the
+            # bug, not the feature.
+            for path in files:
+                cur.execute(
+                    "INSERT INTO schema_migrations (filename, baselined) VALUES (%s, true) "
+                    "ON CONFLICT (filename) DO NOTHING",
+                    (path.name,),
+                )
             raw.commit()
-        finally:
-            raw.close()
-        print(f"applied {path.name}")
+            print(f"baselined {len(files)} existing migrations; none re-run")
+        else:
+            cur.execute("SELECT filename FROM schema_migrations")
+            applied = {row[0] for row in cur.fetchall()}
+            pending = [p for p in files if p.name not in applied]
+            for path in pending:
+                sql = path.read_text()
+                # Raw cursor, parameters=None: the SQL contains literal '%'
+                # which psycopg2 would otherwise treat as a placeholder.
+                cur.execute(sql)
+                cur.execute(
+                    "INSERT INTO schema_migrations (filename) VALUES (%s)",
+                    (path.name,),
+                )
+                raw.commit()
+                print(f"applied {path.name}")
+            if not pending:
+                print(f"nothing to apply ({len(applied)} recorded)")
+    finally:
+        raw.close()
 
     store = SupabaseStoragePdfStore(
         settings.supabase_url,

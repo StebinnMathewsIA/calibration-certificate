@@ -931,3 +931,31 @@ first time a job card is opened online.
       shows "No tasks are recorded", not the placeholder
 - [ ] Generate the job card document for a work order with a real task:
       the task page prints with the task, its done state and date
+
+## Forced designation and locked site fields (#154, #155)
+
+The flow designation follows Qmax and cannot be tapped; site fields that
+arrived from the work order record are read-only.
+
+- [ ] On the dispenser identity screen, enter Qmax 80: the designation
+      chip reads "STD: 20/5 L proving measures" and tapping it does
+      nothing
+- [ ] Change Qmax to 120: the chip flips to "HV: 200 L proving measure"
+- [ ] Clear Qmax: the chip says to enter Qmax, and Save is refused
+- [ ] Open a dispenser from a work order with a known site: oil company,
+      site name and address show as plain text marked "from the work
+      order", with no input boxes
+- [ ] A field the record does not carry (often telephone) still shows an
+      input, and its value saves and prefills next visit
+- [ ] Contact person on premises is always editable
+
+## Collapsible hose cards (#156)
+
+- [ ] The components screen shows one collapsed header per hose, with a
+      status badge and the product where set
+- [ ] Tapping a header opens that hose's form; tapping again collapses it
+- [ ] A fully captured hose shows green Complete, a partial one amber
+      Components incomplete, one missing its product red, an unselected
+      one muted
+- [ ] Save & start verification works exactly as before, including the
+      incomplete-hose refusal

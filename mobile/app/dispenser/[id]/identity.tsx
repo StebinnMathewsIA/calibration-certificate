@@ -90,9 +90,16 @@ export default function DispenserIdentityScreen() {
   const [tacNumber, setTacNumber] = useState('');
   const [approvalBasis, setApprovalBasis] = useState<'SABS 1650' | 'LM R117' | null>(null);
   const [mmq, setMmq] = useState('');
-  // STD/HV designation (#92): selects the test plan. Derived from Qmax,
-  // confirmed explicitly, stored on the dispenser.
-  const [designation, setDesignation] = useState<Designation | null>(null);
+  // STD/HV designation (#92, forced by #154): selects the test plan and
+  // therefore the proving measures. It FOLLOWS Qmax, always: the
+  // designation is a fact of the data plate, not an opinion, and letting
+  // a technician pick the other chip let them run the wrong test plan.
+  const designation: Designation | null = deriveDesignation(qMax ? Number(qMax) : null);
+  // Which site fields arrived prefilled from the record (#155): those
+  // are the customer's identity on a legal document and are not the
+  // technician's to retype. Snapshotted at load so a field the
+  // technician fills in stays editable until it is saved.
+  const [lockedSite, setLockedSite] = useState<Record<string, boolean>>({});
   const [busy, setBusy] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [scanning, setScanning] = useState(false);
@@ -111,6 +118,12 @@ export default function DispenserIdentityScreen() {
           try {
             const s = await fetchThrough(`site:${resolved}`, () => getSite(accessToken, resolved));
             setSite(s);
+            setLockedSite({
+              customerName: !!s.customerName,
+              siteName: !!s.siteName,
+              address: !!s.address,
+              telephone: !!s.telephone,
+            });
           } catch {
             // Offline with no mirrored copy: the site fields start blank
             // for manual entry, which is honest rather than silent.
@@ -131,7 +144,9 @@ export default function DispenserIdentityScreen() {
         setTacNumber(det.tacNumber ?? '');
         setApprovalBasis(det.approvalBasis ?? null);
         setMmq(det.mmqLitres != null ? String(det.mmqLitres) : '');
-        setDesignation(det.designation ?? deriveDesignation(det.qMaxLpm));
+        // designation is NOT restored from the store (#154): it derives
+        // from Qmax, and a stored value that contradicts the stored Qmax
+        // is corrected on the next save.
         if (det.hoses.length > 0) setHoseCount(String(det.hoses.length));
       } catch {
         // First visit offline with no mirror: fields start blank.
@@ -171,10 +186,9 @@ export default function DispenserIdentityScreen() {
       return;
     }
     if (!designation) {
-      Alert.alert(
-        'Designation required',
-        'Confirm whether this dispenser is standard (STD) or high flow rate (HV).',
-      );
+      // Unreachable while Qmax validates above, kept as a belt: the plan
+      // must never be selected by a null.
+      Alert.alert('Qmax required', 'The flow designation is set by Qmax.');
       return;
     }
     // Resize the hose register, preserving anything already captured. A
@@ -254,13 +268,37 @@ export default function DispenserIdentityScreen() {
     <FormScrollView>
       <SectionCard title="Site details">
         <Text style={{ color: colors.muted, fontSize: 12, marginBottom: 8 }}>
-          Prefilled from OnKey where available. Complete anything missing — it is saved and reused
-          next visit.
+          From the work order record. Values on record are not editable here (#155): report an
+          error to the office. Complete anything missing, it is saved and reused next visit.
         </Text>
-        <Field label="Oil company" value={site.customerName ?? ''} onChangeText={(t) => setSite((p) => ({ ...p, customerName: t }))} />
-        <Field label="Site / depot name (Name (User))" value={site.siteName ?? ''} onChangeText={(t) => setSite((p) => ({ ...p, siteName: t }))} />
-        <Field label="Address" value={site.address ?? ''} onChangeText={(t) => setSite((p) => ({ ...p, address: t }))} />
-        <Field label="Telephone" value={site.telephone ?? ''} onChangeText={(t) => setSite((p) => ({ ...p, telephone: t }))} />
+        {(
+          [
+            { key: 'customerName', label: 'Oil company' },
+            { key: 'siteName', label: 'Site / depot name (Name (User))' },
+            { key: 'address', label: 'Address' },
+            { key: 'telephone', label: 'Telephone' },
+          ] as const
+        ).map(({ key, label }) =>
+          lockedSite[key] ? (
+            <View key={key} style={{ marginBottom: 10 }}>
+              <Text style={{ fontSize: 12, color: colors.muted, marginBottom: 3 }}>
+                {label} (from the work order)
+              </Text>
+              <Text style={{ fontSize: 15, color: colors.ink, paddingVertical: 2 }}>
+                {site[key] ?? ''}
+              </Text>
+            </View>
+          ) : (
+            <Field
+              key={key}
+              label={label}
+              value={site[key] ?? ''}
+              onChangeText={(t) => setSite((p) => ({ ...p, [key]: t }))}
+            />
+          ),
+        )}
+        {/* Editable always: the person on the premises changes visit to
+            visit, unlike the site's identity. */}
         <Field
           label="Contact person on premises"
           value={site.contactPerson ?? ''}
@@ -305,40 +343,36 @@ export default function DispenserIdentityScreen() {
           </View>
         </View>
         <Text style={{ fontSize: 12, color: colors.muted, marginBottom: 4 }}>
-          Flow designation (selects the test plan; above {HV_QMAX_THRESHOLD_LPM} L/min is high flow)
+          Flow designation (set by Qmax; above {HV_QMAX_THRESHOLD_LPM} L/min is high flow)
         </Text>
+        {/* Read-only by design (#154): the designation selects the test
+            plan and the proving measures, and it is a fact of the data
+            plate. It changes when Qmax changes, and no tap overrides it. */}
         <View style={{ flexDirection: 'row', gap: 6, marginBottom: 10 }}>
-          {(
-            [
-              { key: 'std', label: 'STD (20/5 L measures)' },
-              { key: 'hv', label: 'HV (200 L measure)' },
-            ] as const
-          ).map(({ key, label }) => {
-            const on = designation === key;
-            const derived = deriveDesignation(qMax ? Number(qMax) : null);
-            return (
-              <Text
-                key={key}
-                onPress={() => setDesignation(key)}
-                accessibilityRole="button"
-                accessibilityLabel={`Set flow designation ${key === 'std' ? 'standard' : 'high flow'}`}
-                style={{
-                  borderWidth: 1,
-                  borderColor: on ? colors.blueText : colors.line,
-                  backgroundColor: on ? colors.blueTint : '#fff',
-                  color: on ? colors.blueText : colors.ink,
-                  paddingHorizontal: 12,
-                  paddingVertical: 6,
-                  borderRadius: 999,
-                  overflow: 'hidden',
-                  fontSize: 13,
-                }}
-              >
-                {label}
-                {derived === key && !on ? ' (from Qmax)' : ''}
-              </Text>
-            );
-          })}
+          <Text
+            accessibilityLabel={
+              designation
+                ? `Flow designation ${designation === 'std' ? 'standard' : 'high flow'}, set by Qmax`
+                : 'Flow designation is set once Qmax is entered'
+            }
+            style={{
+              borderWidth: 1,
+              borderColor: designation ? colors.blueText : colors.line,
+              backgroundColor: designation ? colors.blueTint : '#fff',
+              color: designation ? colors.blueText : colors.muted,
+              paddingHorizontal: 12,
+              paddingVertical: 6,
+              borderRadius: 999,
+              overflow: 'hidden',
+              fontSize: 13,
+            }}
+          >
+            {designation === 'std'
+              ? 'STD: 20/5 L proving measures'
+              : designation === 'hv'
+                ? 'HV: 200 L proving measure'
+                : 'Enter Qmax to set the designation'}
+          </Text>
         </View>
         <Text style={{ fontSize: 12, color: colors.muted, marginBottom: 4 }}>Approval basis</Text>
         <View style={{ flexDirection: 'row', gap: 6 }}>

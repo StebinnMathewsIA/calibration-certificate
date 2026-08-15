@@ -18,7 +18,7 @@ import {
   saveDispenserDetail,
 } from '../../../src/api/client';
 import { useAuth } from '../../../src/auth/AuthContext';
-import { Button, SectionCard, colors } from '../../../src/components/ui';
+import { Badge, Button, SectionCard, colors } from '../../../src/components/ui';
 import { FormScrollView } from '../../../src/components/FormScrollView';
 import { config } from '../../../src/config';
 import { fetchThrough } from '../../../src/db/cache';
@@ -58,6 +58,24 @@ const emptyHose = (n: number): HoseDetail => ({
   },
 });
 
+/** The card colour a hose has earned (#156). Red is reserved for a hose
+ * that is IN this verification and missing what the start gate requires;
+ * a hose left out is quiet, not alarming. */
+const hoseStatus = (
+  h: HoseDetail,
+  inVerification: boolean,
+): { tone: 'ok' | 'warn' | 'bad' | 'muted'; label: string } => {
+  if (!inVerification) return { tone: 'muted', label: 'Not in this verification' };
+  if (!h.hoseNumber || !h.product) return { tone: 'bad', label: 'Needs number and product' };
+  const complete = COMPONENT_KEYS.every((k) => {
+    const c = h.components[k];
+    return !!(c.make && c.model && c.serial && c.saApproval);
+  });
+  return complete
+    ? { tone: 'ok', label: 'Complete' }
+    : { tone: 'warn', label: 'Components incomplete' };
+};
+
 const inputStyle = {
   borderWidth: 1,
   borderColor: colors.line,
@@ -96,6 +114,9 @@ export default function RegisterScreen() {
   const [plan, setPlan] = useState<TestPlan>(planForDesignation('std'));
   const [busy, setBusy] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  // Collapsed by default (#156): a six hose dispenser is six one-line
+  // headers, and the technician opens the hose in their hand.
+  const [openHoses, setOpenHoses] = useState<Record<number, boolean>>({});
 
   useEffect(() => {
     (async () => {
@@ -336,10 +357,22 @@ export default function RegisterScreen() {
         </View>
       </SectionCard>
 
-      {hoses.map((h, i) => (
+      {hoses.map((h, i) => {
+        const status = hoseStatus(h, selected[i] ?? true);
+        return (
         <SectionCard
           key={i}
-          title={`Hose / Pump ${h.hoseNumber || i + 1}${selected[i] ?? true ? '' : ' · not in this verification'}`}
+          title={`Hose / Pump ${h.hoseNumber || i + 1}`}
+          onTitlePress={() => setOpenHoses((p) => ({ ...p, [i]: !p[i] }))}
+          collapsed={!openHoses[i]}
+          collapsedSummary={
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Badge text={status.label} tone={status.tone} />
+              {h.product ? (
+                <Text style={{ color: colors.muted, fontSize: 12 }}>{h.product}</Text>
+              ) : null}
+            </View>
+          }
         >
           <Text style={{ fontSize: 12, color: colors.muted }}>Hose / Pump No.</Text>
           <TextInput style={inputStyle} value={h.hoseNumber} onChangeText={(t) => updateHose(i, { hoseNumber: t })} />
@@ -395,7 +428,8 @@ export default function RegisterScreen() {
             </View>
           ))}
         </SectionCard>
-      ))}
+        );
+      })}
 
       <View style={{ marginHorizontal: 12 }}>
         <Button title="Save & start verification" onPress={saveAndStart} busy={busy} />

@@ -7,7 +7,7 @@
  * line here.
  */
 import React from 'react';
-import { Text, View } from 'react-native';
+import { Image, Text, View } from 'react-native';
 import { SvgXml } from 'react-native-svg';
 import { colors, fonts } from '../ui';
 import { OIL_DISC_BG, OIL_LOGOS, OIL_LOGO_SCALE } from './oilLogos';
@@ -61,7 +61,9 @@ export function OilDisc({ customerName, size = 46 }: { customerName: string | nu
     );
   }
   if (!brand) {
-    // Prowalco fallback: no oil company on record for this site.
+    // Prowalco fallback: no oil company on record for this site. The
+    // REAL client-supplied mark (the certificate's logo), not a drawn
+    // approximation (#157 owner correction).
     return (
       <View
         accessibilityLabel="Prowalco"
@@ -70,18 +72,19 @@ export function OilDisc({ customerName, size = 46 }: { customerName: string | nu
           height: size,
           borderRadius: 999,
           backgroundColor: '#fff',
-          borderWidth: 2.5,
-          borderColor: colors.green,
+          borderWidth: 1.5,
+          borderColor: colors.line,
           alignItems: 'center',
           justifyContent: 'center',
+          overflow: 'hidden',
         }}
       >
-        <Text style={{ fontFamily: fonts.heading, fontSize: size * 0.24, color: colors.green }}>
-          pro
-        </Text>
-        <Text style={{ fontFamily: fonts.heading, fontSize: size * 0.24, color: colors.navy, marginTop: -2 }}>
-          walco
-        </Text>
+        <Image
+          source={require('../../../assets/prowalco-logo.png')}
+          style={{ width: size * 0.82, height: size * 0.82 }}
+          resizeMode="contain"
+          accessibilityIgnoresInvertColors
+        />
       </View>
     );
   }

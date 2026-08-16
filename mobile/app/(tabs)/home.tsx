@@ -289,7 +289,7 @@ export default function HomeScreen() {
       !q ||
       [w.siteName, w.customerName, w.externalRef, w.workRequired]
         .some((f) => (f ?? '').toLowerCase().includes(q));
-    const live = all.filter((w) => homeSection(w) === 'live' && match(w));
+    const live = all.filter((w) => homeSection(w) === 'live');
     // Started before on the way: the top of the list is what is live NOW.
     live.sort((a, b) => {
       const rank = (w: WorkOrderRecord) => (w.lifecycle?.state === 'started' ? 0 : 1);
@@ -436,6 +436,29 @@ export default function HomeScreen() {
       ) : null}
 
       <ScrollView contentContainerStyle={{ paddingBottom: 24 }}>
+        <StatCards stats={stats} />
+
+        <View style={{ flexDirection: 'row', gap: 9, marginHorizontal: 12, marginTop: 10 }}>
+          <DateChip />
+          <View style={{ flex: 1 }}>
+            <HomeMap
+              here={here}
+              pins={pinsFor((records ?? []).filter((w) => w.lifecycle?.state !== 'signed_off'))}
+              onPress={() => router.push('/map')}
+            />
+          </View>
+        </View>
+
+        {sections.live.length > 0 ? (
+          <>
+            <SectionHead title="In progress" live />
+            {sections.live.map((w) => (
+              <WorkOrderCard key={w.id} wo={w} distanceKm={distanceFor(w)} />
+            ))}
+          </>
+        ) : null}
+
+        <View style={{ marginTop: 16 }}>
         <View
           style={{
             flexDirection: 'row',
@@ -462,28 +485,7 @@ export default function HomeScreen() {
             onChangeText={setQuery}
           />
         </View>
-
-        <StatCards stats={stats} />
-
-        <View style={{ flexDirection: 'row', gap: 9, marginHorizontal: 12, marginTop: 10 }}>
-          <DateChip />
-          <View style={{ flex: 1 }}>
-            <HomeMap
-              here={here}
-              pins={pinsFor((records ?? []).filter((w) => w.lifecycle?.state !== 'signed_off'))}
-              onPress={() => router.push('/map')}
-            />
-          </View>
         </View>
-
-        {sections.live.length > 0 ? (
-          <>
-            <SectionHead title="In progress" live />
-            {sections.live.map((w) => (
-              <WorkOrderCard key={w.id} wo={w} distanceKm={distanceFor(w)} />
-            ))}
-          </>
-        ) : null}
 
         {sections.upcoming.length > 0 ? (
           <>

@@ -1056,3 +1056,18 @@ Arrives as an OTA update (git pull on the Metro laptop, then reload).
       to their name
 - [ ] The separate job card screen is gone; work tasks from OnKey show
       on the work order page while the job is active
+
+## Sign-off completes the job (#165)
+
+Amends the #162 flow: Complete and sign-off are one act. Same OTA path.
+
+- [ ] On a filled job card (visit numbers and the work performed note),
+      tapping Complete opens the sign-off page instead of stopping the
+      job
+- [ ] Sealing the sign-off moves the job straight to signed off: no
+      further tap, and the work order page shows the completed view on
+      return
+- [ ] On an unfilled card, Complete still explains what is missing and
+      stays locked
+- [ ] A job stopped before signing (older data) still shows "Client
+      sign-off" on the completed view and sealing there signs it off

@@ -436,21 +436,19 @@ export default function WorkOrderLifecycleScreen() {
     [accessToken, id, visits, parts, performed],
   );
 
-  // THE GATE (#159, #162, owner rule): Complete needs a visit carrying
-  // labour or distance, the work performed written, AND the client's
-  // sign-off sealed. Pause needs at least a partial work performed note.
+  // THE GATE (#159, #162, #165, owner rule): Complete needs a visit
+  // carrying labour or distance and the work performed written; with the
+  // gate satisfied, Complete OPENS THE SIGN-OFF, because sign-off and
+  // completion are one act: the client's signature finishes the job.
+  // Pause needs at least a partial work performed note.
   const visitOk = visits.some(
     (v) => (v.labourHours ?? 0) > 0 || (v.distanceKm ?? 0) > 0 || (v.labourOt15Hours ?? 0) > 0 || (v.labourOt20Hours ?? 0) > 0,
   );
   const performedOk = performed.trim().length > 0;
   const signed = bundle?.jobCard?.state === 'signed';
-  const completeGateOk = visitOk && performedOk && signed;
+  const completeGateOk = visitOk && performedOk;
   const gateNote =
-    phase === 'active' && !completeGateOk
-      ? !visitOk || !performedOk
-        ? 'Fill the job card first'
-        : 'Client sign-off needed'
-      : null;
+    phase === 'active' && !completeGateOk ? 'Fill the job card first' : null;
 
   const elapsed = useMemo(() => (wo && minutesOnJob(wo) > 0 ? formatDuration(minutesOnJob(wo)) : null), [wo, state]);
 
@@ -598,22 +596,7 @@ export default function WorkOrderLifecycleScreen() {
         ...(!visitOk ? ['a visit with labour or distance'] : []),
         ...(!performedOk ? ['the work performed'] : []),
       ];
-      if (missing.length > 0) {
-        Alert.alert('Fill the job card first', `Before completing, enter ${missing.join(' and ')}.`);
-      } else {
-        // Only the sign-off is outstanding (#162): take them straight to it.
-        Alert.alert(
-          'Client sign-off needed',
-          'The client accepts the work before you complete the job. Hand them the phone on the sign-off page.',
-          [
-            { text: 'Not yet', style: 'cancel' },
-            {
-              text: 'Sign off now',
-              onPress: () => router.push({ pathname: '/signoff/[id]', params: { id: wo.id } }),
-            },
-          ],
-        );
-      }
+      Alert.alert('Fill the job card first', `Before completing, enter ${missing.join(' and ')}.`);
       return true;
     }
     if (verb === 'pause' && !performedOk) {
@@ -633,6 +616,14 @@ export default function WorkOrderLifecycleScreen() {
     } else if (verb === 'stand_down') confirmStandDown();
     else if (verb === 'stop') {
       if (gateRefusal('stop')) return;
+      // Sign-off IS completion (#165): with the card filled, Complete
+      // opens the sign-off, and the client's signature finishes the job
+      // server-side. A card already sealed (legacy or offline replay)
+      // stops directly.
+      if (!signed) {
+        router.push({ pathname: '/signoff/[id]', params: { id: wo.id } });
+        return;
+      }
       void apply('stop');
     } else if (verb === 'start' && state === 'on_the_way') {
       // Starting lands the technician where the information gets
@@ -1055,21 +1046,14 @@ export default function WorkOrderLifecycleScreen() {
                 <Badge text="Signed" tone="ok" />
                 <Text style={{ color: colors.muted, fontSize: 12, marginTop: 4 }}>
                   Accepted by {bundle?.jobCard?.clientName}
-                  {bundle?.jobCard?.signedAt ? ` at ${bundle.jobCard.signedAt.slice(11, 16)}` : ''}. You
-                  can complete the job.
+                  {bundle?.jobCard?.signedAt ? ` at ${bundle.jobCard.signedAt.slice(11, 16)}` : ''}.
                 </Text>
               </>
             ) : (
-              <>
-                <Text style={{ color: colors.muted, fontSize: 12 }}>
-                  The client accepts the work before you complete the job: their name, contact
-                  details and signature.
-                </Text>
-                <Button
-                  title="Client sign-off"
-                  onPress={() => router.push({ pathname: '/signoff/[id]', params: { id: wo.id } })}
-                />
-              </>
+              <Text style={{ color: colors.muted, fontSize: 12 }}>
+                Completing the job opens the sign-off: the client's name, contact details and
+                signature finish it.
+              </Text>
             )}
           </SectionCard>
         </>

@@ -1,13 +1,11 @@
 /**
- * Client sign-off, on its own page (#162, owner rule). The client's name,
- * their contact details, and their signature, sealed onto the job card
- * BEFORE the technician completes the job: Complete stays locked until
- * this page has done its work.
+ * Client sign-off, on its own page (#162), and sign-off IS completion
+ * (#165, owner rule): the client's name, contact details and signature,
+ * and the seal finishes the job. Complete on the work order page routes
+ * here; the server stops and signs off the job in one act at seal.
  *
- * Sealing no longer waits for the job to stop (#118 inverted by #162):
- * the client is standing there while the work is finishing. A job stopped
- * before signing (the old flow) still seals here and moves straight to
- * signed off, server-side.
+ * A job stopped before signing (the old flow) still seals here and moves
+ * straight to signed off.
  */
 import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import React, { useCallback, useState } from 'react';
@@ -128,7 +126,7 @@ export default function SignOffScreen() {
         clientSignature: clientSig,
         techSignature: readCache<string>(voSignatureCacheKey(identity?.subject ?? '')) ?? undefined,
       });
-      Alert.alert('Job card signed', 'The client has accepted the work. You can complete the job.');
+      Alert.alert('Job complete', 'The client has accepted the work and the job is signed off.');
       router.back();
     } catch (err) {
       Alert.alert('Could not sign', err instanceof Error ? err.message : String(err));
@@ -187,7 +185,7 @@ export default function SignOffScreen() {
           />
           <Text style={{ color: colors.muted, fontSize: 12, marginTop: 4 }}>
             {capturedSignature
-              ? 'Signature captured. Sealing locks the job card.'
+              ? 'Signature captured. Sign off completes the job and locks the card.'
               : 'Hand the phone to the client on the signature pad.'}
           </Text>
           {!capturedSignature ? (

@@ -735,19 +735,24 @@ export async function signJobCard(
     if (!isNetworkError(err)) throw err;
     enqueueWrite('jobCardSign', { args });
   }
-  // The server only moves the lifecycle to signed_off when the job was
-  // already stopped (#162): signing mid-job just seals the card, and the
-  // Complete that follows finishes everything. Mirror exactly that.
-  const cached = readCache<WorkOrderRecord[]>('wo:records') ?? [];
-  if (cached.find((w) => w.id === workOrderId)?.lifecycle?.state === 'stopped') {
-    try {
+  // Sign-off IS completion (#165): the server stops a running job at
+  // seal and rolls straight on to signed_off. Mirror both steps locally
+  // so the screen behind shows the finished job; the queued write does
+  // the same server-side when it drains.
+  try {
+    const cached = readCache<WorkOrderRecord[]>('wo:records') ?? [];
+    if (cached.find((w) => w.id === workOrderId)?.lifecycle?.state !== 'stopped') {
       commitTransitionLocally(
         workOrderId,
-        applyTransitionLocally(workOrderId, 'sign_off', {}, args.p_occurred_at),
+        applyTransitionLocally(workOrderId, 'stop', {}, args.p_occurred_at),
       );
-    } catch {
-      // The work order is not on this device. Nothing to keep in step.
     }
+    commitTransitionLocally(
+      workOrderId,
+      applyTransitionLocally(workOrderId, 'sign_off', {}, args.p_occurred_at),
+    );
+  } catch {
+    // The work order is not on this device. Nothing to keep in step.
   }
 }
 

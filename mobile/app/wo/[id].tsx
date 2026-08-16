@@ -428,6 +428,21 @@ export default function WorkOrderLifecycleScreen() {
 
   const elapsed = useMemo(() => (wo && minutesOnJob(wo) > 0 ? formatDuration(minutesOnJob(wo)) : null), [wo, state]);
 
+  // Hooks stop here: everything below the load-state returns must be
+  // plain values, or the hook count changes between renders and React
+  // throws (owner hit this on device, 2026-08-16).
+  const jcTotals = useMemo(() => {
+    const src = bundle?.jobCard?.visits ?? visits;
+    const sum = (k: keyof JobCardVisit) => src.reduce((n, v) => n + (Number(v[k]) || 0), 0);
+    const partsSrc = bundle?.jobCard?.parts ?? parts;
+    return {
+      km: sum('distanceKm'),
+      hours: sum('labourHours') + sum('labourOt15Hours') + sum('labourOt20Hours'),
+      spares: partsSrc.reduce((n, p) => n + (Number(p.quantity) || 0), 0),
+      items: partsSrc,
+    };
+  }, [bundle, visits, parts]);
+
   if (loadState === 'loading') {
     return <Text style={{ padding: 16, color: colors.muted }}>Loading…</Text>;
   }
@@ -600,17 +615,6 @@ export default function WorkOrderLifecycleScreen() {
   const distanceKm = here && sitePoint ? roadKm(here, { latitude: sitePoint.lat, longitude: sitePoint.lon }) : null;
   const { main: workMain, note: workNote } = splitWorkRequired(wo.workRequired);
   const late = overdueDays(wo.completeBy);
-  const jcTotals = useMemo(() => {
-    const src = bundle?.jobCard?.visits ?? visits;
-    const sum = (k: keyof JobCardVisit) => src.reduce((n, v) => n + (Number(v[k]) || 0), 0);
-    const partsSrc = bundle?.jobCard?.parts ?? parts;
-    return {
-      km: sum('distanceKm'),
-      hours: sum('labourHours') + sum('labourOt15Hours') + sum('labourOt20Hours'),
-      spares: partsSrc.reduce((n, p) => n + (Number(p.quantity) || 0), 0),
-      items: partsSrc,
-    };
-  }, [bundle, visits, parts]);
 
   const sharePdf = async () => {
     if (!bundle) return;

@@ -128,6 +128,7 @@ export interface JobCard {
   tasks: JobCardTask[];
   technicianName: string;
   clientName?: string | null;
+  clientContact?: string | null;
   signedAt?: string | null;
 }
 
@@ -314,6 +315,10 @@ export function jobCardHtml(job: JobCard, opts: JobCardOptions = {}): string {
   </tr>
   <tr>
     <td><span class="lbl">Work order</span><br>${esc(job.workOrderCode)}</td>
+    <td><span class="lbl">Contact</span><br>${esc(job.clientContact ?? '')}</td>
+  </tr>
+  <tr>
+    <td></td>
     <td><span class="lbl">Date</span><br>${esc(hhmm(job.signedAt))}</td>
   </tr>
 </table>

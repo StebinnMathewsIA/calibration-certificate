@@ -27,5 +27,6 @@ export const toJobCard = (b: JobCardBundle): JobCard => ({
   })),
   technicianName: b.document.technicianName ?? '',
   clientName: b.jobCard?.clientName ?? null,
+  clientContact: b.jobCard?.clientContact ?? null,
   signedAt: b.jobCard?.signedAt ?? null,
 });

@@ -36,6 +36,7 @@ import {
   WoDivergence,
   WorkOrderRecord,
   acknowledgeDivergence,
+  fetchJobCardTasks,
   getJobCard,
   getPastSiteWork,
   listDivergence,
@@ -402,6 +403,27 @@ export default function WorkOrderLifecycleScreen() {
       .catch(() => {});
   }, [accessToken, id, phase]);
 
+  // Ask OnKey for the work tasks when the bundle carries none (#152).
+  // Once per screen visit, in the background; the result lands in the
+  // cached bundle so the next open, online or not, has them.
+  const taskFetchTried = React.useRef(false);
+  React.useEffect(() => {
+    if (phase === 'pre' || !bundle || taskFetchTried.current) return;
+    if ((bundle.tasks ?? []).length > 0) return;
+    taskFetchTried.current = true;
+    fetchJobCardTasks(accessToken, String(id))
+      .then((out) => {
+        if (out.tasks.length === 0) return;
+        setBundle((prev) => {
+          if (!prev) return prev;
+          const next = { ...prev, tasks: out.tasks };
+          writeCache(`jobcard:${id}`, next);
+          return next;
+        });
+      })
+      .catch(() => {});
+  }, [phase, bundle, accessToken, id]);
+
   const persist = useCallback(
     (over: Partial<{ visits: JobCardVisit[]; parts: JobCardPart[]; workPerformed: string }> = {}) => {
       void saveJobCard(accessToken, String(id), {
@@ -414,17 +436,21 @@ export default function WorkOrderLifecycleScreen() {
     [accessToken, id, visits, parts, performed],
   );
 
-  // THE GATE (#159, owner rule): Complete needs a visit carrying labour
-  // or distance AND the work performed written; Pause needs at least a
-  // partial work performed note.
+  // THE GATE (#159, #162, owner rule): Complete needs a visit carrying
+  // labour or distance, the work performed written, AND the client's
+  // sign-off sealed. Pause needs at least a partial work performed note.
   const visitOk = visits.some(
     (v) => (v.labourHours ?? 0) > 0 || (v.distanceKm ?? 0) > 0 || (v.labourOt15Hours ?? 0) > 0 || (v.labourOt20Hours ?? 0) > 0,
   );
   const performedOk = performed.trim().length > 0;
-  const completeGateOk = visitOk && performedOk;
   const signed = bundle?.jobCard?.state === 'signed';
+  const completeGateOk = visitOk && performedOk && signed;
   const gateNote =
-    phase === 'active' && !completeGateOk ? 'Fill the job card first' : null;
+    phase === 'active' && !completeGateOk
+      ? !visitOk || !performedOk
+        ? 'Fill the job card first'
+        : 'Client sign-off needed'
+      : null;
 
   const elapsed = useMemo(() => (wo && minutesOnJob(wo) > 0 ? formatDuration(minutesOnJob(wo)) : null), [wo, state]);
 
@@ -572,7 +598,22 @@ export default function WorkOrderLifecycleScreen() {
         ...(!visitOk ? ['a visit with labour or distance'] : []),
         ...(!performedOk ? ['the work performed'] : []),
       ];
-      Alert.alert('Fill the job card first', `Before completing, enter ${missing.join(' and ')}.`);
+      if (missing.length > 0) {
+        Alert.alert('Fill the job card first', `Before completing, enter ${missing.join(' and ')}.`);
+      } else {
+        // Only the sign-off is outstanding (#162): take them straight to it.
+        Alert.alert(
+          'Client sign-off needed',
+          'The client accepts the work before you complete the job. Hand them the phone on the sign-off page.',
+          [
+            { text: 'Not yet', style: 'cancel' },
+            {
+              text: 'Sign off now',
+              onPress: () => router.push({ pathname: '/signoff/[id]', params: { id: wo.id } }),
+            },
+          ],
+        );
+      }
       return true;
     }
     if (verb === 'pause' && !performedOk) {
@@ -850,68 +891,188 @@ export default function WorkOrderLifecycleScreen() {
         </SectionCard>
       ) : null}
 
-      {/* STARTED: the job card on the page (#159, owner rule). */}
+      {/* STARTED: the whole job card on the page (#159, #162, owner rule).
+          Spares booking and the client sign-off open their own pages; the
+          record of both stays here. */}
       {phase === 'active' ? (
-        <SectionCard title="Job card, visit 1">
-          <View style={{ flexDirection: 'row', gap: 8 }}>
-            {(
-              [
-                { key: 'distanceKm', label: 'Distance (km)' },
-                { key: 'labourHours', label: 'Labour (h)' },
-                { key: 'labourOt15Hours', label: 'OT 1.5 (h)' },
-                { key: 'labourOt20Hours', label: 'OT 2.0 (h)' },
-              ] as const
-            ).map(({ key, label }) => (
-              <View key={key} style={{ flex: 1 }}>
-                <Text style={{ color: colors.muted, fontSize: 10.5, marginBottom: 3 }}>{label}</Text>
-                <TextInput
-                  style={inputStyle}
-                  defaultValue={visits[0] && visits[0][key] ? String(visits[0][key]) : ''}
-                  onChangeText={(t) => {
-                    dirty.current = true;
-                    setVisits((prev) => {
-                      const next = prev.length ? [...prev] : [blankVisit()];
-                      next[0] = { ...next[0], [key]: num(t) };
-                      return next;
-                    });
-                  }}
-                  onBlur={() => persist()}
-                  keyboardType="decimal-pad"
-                  placeholder="0"
-                  accessibilityLabel={label}
-                />
+        <>
+          {(() => {
+            // OnKey's placeholder row, on every work order and saying
+            // nothing; the print template filters it the same way.
+            const realTasks = (bundle?.tasks ?? []).filter(
+              (t) => (t.description ?? '').trim().toLowerCase() !== 'default task',
+            );
+            if (realTasks.length === 0) return null;
+            return (
+              <SectionCard title="Work tasks">
+                {realTasks.map((t, i) => (
+                  <View
+                    key={i}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'flex-start',
+                      gap: 8,
+                      borderTopWidth: i === 0 ? 0 : 1,
+                      borderTopColor: colors.line,
+                      paddingVertical: 8,
+                    }}
+                  >
+                    <Badge text={t.done ? 'Done' : 'Open'} tone={t.done ? 'ok' : 'muted'} />
+                    <Text style={{ flex: 1, color: colors.ink, fontSize: 13 }}>{t.description}</Text>
+                  </View>
+                ))}
+              </SectionCard>
+            );
+          })()}
+          <SectionCard title="Job card">
+            {visits.map((v, vi) => (
+              <View
+                key={`${visits.length}-${vi}`}
+                style={{
+                  borderTopWidth: vi === 0 ? 0 : 1,
+                  borderTopColor: colors.line,
+                  paddingTop: vi === 0 ? 0 : 10,
+                  marginBottom: vi === visits.length - 1 ? 0 : 10,
+                }}
+              >
+                {visits.length > 1 ? (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
+                    <Text style={{ flex: 1, color: colors.ink, fontSize: 13, fontFamily: fonts.bodyMedium }}>
+                      Visit {vi + 1}
+                      {v.date ? `  ${v.date}` : ''}
+                    </Text>
+                    <Text
+                      onPress={() => {
+                        dirty.current = true;
+                        const next = visits.filter((_, j) => j !== vi);
+                        setVisits(next);
+                        persist({ visits: next });
+                      }}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Remove visit ${vi + 1}`}
+                      style={{ color: colors.red, fontSize: 13, paddingHorizontal: 6 }}
+                    >
+                      &#10007;
+                    </Text>
+                  </View>
+                ) : null}
+                <View style={{ flexDirection: 'row', gap: 8 }}>
+                  {(
+                    [
+                      { key: 'distanceKm', label: 'Distance (km)' },
+                      { key: 'labourHours', label: 'Labour (h)' },
+                      { key: 'labourOt15Hours', label: 'OT 1.5 (h)' },
+                      { key: 'labourOt20Hours', label: 'OT 2.0 (h)' },
+                    ] as const
+                  ).map(({ key, label }) => (
+                    <View key={key} style={{ flex: 1 }}>
+                      <Text style={{ color: colors.muted, fontSize: 10.5, marginBottom: 3 }}>{label}</Text>
+                      <TextInput
+                        style={inputStyle}
+                        defaultValue={v[key] ? String(v[key]) : ''}
+                        onChangeText={(t) => {
+                          dirty.current = true;
+                          setVisits((prev) => {
+                            const next = prev.length ? [...prev] : [blankVisit()];
+                            next[vi] = { ...next[vi], [key]: num(t) };
+                            return next;
+                          });
+                        }}
+                        onBlur={() => persist()}
+                        keyboardType="decimal-pad"
+                        placeholder="0"
+                        accessibilityLabel={`${label}, visit ${vi + 1}`}
+                      />
+                    </View>
+                  ))}
+                </View>
               </View>
             ))}
-          </View>
-          <Text style={{ color: colors.muted, fontSize: 10.5, marginTop: 10, marginBottom: 3 }}>
-            Work performed (required to complete)
-          </Text>
-          <TextInput
-            style={[inputStyle, { minHeight: 70 }]}
-            multiline
-            textAlignVertical="top"
-            placeholder="Describe what was done"
-            value={performed}
-            onChangeText={(t) => {
-              dirty.current = true;
-              setPerformed(t);
-            }}
-            onBlur={() => persist()}
-          />
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 10 }}>
-            <Text style={{ color: colors.muted, fontSize: 12 }}>
-              Spares: {jcTotals.spares > 0 ? `${jcTotals.spares} item${jcTotals.spares === 1 ? '' : 's'} booked` : 'none booked yet'}
+            <Text
+              onPress={() => {
+                dirty.current = true;
+                const next = [...visits, blankVisit()];
+                setVisits(next);
+                persist({ visits: next });
+              }}
+              accessibilityRole="button"
+              accessibilityLabel="Add a visit"
+              style={{ color: colors.blueText, fontSize: 12.5, fontFamily: fonts.bodyMedium, marginTop: 8 }}
+            >
+              + Add a visit
             </Text>
-          </View>
-          <Button
-            title="Open the full job card"
-            kind="secondary"
-            onPress={() => router.push({ pathname: '/jobcard/[id]', params: { id: wo.id } })}
-          />
-          <Text style={{ color: colors.muted, fontSize: 11.5, marginTop: 4 }}>
-            Spares picker, more visits, tasks and the client signature live on the full card.
-          </Text>
-        </SectionCard>
+            <Text style={{ color: colors.muted, fontSize: 10.5, marginTop: 10, marginBottom: 3 }}>
+              Work performed (required to complete)
+            </Text>
+            <TextInput
+              style={[inputStyle, { minHeight: 70 }]}
+              multiline
+              textAlignVertical="top"
+              placeholder="Describe what was done"
+              value={performed}
+              onChangeText={(t) => {
+                dirty.current = true;
+                setPerformed(t);
+              }}
+              onBlur={() => persist()}
+            />
+          </SectionCard>
+
+          <SectionCard title="Spares booked">
+            {jcTotals.items.length > 0 ? (
+              jcTotals.items.map((p, i) => (
+                <View
+                  key={`${p.itemCode}-${i}`}
+                  style={{
+                    flexDirection: 'row',
+                    justifyContent: 'space-between',
+                    paddingVertical: 6,
+                    borderTopWidth: i === 0 ? 0 : 1,
+                    borderTopColor: colors.line,
+                  }}
+                >
+                  <Text style={{ color: colors.ink, fontSize: 13, flex: 1 }} numberOfLines={1}>
+                    {p.description || p.itemCode}
+                  </Text>
+                  <Text style={{ color: colors.muted, fontSize: 12.5, fontVariant: ['tabular-nums'] }}>
+                    {p.quantity}
+                  </Text>
+                </View>
+              ))
+            ) : (
+              <Text style={{ color: colors.muted, fontSize: 12 }}>No spares booked yet.</Text>
+            )}
+            <Button
+              title="Book spares"
+              kind="secondary"
+              onPress={() => router.push({ pathname: '/spares/[id]', params: { id: wo.id } })}
+            />
+          </SectionCard>
+
+          <SectionCard title="Client sign-off">
+            {signed ? (
+              <>
+                <Badge text="Signed" tone="ok" />
+                <Text style={{ color: colors.muted, fontSize: 12, marginTop: 4 }}>
+                  Accepted by {bundle?.jobCard?.clientName}
+                  {bundle?.jobCard?.signedAt ? ` at ${bundle.jobCard.signedAt.slice(11, 16)}` : ''}. You
+                  can complete the job.
+                </Text>
+              </>
+            ) : (
+              <>
+                <Text style={{ color: colors.muted, fontSize: 12 }}>
+                  The client accepts the work before you complete the job: their name, contact
+                  details and signature.
+                </Text>
+                <Button
+                  title="Client sign-off"
+                  onPress={() => router.push({ pathname: '/signoff/[id]', params: { id: wo.id } })}
+                />
+              </>
+            )}
+          </SectionCard>
+        </>
       ) : null}
 
       {/* DONE: the outcome (#159). */}
@@ -999,8 +1160,8 @@ export default function WorkOrderLifecycleScreen() {
           ) : (
             <View style={{ marginHorizontal: 12, marginTop: 12 }}>
               <Button
-                title="Job card and sign-off"
-                onPress={() => router.push({ pathname: '/jobcard/[id]', params: { id: wo.id } })}
+                title="Client sign-off"
+                onPress={() => router.push({ pathname: '/signoff/[id]', params: { id: wo.id } })}
               />
             </View>
           )}

@@ -1031,3 +1031,28 @@ the pre-work view needs the 0.2.0 native build, like Home.
       date, what was done) on the pre-work and completed views
 - [ ] Dispensers named on the job, verification launch, divergence and
       rejected cards all still work; no dispenser selection is forced
+
+## Sign-off before Complete (#162)
+
+Arrives as an OTA update (git pull on the Metro laptop, then reload).
+
+- [ ] On a started job, the work order page carries the whole job card:
+      visits (with Add a visit), work performed, the Spares booked list
+      with a "Book spares" button, and a "Client sign-off" card
+- [ ] "Book spares" opens the spares page: the stock pick list, editable
+      quantities, remove; changes show back on the work order page
+- [ ] "Client sign-off" opens the sign-off page: client name, contact
+      details (both required before capture), the signature pad
+      hand-off, then "Sign off" seals the card
+- [ ] The client can sign while the job is still started or paused
+- [ ] Complete stays locked ("Client sign-off needed") until the card
+      is sealed; tapping it anyway offers "Sign off now"
+- [ ] With the visit numbers, the note and the sign-off all in place,
+      Complete moves the job straight to signed off in one tap
+- [ ] A job stopped before signing (the old flow) still shows "Client
+      sign-off" on the completed view, and sealing there moves it to
+      signed off exactly as before
+- [ ] The signed job card PDF shows the client's contact details next
+      to their name
+- [ ] The separate job card screen is gone; work tasks from OnKey show
+      on the work order page while the job is active

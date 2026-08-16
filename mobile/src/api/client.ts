@@ -381,6 +381,7 @@ export interface JobCardState {
   parts: JobCardPart[];
   workPerformed: string | null;
   clientName: string | null;
+  clientContact: string | null;
   clientSignature: string | null;
   techSignature: string | null;
   state: 'draft' | 'signed';
@@ -713,11 +714,17 @@ export async function saveJobCard(
 export async function signJobCard(
   token: string | null,
   workOrderId: string,
-  body: { clientName: string; clientSignature: string; techSignature?: string },
+  body: {
+    clientName: string;
+    clientContact?: string;
+    clientSignature: string;
+    techSignature?: string;
+  },
 ): Promise<void> {
   const args = {
     p_work_order_id: workOrderId,
     p_client_name: body.clientName,
+    p_client_contact: body.clientContact ?? null,
     p_client_signature: body.clientSignature,
     p_tech_signature: body.techSignature ?? null,
     p_occurred_at: new Date().toISOString(),
@@ -728,17 +735,19 @@ export async function signJobCard(
     if (!isNetworkError(err)) throw err;
     enqueueWrite('jobCardSign', { args });
   }
-  // Signing moves the lifecycle to signed_off SERVER-side, inside the RPC,
-  // so the cached work order would otherwise still offer "Job card and
-  // sign-off" on the screen behind. Mirror it locally on both paths: the
-  // queued write will do exactly the same thing when it drains.
-  try {
-    commitTransitionLocally(
-      workOrderId,
-      applyTransitionLocally(workOrderId, 'sign_off', {}, args.p_occurred_at),
-    );
-  } catch {
-    // The work order is not on this device. Nothing to keep in step.
+  // The server only moves the lifecycle to signed_off when the job was
+  // already stopped (#162): signing mid-job just seals the card, and the
+  // Complete that follows finishes everything. Mirror exactly that.
+  const cached = readCache<WorkOrderRecord[]>('wo:records') ?? [];
+  if (cached.find((w) => w.id === workOrderId)?.lifecycle?.state === 'stopped') {
+    try {
+      commitTransitionLocally(
+        workOrderId,
+        applyTransitionLocally(workOrderId, 'sign_off', {}, args.p_occurred_at),
+      );
+    } catch {
+      // The work order is not on this device. Nothing to keep in step.
+    }
   }
 }
 

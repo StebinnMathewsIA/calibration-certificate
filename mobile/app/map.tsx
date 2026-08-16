@@ -38,6 +38,8 @@ export default function MapScreen() {
           perm = await Location.requestForegroundPermissionsAsync();
         }
         if (!perm.granted) return;
+        const last = await Location.getLastKnownPositionAsync();
+        if (last) setHere({ latitude: last.coords.latitude, longitude: last.coords.longitude });
         const fix = await Location.getCurrentPositionAsync({
           accuracy: Location.Accuracy.Balanced,
         });

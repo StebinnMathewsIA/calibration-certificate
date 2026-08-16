@@ -62,8 +62,9 @@ export function OilDisc({ customerName, size = 46 }: { customerName: string | nu
   }
   if (!brand) {
     // Prowalco fallback: no oil company on record for this site. The
-    // REAL client-supplied mark (the certificate's logo), not a drawn
-    // approximation (#157 owner correction).
+    // droplet mark, not the wide wordmark (#157 owner correction): the
+    // full logo shrinks to an unreadable sliver in a small disc, and
+    // the droplet IS the disc-shaped identity.
     return (
       <View
         accessibilityLabel="Prowalco"
@@ -80,8 +81,8 @@ export function OilDisc({ customerName, size = 46 }: { customerName: string | nu
         }}
       >
         <Image
-          source={require('../../../assets/prowalco-logo.png')}
-          style={{ width: size * 0.82, height: size * 0.82 }}
+          source={require('../../../assets/drop-source.png')}
+          style={{ width: size * 0.56, height: size * 0.56 }}
           resizeMode="contain"
           accessibilityIgnoresInvertColors
         />

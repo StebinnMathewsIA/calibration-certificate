@@ -210,6 +210,13 @@ export default function HomeScreen() {
           perm = await Location.requestForegroundPermissionsAsync();
         }
         if (!perm.granted) return;
+        // Last known fix FIRST (#157 field finding): a fresh GPS fix can
+        // take long enough that the dot looked absent. Paint the cached
+        // position instantly, then refine with the live one.
+        const last = await Location.getLastKnownPositionAsync();
+        if (alive && last) {
+          setHere({ latitude: last.coords.latitude, longitude: last.coords.longitude });
+        }
         const fix = await Location.getCurrentPositionAsync({
           accuracy: Location.Accuracy.Balanced,
         });

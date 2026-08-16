@@ -41,7 +41,7 @@ import { useAuth } from '../../src/auth/AuthContext';
 import { Badge, Button, SectionCard, colors, fonts } from '../../src/components/ui';
 import { FormScrollView } from '../../src/components/FormScrollView';
 import { readCache, writeCache } from '../../src/db/cache';
-import { JobCard } from '../../src/pdf/jobCardHtml';
+import { toJobCard } from '../../src/pdf/jobCardMap';
 import { renderJobCardPdf } from '../../src/pdf/renderPdf';
 import { hasProfileSignature, voSignatureCacheKey } from '../../src/profile/profileStore';
 
@@ -68,34 +68,6 @@ const numField = styles.numField;
 const isRealTask = (t: JobCardTaskRow): boolean =>
   (t.description ?? '').trim().toLowerCase() !== 'default task';
 
-/** Bundle to printable document. Tasks come from the OnKey mirror via the
- * bundle (#152); the template prints its task page only when real tasks
- * exist, rather than the 31 blank rows the original had. */
-const toJobCard = (b: JobCardBundle): JobCard => ({
-  workOrderCode: b.workOrderCode ?? '',
-  siteCode: b.document.siteCode ?? '',
-  siteName: b.siteName ?? '',
-  siteAddress: b.document.siteAddress,
-  sitePhone: b.document.sitePhone,
-  oilCompany: b.document.oilCompany,
-  assetCode: b.document.assetCode,
-  assetDescription: b.document.assetDescription,
-  importance: b.document.importance,
-  requester: b.document.customerName,
-  workRequired: b.workRequired,
-  workPerformed: b.jobCard?.workPerformed ?? null,
-  visits: b.jobCard?.visits ?? [],
-  lines: b.document.lines,
-  tasks: (b.tasks ?? []).map((t) => ({
-    description: t.description ?? '',
-    done: t.done,
-    passed: t.passed,
-    completedOn: t.completedOn,
-  })),
-  technicianName: b.document.technicianName ?? '',
-  clientName: b.jobCard?.clientName ?? null,
-  signedAt: b.jobCard?.signedAt ?? null,
-});
 
 /** A labelled number box. Separate component because a visit needs four of
  * them and inlining that made the row unreadable. */

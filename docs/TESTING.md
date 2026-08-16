@@ -1000,3 +1000,34 @@ full screen show the placeholder text.
 - [ ] Tapping the card opens the work order; tapping the map behind it
       dismisses; the close button dismisses
 - [ ] Overdue pins keep their red day chips on the full map
+
+## Work order detail redesign (#159)
+
+Arrives as an OTA update (force-quit and reopen twice). The map strip on
+the pre-work view needs the 0.2.0 native build, like Home.
+
+- [ ] Before work starts (not started or on the way): hero card shows
+      the oil disc, status icon, site name and address, the work
+      required excerpt, Estimated duration, Complete by, Distance to
+      site when position is known, and the map strip with a Navigate
+      pill that opens Google Maps directions
+- [ ] While started or paused: the "Job card, visit 1" section sits
+      inline with the four visit numbers (distance, labour, OT 1.5,
+      OT 2.0), the work performed note, the spares count line, and
+      "Open the full job card"; numbers persist when you leave a field
+- [ ] The gate: Complete and Pause render dimmed with "Fill the job
+      card first" until the job card is filled; tapping them anyway
+      explains exactly what is missing (Complete needs a visit with
+      labour or distance AND a work performed note; Pause needs the
+      note only)
+- [ ] Once filled, Complete and Pause return to full strength and work
+      as before (pause reasons sheet, stand-down confirmation)
+- [ ] After completion: three figure cards (Travelled, Labour, Spares),
+      the Spares booked list itemised, and once signed a PDF row
+      ("Job card, signed, Accepted by ...") that opens the share sheet
+      with the finalised job card PDF; before signing, a "Job card and
+      sign-off" button opens the job card screen
+- [ ] Past work at this site shows up to six earlier jobs (reference,
+      date, what was done) on the pre-work and completed views
+- [ ] Dispensers named on the job, verification launch, divergence and
+      rejected cards all still work; no dispenser selection is forced

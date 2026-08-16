@@ -280,6 +280,23 @@ export async function getHomeStats(token: string | null): Promise<HomeStats> {
   return await fetchThrough('home:stats', () => rpc<HomeStats>('app_home_stats', token));
 }
 
+/** Past completed work orders at the same site (#159): what happened
+ * here before, in the technician's own words where a job card exists. */
+export interface PastSiteWork {
+  ref: string | null;
+  when: string | null;
+  what: string;
+}
+
+export async function getPastSiteWork(
+  token: string | null,
+  workOrderId: string,
+): Promise<PastSiteWork[]> {
+  return await fetchThrough(`wo:past:${workOrderId}`, () =>
+    rpc<PastSiteWork[]>('app_wo_past_site_work', token, { p_work_order_id: workOrderId }),
+  );
+}
+
 export interface PauseReason {
   code: string;
   label: string;

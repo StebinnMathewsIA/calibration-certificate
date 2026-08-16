@@ -1,24 +1,48 @@
 /**
- * Work order detail and lifecycle (#95): Tap to Start begins the SLA,
- * Pause needs a reason (incomplete-for-spares and referral cannot be
- * resumed by the technician), Stop ends the SLA and unlocks sign-off.
- * The state machine is enforced server-side; this screen presents it.
+ * Work order detail (#159): one page, three states, in the Home card
+ * language.
+ *
+ * ON THE WAY (and before): the brief. The hero card with the full work
+ * required, distance to site, the styled map with a Navigate handoff,
+ * dispensers, and past work at this site.
+ *
+ * STARTED (and paused): the work. The job card's fields live ON the
+ * page, and Complete and Pause are LOCKED until the required entries
+ * exist (owner rule): a visit carrying labour or distance, and the work
+ * performed written. Pause accepts a partial note.
+ *
+ * COMPLETE (stopped, signed off): the outcome. Work performed as the
+ * card, the figures, the itemised spares, the signed job card as a PDF,
+ * and past work at the site.
+ *
+ * The lifecycle state machine stays server-enforced; this screen
+ * presents it (#95). Dispenser scope is never forced: an OnKey-named
+ * asset is highlighted, the whole site stays in scope (#159).
  */
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Location from 'expo-location';
+import * as Sharing from 'expo-sharing';
 import React, { useCallback, useMemo, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
-import { Alert, Pressable, Text, TextInput, View } from 'react-native';
+import { Alert, Linking, Pressable, Text, TextInput, View } from 'react-native';
+import Svg, { Circle, Path } from 'react-native-svg';
 import {
   DispenserResolved,
+  JobCardBundle,
+  JobCardPart,
+  JobCardVisit,
+  PastSiteWork,
   PauseReason,
   WoDivergence,
   WorkOrderRecord,
   acknowledgeDivergence,
+  getJobCard,
+  getPastSiteWork,
   listDivergence,
   listPauseReasons,
   listSiteDispensers,
   listWorkOrderRecords,
+  saveJobCard,
   standDownWorkOrder,
   transitionWorkOrder,
 } from '../../src/api/client';
@@ -26,9 +50,15 @@ import { useAuth } from '../../src/auth/AuthContext';
 import { Badge, Button, SectionCard, colors, fonts } from '../../src/components/ui';
 import { FormScrollView } from '../../src/components/FormScrollView';
 import { LifecycleActions } from '../../src/components/LifecycleActions';
-import { MiniMap } from '../../src/components/MiniMap';
+import { HomeMap, pinsFor } from '../../src/components/home/HomeMap';
+import { OilDisc } from '../../src/components/home/OilDisc';
+import { parseWktPoint } from '../../src/components/MiniMap';
 import { fetchThrough, readCache, writeCache } from '../../src/db/cache';
 import { rejectedTransitions } from '../../src/sync/outbox';
+import { formatDay, formatDuration, overdueDays } from '../../src/util/format';
+import { formatKm, roadKm } from '../../src/util/geo';
+import { toJobCard } from '../../src/pdf/jobCardMap';
+import { renderJobCardPdf } from '../../src/pdf/renderPdf';
 
 /** Same cache key My day reads. The two MUST agree: this screen used to
  * fetch the list itself, so a failed request left it on "Loading..."
@@ -55,34 +85,175 @@ const DIVERGENCE_BODY: Record<string, string> = {
     'Your status change could not be delivered to OnKey after several attempts. The office does not have it.',
 };
 
-const STATE_LABEL: Record<string, string> = {
-  not_started: 'Not started',
-  on_the_way: 'On the way',
-  started: 'In progress',
-  paused: 'Paused',
-  stopped: 'Stopped, ready to sign off',
-  signed_off: 'Signed off',
-};
-
-const STATE_TONE: Record<string, 'ok' | 'warn' | 'bad' | 'muted'> = {
-  not_started: 'muted',
-  on_the_way: 'ok',
-  started: 'ok',
-  paused: 'warn',
-  stopped: 'ok',
-  signed_off: 'ok',
-};
-
-/** Elapsed working time: wall clock since start, minus completed pauses. */
-function elapsedLabel(wo: WorkOrderRecord): string | null {
+/** Net working minutes: wall clock since start minus completed pauses. */
+function minutesOnJob(wo: WorkOrderRecord): number {
   const l = wo.lifecycle;
-  if (!l?.startedAt) return null;
-  const end = l.stoppedAt ? new Date(l.stoppedAt) : new Date();
-  const gross = (end.getTime() - new Date(l.startedAt).getTime()) / 1000;
-  const net = Math.max(0, gross - (l.pausedSeconds ?? 0));
-  const h = Math.floor(net / 3600);
-  const m = Math.round((net % 3600) / 60);
-  return h > 0 ? `${h} h ${m} min` : `${m} min`;
+  if (!l?.startedAt) return 0;
+  const end = l.stoppedAt ? new Date(l.stoppedAt).getTime() : Date.now();
+  const gross = (end - new Date(l.startedAt).getTime()) / 1000;
+  return Math.max(0, Math.round((gross - (l.pausedSeconds ?? 0)) / 60));
+}
+
+/** OnKey folds the previous work order's identity into the work required
+ * text as a Last_Work_Order line. Split it off and prettify: the data is
+ * kept, the underscores are not (#159). */
+function splitWorkRequired(text: string | null): { main: string | null; note: string | null } {
+  if (!text) return { main: null, note: null };
+  const at = text.search(/Last[_ ]Work[_ ]Order:/i);
+  if (at < 0) return { main: text.trim() || null, note: null };
+  const main = text.slice(0, at).trim() || null;
+  const note = text
+    .slice(at)
+    .replace(/Last[_ ]Work[_ ]Order:\s*/i, 'Previous work order ')
+    .replaceAll('_', ' ')
+    .trim();
+  return { main, note: note || null };
+}
+
+const num = (s: string): number => {
+  const n = Number(String(s).replace(',', '.').trim());
+  return Number.isFinite(n) && n >= 0 ? n : 0;
+};
+
+const blankVisit = (): JobCardVisit => ({
+  date: new Date().toISOString().slice(0, 10),
+  distanceKm: 0,
+  labourHours: 0,
+  labourOt15Hours: 0,
+  labourOt20Hours: 0,
+});
+
+function MetaCell({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, width: '48%' }}>
+      <View
+        style={{
+          width: 28,
+          height: 28,
+          borderRadius: 999,
+          backgroundColor: colors.bg,
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        {icon}
+      </View>
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text style={{ fontSize: 11.5, color: colors.muted }}>{label}</Text>
+        <Text
+          style={{ fontSize: 13.5, color: colors.ink, fontFamily: fonts.bodyMedium, fontVariant: ['tabular-nums'] }}
+          numberOfLines={1}
+        >
+          {value}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+const ClockIcon = (
+  <Svg width={14} height={14} viewBox="0 0 24 24" fill="none">
+    <Circle cx={12} cy={12} r={8.5} stroke={colors.navy} strokeWidth={2} />
+    <Path d="M12 7.5V12l3 2" stroke={colors.navy} strokeWidth={2} strokeLinecap="round" />
+  </Svg>
+);
+const TimerIcon = (
+  <Svg width={14} height={14} viewBox="0 0 24 24" fill="none">
+    <Path d="M10 2h4M12 8v5l2.5 2" stroke={colors.navy} strokeWidth={2} strokeLinecap="round" />
+    <Circle cx={12} cy={14} r={7.5} stroke={colors.navy} strokeWidth={2} />
+  </Svg>
+);
+const RoadIcon = (
+  <Svg width={14} height={14} viewBox="0 0 24 24" fill="none">
+    <Path d="M5 21L9 3M19 21L15 3M12 5v2.5M12 11v2.5M12 17v2.5" stroke={colors.navy} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+  </Svg>
+);
+const BoxIcon = (
+  <Svg width={14} height={14} viewBox="0 0 24 24" fill="none">
+    <Path d="M3.5 8l8.5-4.5L20.5 8v8L12 20.5 3.5 16z" stroke={colors.navy} strokeWidth={1.9} strokeLinejoin="round" />
+    <Path d="M3.5 8L12 12.5 20.5 8M12 12.5v8" stroke={colors.navy} strokeWidth={1.9} strokeLinejoin="round" />
+  </Svg>
+);
+const CalendarIcon = (
+  <Svg width={14} height={14} viewBox="0 0 24 24" fill="none">
+    <Path d="M4 10h16M8.5 3.5v4M15.5 3.5v4" stroke={colors.navy} strokeWidth={2} strokeLinecap="round" />
+    <Path d="M4 8a2.5 2.5 0 0 1 2.5-2.5h11A2.5 2.5 0 0 1 20 8v10a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 18z" stroke={colors.navy} strokeWidth={2} />
+  </Svg>
+);
+
+/** Status at the hero's top right: the Home card's icon language. */
+function HeroStatus({ wo }: { wo: WorkOrderRecord }) {
+  const state = wo.lifecycle?.state ?? 'not_started';
+  if (state === 'started') {
+    return (
+      <View
+        accessibilityLabel={`In progress, ${formatDuration(minutesOnJob(wo)) ?? '0 min'} on job`}
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: 5,
+          backgroundColor: colors.blueTint,
+          borderRadius: 999,
+          paddingVertical: 6,
+          paddingHorizontal: 11,
+        }}
+      >
+        <Svg width={11} height={11} viewBox="0 0 24 24" fill="none">
+          <Path d="M8 5.5v13l10-6.5z" stroke={colors.blueText} strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" />
+        </Svg>
+        <Text style={{ color: colors.blueText, fontSize: 12.5, fontFamily: fonts.bodyMedium, fontVariant: ['tabular-nums'] }}>
+          {formatDuration(minutesOnJob(wo)) ?? '0 min'}
+        </Text>
+      </View>
+    );
+  }
+  const disc = (bg: string, child: React.ReactNode, label: string) => (
+    <View
+      accessibilityLabel={label}
+      style={{ width: 32, height: 32, borderRadius: 999, backgroundColor: bg, alignItems: 'center', justifyContent: 'center' }}
+    >
+      {child}
+    </View>
+  );
+  if (state === 'on_the_way') {
+    return disc(
+      colors.blueTint,
+      <Svg width={14} height={14} viewBox="0 0 24 24" fill="none">
+        <Path d="M21 3L10.5 13.5M21 3l-7 18-3.5-7.5L3 10z" stroke={colors.blueText} strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" />
+      </Svg>,
+      'On the way',
+    );
+  }
+  if (state === 'paused') {
+    return disc(
+      colors.mist,
+      <Svg width={14} height={14} viewBox="0 0 24 24" fill="none">
+        <Path d="M9 5v14M15 5v14" stroke={colors.muted} strokeWidth={2.6} strokeLinecap="round" />
+      </Svg>,
+      'Paused',
+    );
+  }
+  if (state === 'stopped' || state === 'signed_off') {
+    return disc(
+      state === 'signed_off' ? colors.greenTint : colors.mist,
+      <Svg width={15} height={15} viewBox="0 0 24 24" fill="none">
+        <Path
+          d="M4 12.5l5 5L20 6.5"
+          stroke={state === 'signed_off' ? colors.greenText : colors.muted}
+          strokeWidth={2.8}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </Svg>,
+      state === 'signed_off' ? 'Signed off' : 'Complete, awaiting sign off',
+    );
+  }
+  return (
+    <View
+      accessibilityLabel="Not started"
+      style={{ width: 32, height: 32, borderRadius: 999, borderWidth: 1.5, borderStyle: 'dashed', borderColor: colors.line }}
+    />
+  );
 }
 
 export default function WorkOrderLifecycleScreen() {
@@ -95,26 +266,32 @@ export default function WorkOrderLifecycleScreen() {
   const [chosenReason, setChosenReason] = useState<PauseReason | null>(null);
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
-  // "No record yet" and "the request failed" and "it is not in your list"
-  // are three different things. Collapsing them into a null work order is
-  // what put a technician on a blank Loading screen with no way forward.
   const [loadState, setLoadState] = useState<'loading' | 'ready' | 'missing' | 'error'>('loading');
   const [loadError, setLoadError] = useState<string | null>(null);
-  // A lifecycle action the server has refused on replay. The technician
-  // acted, the screen showed it applied, and it did not stick. Saying
-  // nothing would leave them believing the office knows.
   const [rejected, setRejected] = useState<{ event: string; error: string }[]>([]);
-  // The office moved this job while the technician holds it. Detected on
-  // sync (migration 047), where the register is actually fresh.
   const [divergence, setDivergence] = useState<WoDivergence | null>(null);
   const [dispensers, setDispensers] = useState<DispenserResolved[] | null>(null);
   const [dispensersFailed, setDispensersFailed] = useState(false);
+  const [past, setPast] = useState<PastSiteWork[]>([]);
+  const [here, setHere] = useState<{ latitude: number; longitude: number } | null>(null);
 
-  // The fetch the card was always waiting for (#143). setDispensers was
-  // declared and never called, so the card said "Loading" for ever. Keyed
-  // on the site rather than folded into load(), because the site id is
-  // only known once the work order has arrived. Same cache key as the
-  // site screen, so the two share one offline copy.
+  // The inline job card (#159): the fields the gate reads, on the page.
+  const [bundle, setBundle] = useState<JobCardBundle | null>(null);
+  const [visits, setVisits] = useState<JobCardVisit[]>([]);
+  const [parts, setParts] = useState<JobCardPart[]>([]);
+  const [performed, setPerformed] = useState('');
+  const dirty = React.useRef(false);
+
+  // The play pill ticks by the minute while started.
+  const [, bump] = useState(0);
+  const state = wo?.lifecycle?.state ?? 'not_started';
+  React.useEffect(() => {
+    if (state !== 'started') return;
+    const t = setInterval(() => bump((n) => n + 1), 60_000);
+    return () => clearInterval(t);
+  }, [state]);
+
+  // The fetch the card was always waiting for (#143), keyed on the site.
   const siteId = wo?.siteId ?? null;
   React.useEffect(() => {
     if (!siteId) return;
@@ -125,9 +302,6 @@ export default function WorkOrderLifecycleScreen() {
     })
       .then((list) => alive && setDispensers(list))
       .catch(() => {
-        // "Could not load" and "loading" are different situations, and a
-        // card that shows the second while meaning the first is how this
-        // bug stayed invisible.
         if (alive) setDispensersFailed(true);
       });
     return () => {
@@ -138,9 +312,6 @@ export default function WorkOrderLifecycleScreen() {
   const load = useCallback(() => {
     setLoadState((s) => (s === 'ready' ? s : 'loading'));
     fetchThrough<WorkOrderRecord[]>(WO_CACHE_KEY, () => listWorkOrderRecords(accessToken), {
-      // Without onFresh the revalidated record only reached the cache, so a
-      // status the office changed (or a sign-off applied through the job
-      // card) showed up one visit late.
       onFresh: (list) => {
         const found = list.find((w) => w.id === id) ?? null;
         setWo(found);
@@ -164,6 +335,9 @@ export default function WorkOrderLifecycleScreen() {
     })
       .then((list) => setDivergence(list.find((d) => d.workOrderId === id) ?? null))
       .catch(() => {});
+    getPastSiteWork(accessToken, String(id))
+      .then(setPast)
+      .catch(() => {});
     setRejected(
       rejectedTransitions()
         .filter((r) => r.workOrderId === id)
@@ -177,8 +351,82 @@ export default function WorkOrderLifecycleScreen() {
     }, [load]),
   );
 
-  const state = wo?.lifecycle?.state ?? 'not_started';
-  const elapsed = useMemo(() => (wo ? elapsedLabel(wo) : null), [wo]);
+  // Position for the distance cell and the map dot: last known first.
+  React.useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        let perm = await Location.getForegroundPermissionsAsync();
+        if (!perm.granted && perm.canAskAgain) {
+          perm = await Location.requestForegroundPermissionsAsync();
+        }
+        if (!perm.granted) return;
+        const last = await Location.getLastKnownPositionAsync();
+        if (alive && last) {
+          setHere({ latitude: last.coords.latitude, longitude: last.coords.longitude });
+        }
+        const fix = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        if (alive) setHere({ latitude: fix.coords.latitude, longitude: fix.coords.longitude });
+      } catch {
+        // No fix: no distance cell, the map frames the site alone.
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // The job card rides along from started onward (#159).
+  const phase: 'pre' | 'active' | 'done' =
+    state === 'started' || state === 'paused' ? 'active' : state === 'stopped' || state === 'signed_off' ? 'done' : 'pre';
+  React.useEffect(() => {
+    if (phase === 'pre') return;
+    getJobCard(accessToken, String(id), {
+      onFresh: (fresh) => {
+        setBundle(fresh);
+        if (!dirty.current) {
+          setVisits(fresh.jobCard?.visits?.length ? fresh.jobCard.visits : [blankVisit()]);
+          setParts(fresh.jobCard?.parts ?? []);
+          setPerformed(fresh.jobCard?.workPerformed ?? '');
+        }
+      },
+    })
+      .then((b) => {
+        setBundle(b);
+        if (!dirty.current) {
+          setVisits(b.jobCard?.visits?.length ? b.jobCard.visits : [blankVisit()]);
+          setParts(b.jobCard?.parts ?? []);
+          setPerformed(b.jobCard?.workPerformed ?? '');
+        }
+      })
+      .catch(() => {});
+  }, [accessToken, id, phase]);
+
+  const persist = useCallback(
+    (over: Partial<{ visits: JobCardVisit[]; parts: JobCardPart[]; workPerformed: string }> = {}) => {
+      void saveJobCard(accessToken, String(id), {
+        visits,
+        parts,
+        workPerformed: performed,
+        ...over,
+      }).catch(() => {});
+    },
+    [accessToken, id, visits, parts, performed],
+  );
+
+  // THE GATE (#159, owner rule): Complete needs a visit carrying labour
+  // or distance AND the work performed written; Pause needs at least a
+  // partial work performed note.
+  const visitOk = visits.some(
+    (v) => (v.labourHours ?? 0) > 0 || (v.distanceKm ?? 0) > 0 || (v.labourOt15Hours ?? 0) > 0 || (v.labourOt20Hours ?? 0) > 0,
+  );
+  const performedOk = performed.trim().length > 0;
+  const completeGateOk = visitOk && performedOk;
+  const signed = bundle?.jobCard?.state === 'signed';
+  const gateNote =
+    phase === 'active' && !completeGateOk ? 'Fill the job card first' : null;
+
+  const elapsed = useMemo(() => (wo && minutesOnJob(wo) > 0 ? formatDuration(minutesOnJob(wo)) : null), [wo, state]);
 
   if (loadState === 'loading') {
     return <Text style={{ padding: 16, color: colors.muted }}>Loading…</Text>;
@@ -198,9 +446,7 @@ export default function WorkOrderLifecycleScreen() {
           {loadError ? (
             <Text style={{ color: colors.muted, fontSize: 12, marginTop: 6 }}>{loadError}</Text>
           ) : null}
-          <Text
-            style={{ color: colors.muted, fontSize: 12, marginTop: 6, fontFamily: fonts.mono }}
-          >
+          <Text style={{ color: colors.muted, fontSize: 12, marginTop: 6, fontFamily: fonts.mono }}>
             {id}
           </Text>
           <Button title="Try again" onPress={load} />
@@ -210,17 +456,12 @@ export default function WorkOrderLifecycleScreen() {
     );
   }
 
-  // Returns whether the transition applied, because Start work opens the
-  // job card afterwards (#144) and opening it on a refused transition
-  // would put the technician in a job card for work the server does not
-  // believe has started.
   const apply = async (
     event: 'on_the_way' | 'start' | 'pause' | 'stop' | 'sign_off',
     opts: { reason?: string; note?: string } = {},
   ): Promise<boolean> => {
     setBusy(true);
     try {
-      // Location is best-effort context on the transition, never a gate.
       let gps: string | undefined;
       try {
         const perm = await Location.getForegroundPermissionsAsync();
@@ -235,9 +476,6 @@ export default function WorkOrderLifecycleScreen() {
       }
       const updated = await transitionWorkOrder(accessToken, wo.id, event, { ...opts, gps });
       setWo(updated);
-      // Write the new state straight into the list My day reads, so its
-      // badge changes the moment you go back rather than on the next
-      // background refresh.
       const cached = readCache<WorkOrderRecord[]>(WO_CACHE_KEY);
       if (cached) {
         writeCache(
@@ -250,20 +488,13 @@ export default function WorkOrderLifecycleScreen() {
       setNote('');
       return true;
     } catch (err) {
-      Alert.alert(
-        'Could not update the work order',
-        err instanceof Error ? err.message : String(err),
-      );
+      Alert.alert('Could not update the work order', err instanceof Error ? err.message : String(err));
       return false;
     } finally {
       setBusy(false);
     }
   };
 
-  /** Abandoning a journey is not pausing work. It used to open "Why are
-   * you pausing?" and offer six reasons about work in progress, two of
-   * which permanently block resuming, for a job the technician never
-   * reached (#127). A plain confirmation is the whole of it. */
   const confirmStandDown = () => {
     Alert.alert(
       'Cannot get there?',
@@ -281,10 +512,7 @@ export default function WorkOrderLifecycleScreen() {
                 router.back();
               })
               .catch((err) =>
-                Alert.alert(
-                  'Could not stand down',
-                  err instanceof Error ? err.message : String(err),
-                ),
+                Alert.alert('Could not stand down', err instanceof Error ? err.message : String(err)),
               )
               .finally(() => setBusy(false));
           },
@@ -292,26 +520,6 @@ export default function WorkOrderLifecycleScreen() {
       ],
     );
   };
-
-  /** Opens a dispenser carrying the WHOLE context (#151): the site id, so
-   * the identity screen can prefill oil company and address, and the work
-   * order id, so the verification is linked to this job. Both were being
-   * dropped, which is why the site block arrived empty and certificates
-   * started from here lost their work order. */
-  const openDispenser = (d: DispenserResolved) => {
-    const needsIdentity = !d.make || !d.model || !d.serialNumber;
-    router.push({
-      pathname: needsIdentity ? '/dispenser/[id]/identity' : '/dispenser/[id]/register',
-      params: { id: d.id, siteId: wo.siteId ?? d.siteId, workOrderId: wo.id },
-    });
-  };
-
-  // The dispenser this job is actually against (#151). When OnKey says the
-  // work order is for a specific asset and that asset is on our register,
-  // "Start a verification" goes straight to it instead of asking the
-  // technician to find it again in the site list.
-  const allocatedDispenser =
-    (wo.assetCode && dispensers?.find((d) => d.id === wo.assetCode)) || null;
 
   const confirmPause = () => {
     if (!chosenReason) {
@@ -340,71 +548,247 @@ export default function WorkOrderLifecycleScreen() {
     void apply('pause', { reason: chosenReason.code, note: note.trim() });
   };
 
+  /** The gate speaks when a locked verb is tapped (#159): the exact
+   * missing pieces, not a dead button. */
+  const gateRefusal = (verb: 'stop' | 'pause'): boolean => {
+    if (phase !== 'active') return false;
+    if (verb === 'stop' && !completeGateOk) {
+      const missing = [
+        ...(!visitOk ? ['a visit with labour or distance'] : []),
+        ...(!performedOk ? ['the work performed'] : []),
+      ];
+      Alert.alert('Fill the job card first', `Before completing, enter ${missing.join(' and ')}.`);
+      return true;
+    }
+    if (verb === 'pause' && !performedOk) {
+      Alert.alert(
+        'Note the work so far',
+        'Write a short work performed note before pausing, so the office knows where the job stands.',
+      );
+      return true;
+    }
+    return false;
+  };
+
+  const onVerb = (verb: 'on_the_way' | 'start' | 'pause' | 'stop' | 'stand_down') => {
+    if (verb === 'pause') {
+      if (gateRefusal('pause')) return;
+      setPausing(true);
+    } else if (verb === 'stand_down') confirmStandDown();
+    else if (verb === 'stop') {
+      if (gateRefusal('stop')) return;
+      void apply('stop');
+    } else if (verb === 'start' && state === 'on_the_way') {
+      // Starting lands the technician where the information gets
+      // captured, which is now THIS page's inline job card (#159).
+      void apply('start');
+    } else void apply(verb);
+  };
+
+  const openDispenser = (d: DispenserResolved) => {
+    const needsIdentity = !d.make || !d.model || !d.serialNumber;
+    router.push({
+      pathname: needsIdentity ? '/dispenser/[id]/identity' : '/dispenser/[id]/register',
+      params: { id: d.id, siteId: wo.siteId ?? d.siteId, workOrderId: wo.id },
+    });
+  };
+
+  const allocatedDispenser =
+    (wo.assetCode && dispensers?.find((d) => d.id === wo.assetCode)) || null;
+
+  const sitePoint = parseWktPoint(wo.gpsLocation);
+  const distanceKm = here && sitePoint ? roadKm(here, { latitude: sitePoint.lat, longitude: sitePoint.lon }) : null;
+  const { main: workMain, note: workNote } = splitWorkRequired(wo.workRequired);
+  const late = overdueDays(wo.completeBy);
+  const jcTotals = useMemo(() => {
+    const src = bundle?.jobCard?.visits ?? visits;
+    const sum = (k: keyof JobCardVisit) => src.reduce((n, v) => n + (Number(v[k]) || 0), 0);
+    const partsSrc = bundle?.jobCard?.parts ?? parts;
+    return {
+      km: sum('distanceKm'),
+      hours: sum('labourHours') + sum('labourOt15Hours') + sum('labourOt20Hours'),
+      spares: partsSrc.reduce((n, p) => n + (Number(p.quantity) || 0), 0),
+      items: partsSrc,
+    };
+  }, [bundle, visits, parts]);
+
+  const sharePdf = async () => {
+    if (!bundle) return;
+    setBusy(true);
+    try {
+      const { uri } = await renderJobCardPdf(toJobCard(bundle), {
+        customerSignatureSvg: bundle.jobCard?.clientSignature ?? undefined,
+        technicianSignatureSvg: bundle.jobCard?.techSignature ?? undefined,
+      });
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(uri, { mimeType: 'application/pdf', UTI: 'com.adobe.pdf' });
+      } else {
+        Alert.alert('Job card ready', uri);
+      }
+    } catch (err) {
+      Alert.alert('Could not build the job card', err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const openMaps = () => {
+    const query = sitePoint ? `${sitePoint.lat},${sitePoint.lon}` : encodeURIComponent(wo.siteName ?? '');
+    Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${query}`).catch(() => {});
+  };
+
+  const heroCells: { icon: React.ReactNode; label: string; value: string }[] = [];
+  if (phase !== 'done') {
+    const est = formatDuration(wo.estimatedDurationMinutes);
+    if (est) heroCells.push({ icon: ClockIcon, label: 'Estimated', value: est });
+    const day = formatDay(wo.completeBy);
+    if (day) heroCells.push({ icon: CalendarIcon, label: 'Complete by', value: day });
+    if (phase === 'pre' && distanceKm != null) {
+      heroCells.push({ icon: RoadIcon, label: 'Distance to site', value: formatKm(distanceKm) });
+    }
+  } else {
+    if (jcTotals.hours > 0)
+      heroCells.push({ icon: TimerIcon, label: 'Time recorded', value: formatDuration(Math.round(jcTotals.hours * 60))! });
+    else if (elapsed) heroCells.push({ icon: TimerIcon, label: 'Time on job', value: elapsed });
+    const when = wo.lifecycle?.signedOffAt ?? wo.lifecycle?.stoppedAt;
+    if (when)
+      heroCells.push({
+        icon: ClockIcon,
+        label: state === 'signed_off' ? 'Signed off' : 'Stopped',
+        value: when.slice(11, 16),
+      });
+  }
+
+  const inputStyle = {
+    borderWidth: 1,
+    borderColor: colors.line,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    color: colors.ink,
+    backgroundColor: '#fff',
+    fontSize: 14,
+  } as const;
+
   return (
     <FormScrollView>
-      {/* The verbs first, above the description and the map. They were
-          three stacked full-width buttons further down the page, so the
-          technician scrolled past the job to reach the thing they came to
-          tap (#122). */}
       <View style={{ marginHorizontal: 12, marginTop: 12 }}>
         <LifecycleActions
           state={state}
           blocksResume={wo.lifecycle?.blocksResume ?? false}
           busy={busy}
-          onAction={(verb) => {
-            // Pause needs a reason before it can be applied, so it opens
-            // the sheet. Cannot-get-there is its own verb now (#144): it
-            // used to ride on the disabled On-the-way button, which made
-            // the #127 stand-down unreachable in exactly the state it
-            // existed for.
-            if (verb === 'pause') setPausing(true);
-            else if (verb === 'stand_down') confirmStandDown();
-            else if (verb === 'start' && state === 'on_the_way') {
-              // Starting the job opens the job card, so the technician
-              // lands where the information gets captured (#144). Resume
-              // from a pause deliberately does not: they were already
-              // somewhere.
-              void apply('start').then((applied) => {
-                if (applied) {
-                  router.push({ pathname: '/jobcard/[id]', params: { id: wo.id } });
-                }
-              });
-            } else void apply(verb);
-          }}
+          gateNote={gateNote}
+          onAction={onVerb}
         />
       </View>
 
-      <SectionCard title={wo.siteName ?? wo.externalRef ?? 'Work order'}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-          <Badge text={STATE_LABEL[state] ?? state} tone={STATE_TONE[state] ?? 'muted'} />
-          {wo.isDemo ? <Badge text="Demo data" tone="warn" /> : null}
+      {/* The hero: the Home card, grown up (#159). */}
+      <View
+        style={{
+          backgroundColor: '#fff',
+          borderRadius: 20,
+          borderWidth: 1,
+          borderColor: colors.line,
+          padding: 14,
+          marginHorizontal: 12,
+        }}
+      >
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+          <OilDisc customerName={wo.customerName} />
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={{ fontFamily: fonts.heading, fontSize: 17, color: colors.ink }} numberOfLines={2}>
+              {wo.siteName ?? wo.externalRef ?? 'Work order'}
+            </Text>
+            <Text style={{ fontSize: 12.5, color: colors.muted, marginTop: 1 }} numberOfLines={1}>
+              {[wo.customerName, wo.assetDescription ?? wo.assetCode].filter(Boolean).join(' · ') ||
+                'Oil company not on record'}
+            </Text>
+            {wo.isDemo ? (
+              <View style={{ flexDirection: 'row', marginTop: 4 }}>
+                <Badge text="Demo data" tone="warn" />
+              </View>
+            ) : null}
+          </View>
+          <HeroStatus wo={wo} />
         </View>
-        <Text style={{ color: colors.ink, fontSize: 14 }}>{wo.workRequired}</Text>
-        <Text style={{ color: colors.muted, fontSize: 12, marginTop: 4 }}>
-          {[wo.customerName, wo.externalRef, wo.assetDescription ?? wo.assetCode]
-            .filter(Boolean)
-            .join(' · ')}
-        </Text>
-        <Text style={{ color: colors.muted, fontSize: 12, marginTop: 2 }}>
-          {wo.completeBy ? `Complete by ${wo.completeBy.slice(0, 16).replace('T', ' ')}` : ''}
-          {wo.estimatedDurationMinutes ? ` · about ${wo.estimatedDurationMinutes} min` : ''}
-        </Text>
-        {/* Deliberately quiet, and deliberately called "on this job" rather
-            than "working time" (#121). It is how long the app has been in
-            this state, which is useful for orientation and is NOT what gets
-            billed: labour is entered per visit on the job card. Presenting
-            it as a measurement of work is what printed one minute next to
-            four point two charged hours. */}
-        {elapsed ? (
-          <Text style={{ marginTop: 6, color: colors.muted, fontSize: 12 }}>
-            On this job {elapsed}
-            {wo.lifecycle?.pausedSeconds
-              ? `, paused ${Math.round(wo.lifecycle.pausedSeconds / 60)} min`
-              : ''}
-          </Text>
+
+        {phase === 'done' && (bundle?.jobCard?.workPerformed ?? '').trim() ? (
+          <View style={{ marginTop: 9 }}>
+            <Text style={{ fontSize: 10.5, letterSpacing: 0.6, color: colors.muted, textTransform: 'uppercase', fontFamily: fonts.bodyMedium }}>
+              Work performed
+            </Text>
+            <Text style={{ fontSize: 13, lineHeight: 19, color: colors.ink, marginTop: 2 }}>
+              {bundle!.jobCard!.workPerformed}
+            </Text>
+          </View>
+        ) : workMain ? (
+          <View style={{ marginTop: 9 }}>
+            <Text style={{ fontSize: 10.5, letterSpacing: 0.6, color: colors.muted, textTransform: 'uppercase', fontFamily: fonts.bodyMedium }}>
+              Work required
+            </Text>
+            <Text style={{ fontSize: 13, lineHeight: 19, color: colors.ink, marginTop: 2 }}>{workMain}</Text>
+          </View>
         ) : null}
-        <MiniMap gpsWkt={wo.gpsLocation} address={wo.siteName ?? undefined} />
-      </SectionCard>
+        {phase !== 'done' && workNote ? (
+          <View style={{ marginTop: 9, backgroundColor: colors.bg, borderRadius: 12, padding: 9 }}>
+            <Text style={{ fontSize: 11.5, color: colors.muted, lineHeight: 16 }}>{workNote}</Text>
+          </View>
+        ) : null}
+
+        {heroCells.length > 0 ? (
+          <>
+            <View style={{ height: 1, backgroundColor: colors.line, marginTop: 11, marginBottom: 10 }} />
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', rowGap: 9, justifyContent: 'space-between' }}>
+              {heroCells.map((c) => (
+                <MetaCell key={c.label} icon={c.icon} label={c.label} value={c.value} />
+              ))}
+            </View>
+          </>
+        ) : null}
+
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 10 }}>
+          <Text style={{ fontFamily: fonts.mono, fontSize: 11.5, color: colors.muted }}>
+            {[wo.externalRef, wo.statusDescription].filter(Boolean).join(' · ')}
+          </Text>
+          {phase !== 'done' && late != null ? (
+            <View style={{ backgroundColor: colors.redTint, borderRadius: 999, paddingVertical: 3, paddingHorizontal: 9 }}>
+              <Text style={{ color: colors.red, fontSize: 12, fontFamily: fonts.bodyMedium }}>
+                Overdue by {late} day{late === 1 ? '' : 's'}
+              </Text>
+            </View>
+          ) : null}
+        </View>
+
+        {phase === 'pre' && (sitePoint || here) ? (
+          <View style={{ marginTop: 11, borderRadius: 16, overflow: 'hidden' }}>
+            <HomeMap here={here} pins={pinsFor([wo])} height={130} />
+            <Pressable
+              onPress={openMaps}
+              accessibilityRole="button"
+              accessibilityLabel="Navigate to the site in Google Maps"
+              style={{
+                position: 'absolute',
+                right: 8,
+                bottom: 8,
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 6,
+                backgroundColor: '#fff',
+                borderRadius: 999,
+                paddingVertical: 6,
+                paddingHorizontal: 12,
+                borderWidth: 1,
+                borderColor: colors.line,
+              }}
+            >
+              <Svg width={12} height={12} viewBox="0 0 24 24" fill="none">
+                <Path d="M21 3L10.5 13.5M21 3l-7 18-3.5-7.5L3 10z" stroke={colors.navy} strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" />
+              </Svg>
+              <Text style={{ fontSize: 12, color: colors.navy, fontFamily: fonts.bodyMedium }}>Navigate</Text>
+            </Pressable>
+          </View>
+        ) : null}
+      </View>
 
       {divergence ? (
         <SectionCard title={DIVERGENCE_TITLE[divergence.kind] ?? 'Changed by the office'}>
@@ -449,20 +833,198 @@ export default function WorkOrderLifecycleScreen() {
       {state === 'paused' && wo.lifecycle?.pauseReason ? (
         <SectionCard title="Paused">
           <Text style={{ color: colors.ink, fontSize: 13 }}>
-            {reasons.find((r) => r.code === wo.lifecycle?.pauseReason)?.label ??
-              wo.lifecycle.pauseReason}
+            {reasons.find((r) => r.code === wo.lifecycle?.pauseReason)?.label ?? wo.lifecycle.pauseReason}
           </Text>
           {wo.lifecycle.pauseNote ? (
-            <Text style={{ color: colors.muted, fontSize: 12, marginTop: 2 }}>
-              {wo.lifecycle.pauseNote}
-            </Text>
+            <Text style={{ color: colors.muted, fontSize: 12, marginTop: 2 }}>{wo.lifecycle.pauseNote}</Text>
           ) : null}
           {wo.lifecycle.blocksResume ? (
             <Text style={{ color: colors.amber, fontSize: 12, marginTop: 6 }}>
-              ⚠ Handed back: the office actions this work order from here. You cannot resume it.
+              Handed back: the office actions this work order from here. You cannot resume it.
             </Text>
           ) : null}
         </SectionCard>
+      ) : null}
+
+      {/* STARTED: the job card on the page (#159, owner rule). */}
+      {phase === 'active' ? (
+        <SectionCard title="Job card, visit 1">
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            {(
+              [
+                { key: 'distanceKm', label: 'Distance (km)' },
+                { key: 'labourHours', label: 'Labour (h)' },
+                { key: 'labourOt15Hours', label: 'OT 1.5 (h)' },
+                { key: 'labourOt20Hours', label: 'OT 2.0 (h)' },
+              ] as const
+            ).map(({ key, label }) => (
+              <View key={key} style={{ flex: 1 }}>
+                <Text style={{ color: colors.muted, fontSize: 10.5, marginBottom: 3 }}>{label}</Text>
+                <TextInput
+                  style={inputStyle}
+                  defaultValue={visits[0] && visits[0][key] ? String(visits[0][key]) : ''}
+                  onChangeText={(t) => {
+                    dirty.current = true;
+                    setVisits((prev) => {
+                      const next = prev.length ? [...prev] : [blankVisit()];
+                      next[0] = { ...next[0], [key]: num(t) };
+                      return next;
+                    });
+                  }}
+                  onBlur={() => persist()}
+                  keyboardType="decimal-pad"
+                  placeholder="0"
+                  accessibilityLabel={label}
+                />
+              </View>
+            ))}
+          </View>
+          <Text style={{ color: colors.muted, fontSize: 10.5, marginTop: 10, marginBottom: 3 }}>
+            Work performed (required to complete)
+          </Text>
+          <TextInput
+            style={[inputStyle, { minHeight: 70 }]}
+            multiline
+            textAlignVertical="top"
+            placeholder="Describe what was done"
+            value={performed}
+            onChangeText={(t) => {
+              dirty.current = true;
+              setPerformed(t);
+            }}
+            onBlur={() => persist()}
+          />
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 10 }}>
+            <Text style={{ color: colors.muted, fontSize: 12 }}>
+              Spares: {jcTotals.spares > 0 ? `${jcTotals.spares} item${jcTotals.spares === 1 ? '' : 's'} booked` : 'none booked yet'}
+            </Text>
+          </View>
+          <Button
+            title="Open the full job card"
+            kind="secondary"
+            onPress={() => router.push({ pathname: '/jobcard/[id]', params: { id: wo.id } })}
+          />
+          <Text style={{ color: colors.muted, fontSize: 11.5, marginTop: 4 }}>
+            Spares picker, more visits, tasks and the client signature live on the full card.
+          </Text>
+        </SectionCard>
+      ) : null}
+
+      {/* DONE: the outcome (#159). */}
+      {phase === 'done' ? (
+        <>
+          <View style={{ flexDirection: 'row', gap: 8, marginHorizontal: 12, marginTop: 12 }}>
+            {(
+              [
+                { icon: RoadIcon, v: `${Math.round(jcTotals.km)} km`, l: 'Travelled' },
+                { icon: ClockIcon, v: `${jcTotals.hours % 1 ? jcTotals.hours.toFixed(1) : jcTotals.hours} h`, l: 'Labour' },
+                { icon: BoxIcon, v: String(jcTotals.spares), l: 'Spares' },
+              ] as const
+            ).map((s) => (
+              <View
+                key={s.l}
+                style={{
+                  flex: 1,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 8,
+                  backgroundColor: '#fff',
+                  borderRadius: 14,
+                  borderWidth: 1,
+                  borderColor: colors.line,
+                  paddingVertical: 9,
+                  paddingHorizontal: 10,
+                }}
+              >
+                <View style={{ width: 26, height: 26, borderRadius: 999, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center' }}>
+                  {s.icon}
+                </View>
+                <View style={{ minWidth: 0 }}>
+                  <Text style={{ fontFamily: fonts.heading, fontSize: 15, color: colors.ink, fontVariant: ['tabular-nums'] }}>
+                    {s.v}
+                  </Text>
+                  <Text style={{ fontSize: 10.5, color: colors.muted }}>{s.l}</Text>
+                </View>
+              </View>
+            ))}
+          </View>
+
+          {signed ? (
+            <Pressable
+              onPress={() => void sharePdf()}
+              accessibilityRole="button"
+              accessibilityLabel="Open the signed job card PDF"
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 12,
+                backgroundColor: '#fff',
+                borderRadius: 20,
+                borderWidth: 1,
+                borderColor: colors.line,
+                padding: 14,
+                marginHorizontal: 12,
+                marginTop: 12,
+              }}
+            >
+              <View
+                style={{
+                  width: 44,
+                  height: 58,
+                  borderRadius: 6,
+                  borderWidth: 1,
+                  borderColor: colors.line,
+                  padding: 5,
+                  gap: 3,
+                }}
+              >
+                <View style={{ height: 5, width: '60%', backgroundColor: colors.navy, borderRadius: 2 }} />
+                {[0, 1, 2, 3].map((i) => (
+                  <View key={i} style={{ height: 3, backgroundColor: colors.mist, borderRadius: 2 }} />
+                ))}
+              </View>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={{ fontFamily: fonts.heading, fontSize: 16, color: colors.ink }}>Job card, signed</Text>
+                <Text style={{ fontSize: 12, color: colors.muted, marginTop: 1 }}>
+                  {bundle?.jobCard?.clientName ? `Accepted by ${bundle.jobCard.clientName}` : 'Accepted'}
+                  {bundle?.jobCard?.signedAt ? ` at ${bundle.jobCard.signedAt.slice(11, 16)}` : ''} · PDF
+                </Text>
+              </View>
+              <Text style={{ color: colors.green, fontFamily: fonts.bodyMedium, fontSize: 13.5 }}>Open</Text>
+            </Pressable>
+          ) : (
+            <View style={{ marginHorizontal: 12, marginTop: 12 }}>
+              <Button
+                title="Job card and sign-off"
+                onPress={() => router.push({ pathname: '/jobcard/[id]', params: { id: wo.id } })}
+              />
+            </View>
+          )}
+
+          {jcTotals.items.length > 0 ? (
+            <SectionCard title="Spares booked">
+              {jcTotals.items.map((p, i) => (
+                <View
+                  key={`${p.itemCode}-${i}`}
+                  style={{
+                    flexDirection: 'row',
+                    justifyContent: 'space-between',
+                    paddingVertical: 7,
+                    borderTopWidth: i === 0 ? 0 : 1,
+                    borderTopColor: colors.line,
+                  }}
+                >
+                  <Text style={{ color: colors.ink, fontSize: 13, flex: 1 }} numberOfLines={1}>
+                    {p.description || p.itemCode}
+                  </Text>
+                  <Text style={{ color: colors.muted, fontSize: 12.5, fontVariant: ['tabular-nums'] }}>
+                    {p.quantity}
+                  </Text>
+                </View>
+              ))}
+            </SectionCard>
+          ) : null}
+        </>
       ) : null}
 
       {pausing ? (
@@ -493,16 +1055,7 @@ export default function WorkOrderLifecycleScreen() {
           })}
           {chosenReason?.requiresNote ? (
             <TextInput
-              style={{
-                borderWidth: 1,
-                borderColor: colors.line,
-                borderRadius: 10,
-                padding: 10,
-                marginTop: 4,
-                minHeight: 60,
-                color: colors.ink,
-                backgroundColor: '#fff',
-              }}
+              style={[inputStyle, { minHeight: 60, marginTop: 4 }]}
               multiline
               textAlignVertical="top"
               placeholder="Describe the reason"
@@ -515,37 +1068,9 @@ export default function WorkOrderLifecycleScreen() {
         </SectionCard>
       ) : null}
 
-      <View style={{ marginHorizontal: 12 }}>
-        {/* Job card is a DESTINATION, not a lifecycle verb, so it stays a
-            labelled button. The verbs are the icon row at the top. */}
-        {state === 'stopped' ? (
-          <Button
-            title="Job card and sign-off"
-            onPress={() => router.push({ pathname: '/jobcard/[id]', params: { id: wo.id } })}
-          />
-        ) : null}
-        {state === 'signed_off' ? (
-          <Button
-            title="View job card"
-            kind="secondary"
-            onPress={() => router.push({ pathname: '/jobcard/[id]', params: { id: wo.id } })}
-          />
-        ) : null}
-        {/* Reachable before stopping too: technicians fill the card in as
-            they go, and only the SIGNING needs the work stopped. */}
-        {state === 'started' || state === 'paused' ? (
-          <Button
-            title="Job card"
-            kind="secondary"
-            onPress={() => router.push({ pathname: '/jobcard/[id]', params: { id: wo.id } })}
-          />
-        ) : null}
-      </View>
-
-      {/* What the technician will find on site, before they drive out
-          (#123): whose dispenser, which model, how many hoses, therefore
-          which parts to load. All of it was already held, and reachable
-          only after arriving and picking a dispenser. */}
+      {/* What the technician will find on site (#123). Never a forced
+          selection (#159): the OnKey-named asset is highlighted, the
+          whole site stays in scope. */}
       <SectionCard title="Dispensers on site">
         {!wo.siteId ? (
           <Text style={{ color: colors.muted, fontSize: 12 }}>
@@ -575,18 +1100,16 @@ export default function WorkOrderLifecycleScreen() {
                     borderWidth: 1,
                     borderColor: allocated ? colors.green : colors.line,
                     backgroundColor: allocated ? colors.greenTint : '#fff',
-                    borderRadius: 10,
+                    borderRadius: 12,
                     padding: 10,
                     marginTop: 8,
                   }}
                 >
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                    <Text
-                      style={{ flex: 1, color: colors.ink, fontSize: 14, fontFamily: fonts.bodyMedium }}
-                    >
+                    <Text style={{ flex: 1, color: colors.ink, fontSize: 14, fontFamily: fonts.bodyMedium }}>
                       {[d.make, d.model].filter(Boolean).join(' ') || 'Identity not captured'}
                     </Text>
-                    {allocated ? <Badge text="This job" tone="ok" /> : null}
+                    {allocated ? <Badge text="Named on this job" tone="ok" /> : null}
                   </View>
                   <Text style={{ color: colors.muted, fontSize: 12, marginTop: 2 }}>
                     {d.id}
@@ -598,7 +1121,6 @@ export default function WorkOrderLifecycleScreen() {
               );
             })}
             {wo.assetCode && !dispensers.some((d) => d.id === wo.assetCode) ? (
-              /* A gap in the register worth seeing, not an error to hide. */
               <Text style={{ color: colors.amber, fontSize: 12, marginTop: 8 }}>
                 This job is against {wo.assetCode}, which is not on our register for this site.
               </Text>
@@ -607,8 +1129,7 @@ export default function WorkOrderLifecycleScreen() {
         )}
       </SectionCard>
 
-      {/* The verification launcher now lives INSIDE the job (platform
-          vision): start a certificate without leaving the work order. */}
+      {/* The verification launcher stays inside the job. */}
       {state === 'started' || state === 'paused' || state === 'stopped' ? (
         <SectionCard title="Verification">
           <Text style={{ color: colors.muted, fontSize: 12, marginBottom: 6 }}>
@@ -653,8 +1174,25 @@ export default function WorkOrderLifecycleScreen() {
         </SectionCard>
       ) : null}
 
-      <View style={{ marginHorizontal: 12 }}>
-      </View>
+      {/* Past work at this site (#159): on the way in, and on the way out. */}
+      {(phase === 'pre' || phase === 'done' || state === 'paused') && past.length > 0 ? (
+        <SectionCard title="Past work at this site">
+          {past.map((p, i) => (
+            <View
+              key={`${p.ref}-${i}`}
+              style={{ paddingVertical: 8, borderTopWidth: i === 0 ? 0 : 1, borderTopColor: colors.line }}
+            >
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                <Text style={{ fontFamily: fonts.mono, fontSize: 11.5, color: colors.ink }}>{p.ref ?? ''}</Text>
+                <Text style={{ fontSize: 11.5, color: colors.muted }}>{p.when ?? ''}</Text>
+              </View>
+              <Text style={{ fontSize: 12.5, color: colors.muted, marginTop: 2 }} numberOfLines={2}>
+                {p.what}
+              </Text>
+            </View>
+          ))}
+        </SectionCard>
+      ) : null}
     </FormScrollView>
   );
 }

@@ -154,15 +154,24 @@ export function LifecycleActions({
   state,
   blocksResume = false,
   busy = false,
+  gateNote = null,
   onAction,
 }: {
   state: WoState;
   blocksResume?: boolean;
   busy?: boolean;
+  /** Set while the job card gate holds Complete and Pause shut (#159):
+   * the verbs render locked with this note. Taps still reach onAction,
+   * where the screen explains exactly what is missing, because a dead
+   * button that says nothing is how technicians get stuck. */
+  gateNote?: string | null;
   onAction: (verb: LifecycleVerb) => void;
 }) {
   const { primary, side } = actionsFor(state, blocksResume);
   if (!primary) return null;
+  const lockedVerbs: LifecycleVerb[] = ['stop', 'pause'];
+  const primaryLocked = !!gateNote && lockedVerbs.includes(primary.verb);
+  const sideLocked = !!gateNote && !!side && lockedVerbs.includes(side.verb);
 
   return (
     <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
@@ -170,7 +179,7 @@ export function LifecycleActions({
         onPress={() => !busy && onAction(primary.verb)}
         disabled={busy}
         accessibilityRole="button"
-        accessibilityLabel={primary.spoken}
+        accessibilityLabel={primaryLocked ? `${primary.spoken}, locked: ${gateNote}` : primary.spoken}
         accessibilityState={{ disabled: busy }}
         style={{
           flex: 2,
@@ -178,23 +187,28 @@ export function LifecycleActions({
           alignItems: 'center',
           justifyContent: 'center',
           gap: 8,
-          paddingVertical: 14,
+          paddingVertical: primaryLocked ? 10 : 14,
           borderRadius: 12,
           backgroundColor: colors.green,
-          opacity: busy ? 0.6 : 1,
+          opacity: busy ? 0.6 : primaryLocked ? 0.55 : 1,
         }}
       >
         <primary.Icon color={colors.navy} />
-        <Text style={{ fontSize: 15, color: colors.navy, fontFamily: fonts.bodyMedium }}>
-          {primary.label}
-        </Text>
+        <View>
+          <Text style={{ fontSize: 15, color: colors.navy, fontFamily: fonts.bodyMedium }}>
+            {primary.label}
+          </Text>
+          {primaryLocked ? (
+            <Text style={{ fontSize: 10.5, color: colors.navy, opacity: 0.85 }}>{gateNote}</Text>
+          ) : null}
+        </View>
       </Pressable>
       {side ? (
         <Pressable
           onPress={() => !busy && onAction(side.verb)}
           disabled={busy}
           accessibilityRole="button"
-          accessibilityLabel={side.spoken}
+          accessibilityLabel={sideLocked ? `${side.spoken}, locked: ${gateNote}` : side.spoken}
           accessibilityState={{ disabled: busy }}
           style={{
             flex: 1,
@@ -206,7 +220,7 @@ export function LifecycleActions({
             borderWidth: 1,
             borderColor: colors.line,
             backgroundColor: '#fff',
-            opacity: busy ? 0.6 : 1,
+            opacity: busy ? 0.6 : sideLocked ? 0.55 : 1,
           }}
         >
           <side.Icon color={colors.navy} />

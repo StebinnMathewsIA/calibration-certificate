@@ -1127,3 +1127,14 @@ Same OTA path. Visual only; nothing functional changed.
       card; the collapsible tree and van screens work as before
 - [ ] The meta line (scope left, Syspro freshness right) still sits
       under the header
+
+## Map pins repaint, sites and history widen (#170, #171)
+
+Same OTA path; pull refresh once on Sites.
+
+- [ ] Every map pin shows its mark (droplet fallback included) on the
+      strip and the full map, including straight after a fresh app start
+- [ ] The Sites tab loads the full register (about 2,900 sites) after
+      one pull refresh, even during a busy sync period
+- [ ] Past work at a site includes other technicians' completed OnKey
+      jobs, not just work done through this app

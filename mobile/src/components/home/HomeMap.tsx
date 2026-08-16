@@ -130,6 +130,91 @@ export function HomeMap({
 
   const MapView = maps.default;
   const { Marker, PROVIDER_GOOGLE } = maps;
+  return (
+    <HomeMapInner
+      MapView={MapView}
+      Marker={Marker}
+      PROVIDER_GOOGLE={PROVIDER_GOOGLE}
+      {...{ here, pins, height, fill, interactive, onPress, onPinPress }}
+    />
+  );
+}
+
+/** A marker that keeps repainting briefly after mount (#170): with
+ * tracksViewChanges off from birth, react-native-maps rasterises the
+ * view once, and the droplet PNG often has not decoded yet, leaving a
+ * blank disc forever. A short tracking window lets the image land, then
+ * tracking switches off and the perf posture is unchanged. */
+function PinMarker({
+  Marker,
+  pin,
+  here,
+  onPinPress,
+}: {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  Marker: React.ComponentType<any>;
+  pin: MapPin;
+  here: { latitude: number; longitude: number } | null;
+  onPinPress?: (pin: MapPin) => void;
+}) {
+  const [track, setTrack] = React.useState(true);
+  React.useEffect(() => {
+    const t = setTimeout(() => setTrack(false), 1200);
+    return () => clearTimeout(t);
+  }, []);
+  return (
+    <Marker
+      coordinate={{ latitude: pin.latitude, longitude: pin.longitude }}
+      anchor={{ x: 0.5, y: 0.5 }}
+      tracksViewChanges={track}
+      onPress={
+        onPinPress
+          ? (e: { stopPropagation?: () => void }) => {
+              e.stopPropagation?.();
+              onPinPress(pin);
+            }
+          : undefined
+      }
+    >
+      <PinBubble pin={pin} here={here} />
+    </Marker>
+  );
+}
+
+function HomeMapInner({
+  MapView,
+  Marker,
+  PROVIDER_GOOGLE,
+  here,
+  pins,
+  height,
+  fill,
+  interactive,
+  onPress,
+  onPinPress,
+}: {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  MapView: React.ComponentType<any>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  Marker: React.ComponentType<any>;
+  PROVIDER_GOOGLE: unknown;
+  here: { latitude: number; longitude: number } | null;
+  pins: MapPin[];
+  height?: number;
+  fill?: boolean;
+  interactive?: boolean;
+  onPress?: () => void;
+  onPinPress?: (pin: MapPin) => void;
+}) {
+  const frame = fill
+    ? { flex: 1 as const }
+    : {
+        height: height ?? 130,
+        borderRadius: 20,
+        borderWidth: 1,
+        borderColor: colors.line,
+        overflow: 'hidden' as const,
+      };
 
   // Framing (#157 field finding): the strip is "my surroundings", so
   // with a known position it frames only the pins within 80 km, not a
@@ -180,22 +265,7 @@ export function HomeMap({
         </Marker>
       ) : null}
       {pins.map((p) => (
-        <Marker
-          key={p.wo.id}
-          coordinate={{ latitude: p.latitude, longitude: p.longitude }}
-          anchor={{ x: 0.5, y: 0.5 }}
-          tracksViewChanges={false}
-          onPress={
-            onPinPress
-              ? (e: { stopPropagation?: () => void }) => {
-                  e.stopPropagation?.();
-                  onPinPress(p);
-                }
-              : undefined
-          }
-        >
-          <PinBubble pin={p} here={here} />
-        </Marker>
+        <PinMarker key={p.wo.id} Marker={Marker} pin={p} here={here} onPinPress={onPinPress} />
       ))}
     </MapView>
   );

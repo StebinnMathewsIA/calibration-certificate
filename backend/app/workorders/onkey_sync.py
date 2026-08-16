@@ -285,8 +285,15 @@ def upsert_rows(db: Session, rows_by_hash: dict[str, dict]) -> tuple[int, int]:
             {"h": h, "data": json.dumps(row, default=str), "ts": ts},
         )
     if existing:
+        # Stamp at most hourly (#172): the stamp only exists so the freshest
+        # snapshot of a work order wins the derivation (#130), and a change
+        # always arrives as a NEW row with a fresh stamp. Re-stamping 624
+        # unchanged rows every two minutes was ~450k dead tuples a day.
         db.execute(
-            text("UPDATE onkey_woe001 SET last_seen_at = now() WHERE row_hash = ANY(:hashes)"),
+            text(
+                "UPDATE onkey_woe001 SET last_seen_at = now() "
+                "WHERE row_hash = ANY(:hashes) AND last_seen_at < now() - interval '1 hour'"
+            ),
             {"hashes": list(existing)},
         )
     db.commit()
@@ -304,10 +311,27 @@ def _ts(col_expr: str) -> str:
     return _SAFE_TS.format(col=col_expr)
 
 
-def derive_registers(db: Session) -> dict:
+def derive_registers(db: Session, row_hashes: list[str] | None = None) -> dict:
     """Mine the raw WOE001 snapshot log into the technician / site /
     equipment / current-work-order registers (#54). Latest queue transition
-    per work order Code wins. Idempotent — runs after every sync."""
+    per work order Code wins. Idempotent — runs after every sync.
+
+    CHURN RULES (#172). This used to rewrite every register row on every
+    two-minute cycle (~21 million row versions a day), which is what was
+    starving the database. Two rules now:
+
+    1. Every write carries a change guard: a row whose derived values
+       equal its current values is not written at all.
+    2. The recent lane passes the row hashes it just fetched and only
+       those rows are scanned. Windowing is ONLY safe for the recent
+       lane: its window is the present, so a code's freshest snapshot is
+       always inside it. The wide sweep and backfill walk OLD windows,
+       where a chunk's best row can be years stale, so they keep the
+       full scan (the guards still stop their writes) and the full
+       DISTINCT ON keeps electing the globally freshest row."""
+    win = "AND row_hash = ANY(:hashes)" if row_hashes is not None else ""
+    params = {"hashes": row_hashes} if row_hashes is not None else {}
+
     # Backfill the event-timestamp index for rows synced before the column fix.
     db.execute(
         text(
@@ -319,7 +343,7 @@ def derive_registers(db: Session) -> dict:
 
     db.execute(
         text(
-            """
+            f"""
             INSERT INTO onkey_technicians (staff_code, name, email, updated_at)
             SELECT DISTINCT ON (data->>'StaffCode')
                    data->>'StaffCode',
@@ -327,19 +351,23 @@ def derive_registers(db: Session) -> dict:
                    nullif(data->>'StaffEmail', ''),
                    now()
             FROM onkey_woe001
-            WHERE coalesce(data->>'StaffCode', '') <> ''
+            WHERE coalesce(data->>'StaffCode', '') <> '' {win}
             ORDER BY data->>'StaffCode', start_date_ts DESC NULLS LAST
             ON CONFLICT (staff_code) DO UPDATE SET
                 name = coalesce(EXCLUDED.name, onkey_technicians.name),
                 email = coalesce(EXCLUDED.email, onkey_technicians.email),
                 updated_at = now()
+            WHERE (onkey_technicians.name, onkey_technicians.email) IS DISTINCT FROM
+                  (coalesce(EXCLUDED.name, onkey_technicians.name),
+                   coalesce(EXCLUDED.email, onkey_technicians.email))
             """
-        )
+        ),
+        params,
     )
 
     db.execute(
         text(
-            """
+            f"""
             INSERT INTO onkey_sites (site_number, site_name, branch_code,
                                      gps_location, oil_company_code, oil_company_name, updated_at)
             SELECT DISTINCT ON (data->>'SiteNumber')
@@ -351,7 +379,7 @@ def derive_registers(db: Session) -> dict:
                    nullif(data->>'WorkOrderSiteDescription', ''),
                    now()
             FROM onkey_woe001
-            WHERE coalesce(data->>'SiteNumber', '') <> ''
+            WHERE coalesce(data->>'SiteNumber', '') <> '' {win}
             ORDER BY data->>'SiteNumber', start_date_ts DESC NULLS LAST
             ON CONFLICT (site_number) DO UPDATE SET
                 site_name = coalesce(EXCLUDED.site_name, onkey_sites.site_name),
@@ -363,13 +391,23 @@ def derive_registers(db: Session) -> dict:
                 oil_company_code = coalesce(EXCLUDED.oil_company_code, onkey_sites.oil_company_code),
                 oil_company_name = coalesce(EXCLUDED.oil_company_name, onkey_sites.oil_company_name),
                 updated_at = now()
+            WHERE (onkey_sites.site_name, onkey_sites.branch_code, onkey_sites.gps_location,
+                   onkey_sites.oil_company_code, onkey_sites.oil_company_name) IS DISTINCT FROM
+                  (coalesce(EXCLUDED.site_name, onkey_sites.site_name),
+                   coalesce(EXCLUDED.branch_code, onkey_sites.branch_code),
+                   CASE WHEN onkey_sites.manual_fields ? 'gps_location'
+                        THEN onkey_sites.gps_location
+                        ELSE coalesce(EXCLUDED.gps_location, onkey_sites.gps_location) END,
+                   coalesce(EXCLUDED.oil_company_code, onkey_sites.oil_company_code),
+                   coalesce(EXCLUDED.oil_company_name, onkey_sites.oil_company_name))
             """
-        )
+        ),
+        params,
     )
 
     db.execute(
         text(
-            """
+            f"""
             INSERT INTO onkey_equipment (equipment_number, site_number, description, updated_at)
             SELECT DISTINCT ON (data->>'EquipmentNumber')
                    data->>'EquipmentNumber',
@@ -377,14 +415,18 @@ def derive_registers(db: Session) -> dict:
                    nullif(data->>'WorkOrderAssetParentAssetParentAssetDescription', ''),
                    now()
             FROM onkey_woe001
-            WHERE coalesce(data->>'EquipmentNumber', '') <> ''
+            WHERE coalesce(data->>'EquipmentNumber', '') <> '' {win}
             ORDER BY data->>'EquipmentNumber', start_date_ts DESC NULLS LAST
             ON CONFLICT (equipment_number) DO UPDATE SET
                 site_number = coalesce(EXCLUDED.site_number, onkey_equipment.site_number),
                 description = coalesce(EXCLUDED.description, onkey_equipment.description),
                 updated_at = now()
+            WHERE (onkey_equipment.site_number, onkey_equipment.description) IS DISTINCT FROM
+                  (coalesce(EXCLUDED.site_number, onkey_equipment.site_number),
+                   coalesce(EXCLUDED.description, onkey_equipment.description))
             """
-        )
+        ),
+        params,
     )
 
     db.execute(
@@ -415,7 +457,7 @@ def derive_registers(db: Session) -> dict:
                         THEN (data->>'EstimatedDurationInMinutes')::int END,
                    now()
             FROM onkey_woe001
-            WHERE coalesce(data->>'Code', '') <> ''
+            WHERE coalesce(data->>'Code', '') <> '' {win}
             -- last_seen_at FIRST (#130). A work order's start date does not
             -- change when the record is updated, so ordering by it made the
             -- choice between two snapshots of the same work order a coin
@@ -442,11 +484,35 @@ def derive_registers(db: Session) -> dict:
                 estimated_duration_minutes = coalesce(EXCLUDED.estimated_duration_minutes,
                                                       onkey_workorders.estimated_duration_minutes),
                 updated_at = now()
+            WHERE (onkey_workorders.status_code, onkey_workorders.status_description,
+                   onkey_workorders.status_changed_on, onkey_workorders.staff_code,
+                   onkey_workorders.site_number, onkey_workorders.equipment_number,
+                   onkey_workorders.received_on, onkey_workorders.required_by,
+                   onkey_workorders.complete_by, onkey_workorders.completed_on,
+                   onkey_workorders.contract_type, onkey_workorders.work_required,
+                   onkey_workorders.work_performed, onkey_workorders.estimated_duration_minutes)
+                  IS DISTINCT FROM
+                  (EXCLUDED.status_code, EXCLUDED.status_description,
+                   EXCLUDED.status_changed_on,
+                   coalesce(EXCLUDED.staff_code, onkey_workorders.staff_code),
+                   coalesce(EXCLUDED.site_number, onkey_workorders.site_number),
+                   coalesce(EXCLUDED.equipment_number, onkey_workorders.equipment_number),
+                   coalesce(EXCLUDED.received_on, onkey_workorders.received_on),
+                   coalesce(EXCLUDED.required_by, onkey_workorders.required_by),
+                   coalesce(EXCLUDED.complete_by, onkey_workorders.complete_by),
+                   coalesce(EXCLUDED.completed_on, onkey_workorders.completed_on),
+                   coalesce(EXCLUDED.contract_type, onkey_workorders.contract_type),
+                   coalesce(EXCLUDED.work_required, onkey_workorders.work_required),
+                   coalesce(EXCLUDED.work_performed, onkey_workorders.work_performed),
+                   coalesce(EXCLUDED.estimated_duration_minutes,
+                            onkey_workorders.estimated_duration_minutes))
             """
-        )
+        ),
+        params,
     )
     # Master-data enrichment (#59): fill register blanks from the owner-loaded
     # master tables. Fill-blanks only, and never a manually-set field (#60).
+    # Guarded (#172): only rows where a blank would actually be filled write.
     db.execute(
         text(
             """
@@ -465,6 +531,13 @@ def derive_registers(db: Session) -> dict:
                 ORDER BY location_code, is_active DESC NULLS LAST, code
             ) m
             WHERE m.location_code = s.site_number
+              AND (s.address, s.gps_location, s.branch_code, s.is_active) IS DISTINCT FROM
+                  (CASE WHEN s.manual_fields ? 'address' THEN s.address
+                        ELSE coalesce(s.address, m.address) END,
+                   CASE WHEN s.manual_fields ? 'gps_location' THEN s.gps_location
+                        ELSE coalesce(s.gps_location, m.gps_location) END,
+                   coalesce(s.branch_code, m.branch),
+                   coalesce(m.is_active, s.is_active))
             """
         )
     )
@@ -478,6 +551,10 @@ def derive_registers(db: Session) -> dict:
                 updated_at = now()
             FROM onkey_location_master m
             WHERE substring(m.code from '\((\d+)\)') = e.equipment_number
+              AND (e.description, e.is_active, e.site_number) IS DISTINCT FROM
+                  (coalesce(e.description, m.description),
+                   coalesce(m.is_active, e.is_active),
+                   coalesce(e.site_number, m.location_code))
             """
         )
     )
@@ -493,8 +570,16 @@ def derive_registers(db: Session) -> dict:
                 email = coalesce(t.email, m.email),
                 updated_at = now()
             FROM onkey_technician_master m
-            WHERE lower(m.email) = lower(t.email)
-               OR (t.email IS NULL AND lower(m.display_name) = lower(t.name))
+            WHERE (lower(m.email) = lower(t.email)
+               OR (t.email IS NULL AND lower(m.display_name) = lower(t.name)))
+              AND (t.first_name, t.last_name, t.manager, t.base_latitude,
+                   t.base_longitude, t.email) IS DISTINCT FROM
+                  (coalesce(t.first_name, m.first_name),
+                   coalesce(t.last_name, m.last_name),
+                   coalesce(t.manager, m.manager),
+                   coalesce(t.base_latitude, m.latitude),
+                   coalesce(t.base_longitude, m.longitude),
+                   coalesce(t.email, m.email))
             """
         )
     )
@@ -516,6 +601,11 @@ def derive_registers(db: Session) -> dict:
         )
     )
     db.commit()
+
+    # The eight full-table counts are diagnostics for the wide passes; a
+    # two-minute cycle does not need them (#172).
+    if row_hashes is not None:
+        return {"windowed_rows": len(row_hashes)}
 
     counts = {}
     for table in ("onkey_technicians", "onkey_sites", "onkey_equipment", "onkey_workorders"):
@@ -592,8 +682,16 @@ def run_sync(db: Session, settings: Settings, mode: str) -> SyncSummary:
             # that outlived its caller landed raw rows and left the
             # registers untouched: the export looked fine and the app
             # stayed stale. Idempotent upserts, so repeating is free.
-            summary.registers = derive_registers(db)
+            #
+            # The recent lane derives from exactly the rows it fetched
+            # (#172): its window is the present, so windowing is safe
+            # there and only there; see derive_registers.
+            summary.registers = derive_registers(
+                db, list(chunk.keys()) if mode == "recent" else None
+            )
     summary.columns = sorted(columns)
-    if not summary.registers:
+    if not summary.registers and mode != "recent":
+        # An empty recent fetch changed nothing, so there is nothing to
+        # derive (#172); the wide passes keep their final full derive.
         summary.registers = derive_registers(db)
     return summary

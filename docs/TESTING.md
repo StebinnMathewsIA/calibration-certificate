@@ -1089,3 +1089,15 @@ Same OTA path.
       visit, and Book spares
 - [ ] Completing a job normally still prints a clean PDF with no
       watermark
+
+## Verification only on calibration work orders (#167)
+
+Same OTA path. The flag rides the work order feed, so pull refresh on
+Home once after updating.
+
+- [ ] A [TEST] work order still shows Dispensers on site and the
+      Verification section
+- [ ] A real calibration or verification work order (work required
+      mentions calibration or verification) shows both sections
+- [ ] A non-calibration job (for example a leak detector PM or a repair
+      call) shows neither

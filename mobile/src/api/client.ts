@@ -257,6 +257,11 @@ export interface WorkOrderRecord {
   /** WKT "POINT (lon lat)". */
   gpsLocation: string | null;
   isDemo: boolean;
+  /** Calibration work (#167): the work required or a known OnKey task
+   * asks for calibration or verification. Only these show the dispenser
+   * verification section. Demo work orders always count. Optional
+   * because cached rows predate the field. */
+  isCalibration?: boolean;
   /** What the job card holds so far (#157): the Home cards show outcomes
    * without a per-card fetch. Null until a job card exists. */
   jobCardSummary: {

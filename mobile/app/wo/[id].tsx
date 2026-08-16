@@ -1258,7 +1258,9 @@ export default function WorkOrderLifecycleScreen() {
 
       {/* What the technician will find on site (#123). Never a forced
           selection (#159): the OnKey-named asset is highlighted, the
-          whole site stays in scope. */}
+          whole site stays in scope. Calibration work only (#167): a leak
+          detector PM has no business offering a verification. */}
+      {wo.isCalibration ? (
       <SectionCard title="Dispensers on site">
         {!wo.siteId ? (
           <Text style={{ color: colors.muted, fontSize: 12 }}>
@@ -1316,9 +1318,10 @@ export default function WorkOrderLifecycleScreen() {
           </>
         )}
       </SectionCard>
+      ) : null}
 
       {/* The verification launcher stays inside the job. */}
-      {state === 'started' || state === 'paused' || state === 'stopped' ? (
+      {wo.isCalibration && (state === 'started' || state === 'paused' || state === 'stopped') ? (
         <SectionCard title="Verification">
           <Text style={{ color: colors.muted, fontSize: 12, marginBottom: 6 }}>
             Issue an NRCS verification certificate for a dispenser on this site. Standard and

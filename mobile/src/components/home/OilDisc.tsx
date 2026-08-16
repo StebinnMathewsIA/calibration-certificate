@@ -8,11 +8,15 @@
  */
 import React from 'react';
 import { Text, View } from 'react-native';
+import { SvgXml } from 'react-native-svg';
 import { colors, fonts } from '../ui';
+import { OIL_LOGOS } from './oilLogos';
 
 type Brand = { label: string; bg: string; fg: string; ring: string };
 
-/** Keyed by a lowercase fragment matched against the customer name. */
+/** Keyed by a lowercase fragment matched against the customer name.
+ * Brands with a bundled vector in OIL_LOGOS render the real mark; the
+ * rest keep monogram discs until an official asset is supplied. */
 const BRANDS: [string, Brand][] = [
   ['bp', { label: 'bp', bg: '#FFF7D6', fg: '#1E7A34', ring: '#6FBF44' }],
   ['engen', { label: 'E', bg: '#0A4E9B', fg: '#FFFFFF', ring: '#D5382E' }],
@@ -26,7 +30,30 @@ const BRANDS: [string, Brand][] = [
 
 export function OilDisc({ customerName, size = 46 }: { customerName: string | null; size?: number }) {
   const key = (customerName ?? '').toLowerCase();
-  const brand = BRANDS.find(([frag]) => key.includes(frag))?.[1];
+  const match = BRANDS.find(([frag]) => key.includes(frag));
+  const brand = match?.[1];
+  const logo = match ? OIL_LOGOS[match[0]] : undefined;
+  if (logo) {
+    // The real mark on a white disc with a quiet ring.
+    return (
+      <View
+        accessibilityLabel={customerName ?? undefined}
+        style={{
+          width: size,
+          height: size,
+          borderRadius: 999,
+          backgroundColor: '#fff',
+          borderWidth: 1.5,
+          borderColor: colors.line,
+          alignItems: 'center',
+          justifyContent: 'center',
+          overflow: 'hidden',
+        }}
+      >
+        <SvgXml xml={logo} width={size * 0.64} height={size * 0.64} />
+      </View>
+    );
+  }
   if (!brand) {
     // Prowalco fallback: no oil company on record for this site.
     return (

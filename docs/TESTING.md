@@ -1114,3 +1114,16 @@ Same OTA path. Pull refresh once on the tab to fetch the full register.
 - [ ] Scrolling the full register (about 2,900 sites) stays smooth
 - [ ] Tapping any site opens its documents and history, even with no
       work order there
+
+## Stock tab restyle (#169)
+
+Same OTA path. Visual only; nothing functional changed.
+
+- [ ] The technician view shows the On board heading outside the card,
+      the navy van disc with "Your van" and the scope line, the shared
+      search style, and part codes in mono with quantities in the
+      heading face
+- [ ] The manager view shows the Teams heading outside the restyled
+      card; the collapsible tree and van screens work as before
+- [ ] The meta line (scope left, Syspro freshness right) still sits
+      under the header

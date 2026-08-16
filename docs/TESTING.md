@@ -986,3 +986,17 @@ the next app build."
       team section still render below the work list
 - [ ] AFTER the native build: the map strip shows your position and the
       surrounding pins with distance chips, overdue pins chipped red
+
+## Full-screen map with pin cards (#158)
+
+Needs the 0.2.0 native build; on older builds both the strip and the
+full screen show the placeholder text.
+
+- [ ] Tapping the Home map strip opens the full map with every open
+      work order pinned and your position dot
+- [ ] Tapping a pin raises that work order's card, with the full work
+      text and the status line, plus distance to site when position is
+      known
+- [ ] Tapping the card opens the work order; tapping the map behind it
+      dismisses; the close button dismisses
+- [ ] Overdue pins keep their red day chips on the full map

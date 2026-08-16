@@ -13,7 +13,7 @@
  * no further code change.
  */
 import React from 'react';
-import { Platform, Text, View } from 'react-native';
+import { Platform, Pressable, Text, View } from 'react-native';
 import { WorkOrderRecord } from '../../api/client';
 import { parseWktPoint } from '../MiniMap';
 import { formatKm, roadKm } from '../../util/geo';
@@ -81,26 +81,38 @@ function PinBubble({ pin, here }: { pin: MapPin; here: { latitude: number; longi
 export function HomeMap({
   here,
   pins,
-  height = 130,
+  height,
+  fill = false,
+  interactive = false,
+  onPress,
+  onPinPress,
 }: {
   here: { latitude: number; longitude: number } | null;
   pins: MapPin[];
   height?: number;
+  /** Fill the parent (the full-screen map) instead of a fixed strip. */
+  fill?: boolean;
+  /** Pan and zoom; the Home strip keeps them off and taps through. */
+  interactive?: boolean;
+  /** Tap anywhere on a non-interactive strip (#158): opens the full map. */
+  onPress?: () => void;
+  /** Tap a pin on the interactive map (#158). */
+  onPinPress?: (pin: MapPin) => void;
 }) {
+  const frame = fill
+    ? { flex: 1 as const }
+    : {
+        height: height ?? 130,
+        borderRadius: 20,
+        borderWidth: 1,
+        borderColor: colors.line,
+        overflow: 'hidden' as const,
+      };
   if (!maps || (!here && pins.length === 0)) {
     // No native module yet, or nothing to place: the quiet placeholder.
     return (
       <View
-        style={{
-          height,
-          borderRadius: 20,
-          borderWidth: 1,
-          borderColor: colors.line,
-          backgroundColor: '#F4F6F9',
-          alignItems: 'center',
-          justifyContent: 'center',
-          overflow: 'hidden',
-        }}
+        style={[frame, { backgroundColor: '#F4F6F9', alignItems: 'center', justifyContent: 'center' }]}
       >
         <Text style={{ color: colors.muted, fontSize: 12, textAlign: 'center', paddingHorizontal: 16 }}>
           {maps
@@ -117,53 +129,83 @@ export function HomeMap({
   // Frame the technician plus their nearest pins; fall back to the pins
   // alone when position is unknown.
   const focus = here ?? pins[0];
-  const lats = [focus.latitude, ...pins.slice(0, 6).map((p) => p.latitude)];
-  const lons = [focus.longitude, ...pins.slice(0, 6).map((p) => p.longitude)];
+  const framed = interactive ? pins : pins.slice(0, 6);
+  const lats = [focus.latitude, ...framed.map((p) => p.latitude)];
+  const lons = [focus.longitude, ...framed.map((p) => p.longitude)];
   const latDelta = Math.max(0.05, (Math.max(...lats) - Math.min(...lats)) * 1.6);
   const lonDelta = Math.max(0.05, (Math.max(...lons) - Math.min(...lons)) * 1.6);
 
-  return (
-    <View style={{ height, borderRadius: 20, overflow: 'hidden', borderWidth: 1, borderColor: colors.line }}>
-      <MapView
-        style={{ flex: 1 }}
-        provider={PROVIDER_GOOGLE}
-        customMapStyle={MAP_STYLE}
-        initialRegion={{
-          latitude: (Math.max(...lats) + Math.min(...lats)) / 2,
-          longitude: (Math.max(...lons) + Math.min(...lons)) / 2,
-          latitudeDelta: latDelta,
-          longitudeDelta: lonDelta,
-        }}
-        toolbarEnabled={false}
-        showsPointsOfInterest={false}
-        showsCompass={false}
-        {...(Platform.OS === 'ios' ? {} : { liteMode: false })}
-      >
-        {here ? (
-          <Marker coordinate={here} anchor={{ x: 0.5, y: 0.5 }} tracksViewChanges={false}>
-            <View
-              style={{
-                width: 16,
-                height: 16,
-                borderRadius: 999,
-                backgroundColor: colors.navy,
-                borderWidth: 3,
-                borderColor: '#fff',
-              }}
-            />
-          </Marker>
-        ) : null}
-        {pins.map((p) => (
-          <Marker
-            key={p.wo.id}
-            coordinate={{ latitude: p.latitude, longitude: p.longitude }}
-            anchor={{ x: 0.5, y: 0.5 }}
-            tracksViewChanges={false}
-          >
-            <PinBubble pin={p} here={here} />
-          </Marker>
-        ))}
-      </MapView>
-    </View>
+  const map = (
+    <MapView
+      style={{ flex: 1 }}
+      provider={PROVIDER_GOOGLE}
+      customMapStyle={MAP_STYLE}
+      initialRegion={{
+        latitude: (Math.max(...lats) + Math.min(...lats)) / 2,
+        longitude: (Math.max(...lons) + Math.min(...lons)) / 2,
+        latitudeDelta: latDelta,
+        longitudeDelta: lonDelta,
+      }}
+      toolbarEnabled={false}
+      showsPointsOfInterest={false}
+      showsCompass={false}
+      scrollEnabled={interactive}
+      zoomEnabled={interactive}
+      rotateEnabled={false}
+      pitchEnabled={false}
+      onPress={interactive ? undefined : onPress}
+      {...(Platform.OS === 'ios' ? {} : { liteMode: false })}
+    >
+      {here ? (
+        <Marker coordinate={here} anchor={{ x: 0.5, y: 0.5 }} tracksViewChanges={false}>
+          <View
+            style={{
+              width: 16,
+              height: 16,
+              borderRadius: 999,
+              backgroundColor: colors.navy,
+              borderWidth: 3,
+              borderColor: '#fff',
+            }}
+          />
+        </Marker>
+      ) : null}
+      {pins.map((p) => (
+        <Marker
+          key={p.wo.id}
+          coordinate={{ latitude: p.latitude, longitude: p.longitude }}
+          anchor={{ x: 0.5, y: 0.5 }}
+          tracksViewChanges={false}
+          onPress={
+            onPinPress
+              ? (e: { stopPropagation?: () => void }) => {
+                  e.stopPropagation?.();
+                  onPinPress(p);
+                }
+              : undefined
+          }
+        >
+          <PinBubble pin={p} here={here} />
+        </Marker>
+      ))}
+    </MapView>
   );
+
+  if (!interactive && onPress) {
+    // The strip is one tap target (#158): gestures are off, and a
+    // transparent pressable above the map catches the tap reliably on
+    // both platforms.
+    return (
+      <View style={frame}>
+        {map}
+        <Pressable
+          onPress={onPress}
+          accessibilityRole="button"
+          accessibilityLabel="Open the full work order map"
+          style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0 }}
+        />
+      </View>
+    );
+  }
+  return <View style={frame}>{map}</View>;
 }

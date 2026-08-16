@@ -464,6 +464,7 @@ export default function HomeScreen() {
             <HomeMap
               here={here}
               pins={pinsFor((records ?? []).filter((w) => w.lifecycle?.state !== 'signed_off'))}
+              onPress={() => router.push('/map')}
             />
           </View>
         </View>

@@ -166,10 +166,14 @@ import { OilDisc } from './OilDisc';
 export function WorkOrderCard({
   wo,
   distanceKm,
+  expanded = false,
 }: {
   wo: WorkOrderRecord;
   /** Straight-line road-factor estimate to site, when position is known. */
   distanceKm?: number | null;
+  /** Full work text instead of the two line clamp, plus the status
+   * detail line: the map's pin card (#158). */
+  expanded?: boolean;
 }) {
   const router = useRouter();
   const kind = cardKind(wo);
@@ -284,10 +288,20 @@ export function WorkOrderCard({
           <Text style={{ fontSize: 10.5, letterSpacing: 0.6, color: colors.muted, textTransform: 'uppercase', fontFamily: fonts.bodyMedium }}>
             {excerpt.label}
           </Text>
-          <Text style={{ fontSize: 12.5, lineHeight: 18, color: colors.muted, marginTop: 1 }} numberOfLines={2}>
+          <Text
+            style={{ fontSize: 12.5, lineHeight: 18, color: colors.muted, marginTop: 1 }}
+            numberOfLines={expanded ? undefined : 2}
+          >
             {excerpt.text}
           </Text>
         </View>
+      ) : null}
+
+      {expanded && wo.statusDescription ? (
+        <Text style={{ fontSize: 12, color: colors.muted, marginTop: 7 }}>
+          Status {wo.statusDescription}
+          {wo.importanceDescription ? ` · ${wo.importanceDescription}` : ''}
+        </Text>
       ) : null}
 
       {cells.length > 0 ? (

@@ -1138,3 +1138,14 @@ Same OTA path; pull refresh once on Sites.
       one pull refresh, even during a busy sync period
 - [ ] Past work at a site includes other technicians' completed OnKey
       jobs, not just work done through this app
+
+## Map card button, Total render, sites merge fix (#174, #173, #171)
+
+Same OTA path; pull refresh once on Sites.
+
+- [ ] The map pin card carries a green "Open work order" button that
+      opens the job; dismiss still works
+- [ ] Total sites show the TE beam on their discs (the gradients now
+      render)
+- [ ] The Sites tab loads all 2,872 register sites with their real
+      names after a pull refresh

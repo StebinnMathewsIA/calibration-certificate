@@ -6,6 +6,7 @@
  * dismiss. On builds without the native module the screen explains
  * itself, same as the strip.
  */
+import { useRouter } from 'expo-router';
 import * as Location from 'expo-location';
 import React, { useCallback, useEffect, useState } from 'react';
 import { Pressable, ScrollView, Text, View } from 'react-native';
@@ -14,7 +15,7 @@ import { WorkOrderRecord, listWorkOrderRecords } from '../src/api/client';
 import { useAuth } from '../src/auth/AuthContext';
 import { HomeMap, MapPin, pinsFor } from '../src/components/home/HomeMap';
 import { WorkOrderCard } from '../src/components/home/WorkOrderCard';
-import { colors } from '../src/components/ui';
+import { colors, fonts } from '../src/components/ui';
 import { fetchThrough } from '../src/db/cache';
 import { roadKm } from '../src/util/geo';
 import { parseWktPoint } from '../src/components/MiniMap';
@@ -23,6 +24,7 @@ export default function MapScreen() {
   const { accessToken } = useAuth();
   const [records, setRecords] = useState<WorkOrderRecord[]>([]);
   const [here, setHere] = useState<{ latitude: number; longitude: number } | null>(null);
+  const router = useRouter();
   const [selected, setSelected] = useState<WorkOrderRecord | null>(null);
 
   useEffect(() => {
@@ -83,6 +85,27 @@ export default function MapScreen() {
             <ScrollView>
               <WorkOrderCard wo={selected} distanceKm={selectedDistance} expanded />
             </ScrollView>
+            {/* The explicit way in (#174): the card is informational, the
+                button is the action. */}
+            <View style={{ marginHorizontal: 12, marginTop: 8 }}>
+              <Pressable
+                onPress={() =>
+                  router.push({ pathname: '/wo/[id]', params: { id: selected.id } })
+                }
+                accessibilityRole="button"
+                accessibilityLabel="Open this work order"
+                style={{
+                  backgroundColor: colors.green,
+                  borderRadius: 12,
+                  paddingVertical: 13,
+                  alignItems: 'center',
+                }}
+              >
+                <Text style={{ color: colors.navy, fontSize: 15, fontFamily: fonts.bodyMedium }}>
+                  Open work order
+                </Text>
+              </Pressable>
+            </View>
             <Pressable
               onPress={() => setSelected(null)}
               accessibilityRole="button"

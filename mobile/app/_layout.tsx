@@ -1,3 +1,14 @@
+// Buffer global FIRST (#164): react-native-quick-crypto's sign path ends
+// in Buffer.from(...), and Hermes has no Buffer. Without this, the device
+// signature throws, the upload goes out headerless, and the signing
+// service 403s every retry. The polyfill ships inside quick-crypto's own
+// dependency tree.
+import { Buffer } from '@craftzdog/react-native-buffer';
+
+if (!(globalThis as { Buffer?: unknown }).Buffer) {
+  (globalThis as { Buffer?: unknown }).Buffer = Buffer;
+}
+
 import {
   BarlowSemiCondensed_500Medium,
   BarlowSemiCondensed_600SemiBold,

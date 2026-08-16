@@ -10,7 +10,7 @@ import React from 'react';
 import { Text, View } from 'react-native';
 import { SvgXml } from 'react-native-svg';
 import { colors, fonts } from '../ui';
-import { OIL_LOGOS } from './oilLogos';
+import { OIL_DISC_BG, OIL_LOGOS } from './oilLogos';
 
 type Brand = { label: string; bg: string; fg: string; ring: string };
 
@@ -34,7 +34,9 @@ export function OilDisc({ customerName, size = 46 }: { customerName: string | nu
   const brand = match?.[1];
   const logo = match ? OIL_LOGOS[match[0]] : undefined;
   if (logo) {
-    // The real mark on a white disc with a quiet ring.
+    // The real mark, on white or on its brand fill (Engen sits on Engen
+    // blue, per the owner-supplied treatment), cropped by the disc.
+    const bg = (match && OIL_DISC_BG[match[0]]) || '#fff';
     return (
       <View
         accessibilityLabel={customerName ?? undefined}
@@ -42,9 +44,9 @@ export function OilDisc({ customerName, size = 46 }: { customerName: string | nu
           width: size,
           height: size,
           borderRadius: 999,
-          backgroundColor: '#fff',
+          backgroundColor: bg,
           borderWidth: 1.5,
-          borderColor: colors.line,
+          borderColor: bg === '#fff' ? colors.line : bg,
           alignItems: 'center',
           justifyContent: 'center',
           overflow: 'hidden',

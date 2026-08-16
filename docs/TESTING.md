@@ -1071,3 +1071,21 @@ Amends the #162 flow: Complete and sign-off are one act. Same OTA path.
       stays locked
 - [ ] A job stopped before signing (older data) still shows "Client
       sign-off" on the completed view and sealing there signs it off
+
+## Incomplete watermark and handed-back sign-off (#166)
+
+Same OTA path.
+
+- [ ] Pause with a handed-back reason (one that cannot be resumed): the
+      confirmation says the client signs the incomplete card, and after
+      pausing the sign-off page opens
+- [ ] Sealing there says the job stays with the office; the work order
+      stays paused, not completed
+- [ ] The paused view shows "Job card PDF (incomplete)"; every page of
+      the PDF carries the diagonal Incomplete watermark
+- [ ] If the client was unavailable, the paused view keeps the "Client
+      sign-off" button until it is done
+- [ ] A sealed card locks the visit fields, the note, add and remove
+      visit, and Book spares
+- [ ] Completing a job normally still prints a clean PDF with no
+      watermark

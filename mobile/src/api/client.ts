@@ -736,12 +736,15 @@ export async function signJobCard(
     enqueueWrite('jobCardSign', { args });
   }
   // Sign-off IS completion (#165): the server stops a running job at
-  // seal and rolls straight on to signed_off. Mirror both steps locally
-  // so the screen behind shows the finished job; the queued write does
-  // the same server-side when it drains.
+  // seal and rolls straight on to signed_off. The one exception (#166)
+  // is a pause that hands the job back: there the signature only
+  // acknowledges the incomplete work and the job stays paused, so the
+  // mirror must not move it either.
   try {
     const cached = readCache<WorkOrderRecord[]>('wo:records') ?? [];
-    if (cached.find((w) => w.id === workOrderId)?.lifecycle?.state !== 'stopped') {
+    const rec = cached.find((w) => w.id === workOrderId);
+    if (rec?.lifecycle?.state === 'paused' && rec.lifecycle.blocksResume) return;
+    if (rec?.lifecycle?.state !== 'stopped') {
       commitTransitionLocally(
         workOrderId,
         applyTransitionLocally(workOrderId, 'stop', {}, args.p_occurred_at),

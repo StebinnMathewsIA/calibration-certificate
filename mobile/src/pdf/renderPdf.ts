@@ -54,10 +54,14 @@ export async function renderRejectionPdf(rejection: RejectionCertificate): Promi
  * the client actually signed. */
 export async function renderJobCardPdf(
   job: JobCard,
-  signatures: { customerSignatureSvg?: string; technicianSignatureSvg?: string } = {},
+  options: {
+    customerSignatureSvg?: string;
+    technicianSignatureSvg?: string;
+    watermark?: string;
+  } = {},
 ): Promise<RenderedPdf> {
   const { uri } = await Print.printToFileAsync({
-    html: jobCardHtml(job, signatures),
+    html: jobCardHtml(job, options),
     width: 595,
     height: 842,
   });

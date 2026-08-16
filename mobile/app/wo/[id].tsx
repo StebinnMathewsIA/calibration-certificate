@@ -572,13 +572,23 @@ export default function WorkOrderLifecycleScreen() {
     if (chosenReason.blocksResume) {
       Alert.alert(
         'This cannot be resumed',
-        `Pausing for "${chosenReason.label}" hands the work order back: you will not be able to resume it yourself.`,
+        `Pausing for "${chosenReason.label}" hands the work order back: you will not be able to resume it yourself. The client then signs the incomplete job card.`,
         [
           { text: 'Cancel', style: 'cancel' },
           {
-            text: 'Pause anyway',
+            text: 'Pause and sign off',
             style: 'destructive',
-            onPress: () => void apply('pause', { reason: chosenReason.code, note: note.trim() }),
+            onPress: () => {
+              void apply('pause', { reason: chosenReason.code, note: note.trim() }).then((ok) => {
+                // The client signs the incomplete card while the
+                // technician is still on site (#166). Sealing a blocked
+                // pause records their acknowledgement and books the
+                // costing; the job stays with the office.
+                if (ok && !signed) {
+                  router.push({ pathname: '/signoff/[id]', params: { id: String(id) } });
+                }
+              });
+            },
           },
         ],
       );
@@ -655,6 +665,9 @@ export default function WorkOrderLifecycleScreen() {
       const { uri } = await renderJobCardPdf(toJobCard(bundle), {
         customerSignatureSvg: bundle.jobCard?.clientSignature ?? undefined,
         technicianSignatureSvg: bundle.jobCard?.techSignature ?? undefined,
+        // A card printed while the job is paused is not a finished card
+        // and must not look like one (#166).
+        watermark: state === 'paused' ? 'Incomplete' : undefined,
       });
       if (await Sharing.isAvailableAsync()) {
         await Sharing.shareAsync(uri, { mimeType: 'application/pdf', UTI: 'com.adobe.pdf' });
@@ -932,19 +945,21 @@ export default function WorkOrderLifecycleScreen() {
                       Visit {vi + 1}
                       {v.date ? `  ${v.date}` : ''}
                     </Text>
-                    <Text
-                      onPress={() => {
-                        dirty.current = true;
-                        const next = visits.filter((_, j) => j !== vi);
-                        setVisits(next);
-                        persist({ visits: next });
-                      }}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Remove visit ${vi + 1}`}
-                      style={{ color: colors.red, fontSize: 13, paddingHorizontal: 6 }}
-                    >
-                      &#10007;
-                    </Text>
+                    {!signed ? (
+                      <Text
+                        onPress={() => {
+                          dirty.current = true;
+                          const next = visits.filter((_, j) => j !== vi);
+                          setVisits(next);
+                          persist({ visits: next });
+                        }}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Remove visit ${vi + 1}`}
+                        style={{ color: colors.red, fontSize: 13, paddingHorizontal: 6 }}
+                      >
+                        &#10007;
+                      </Text>
+                    ) : null}
                   </View>
                 ) : null}
                 <View style={{ flexDirection: 'row', gap: 8 }}>
@@ -970,6 +985,7 @@ export default function WorkOrderLifecycleScreen() {
                           });
                         }}
                         onBlur={() => persist()}
+                        editable={!signed}
                         keyboardType="decimal-pad"
                         placeholder="0"
                         accessibilityLabel={`${label}, visit ${vi + 1}`}
@@ -979,19 +995,21 @@ export default function WorkOrderLifecycleScreen() {
                 </View>
               </View>
             ))}
-            <Text
-              onPress={() => {
-                dirty.current = true;
-                const next = [...visits, blankVisit()];
-                setVisits(next);
-                persist({ visits: next });
-              }}
-              accessibilityRole="button"
-              accessibilityLabel="Add a visit"
-              style={{ color: colors.blueText, fontSize: 12.5, fontFamily: fonts.bodyMedium, marginTop: 8 }}
-            >
-              + Add a visit
-            </Text>
+            {!signed ? (
+              <Text
+                onPress={() => {
+                  dirty.current = true;
+                  const next = [...visits, blankVisit()];
+                  setVisits(next);
+                  persist({ visits: next });
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="Add a visit"
+                style={{ color: colors.blueText, fontSize: 12.5, fontFamily: fonts.bodyMedium, marginTop: 8 }}
+              >
+                + Add a visit
+              </Text>
+            ) : null}
             <Text style={{ color: colors.muted, fontSize: 10.5, marginTop: 10, marginBottom: 3 }}>
               Work performed (required to complete)
             </Text>
@@ -1006,6 +1024,7 @@ export default function WorkOrderLifecycleScreen() {
                 setPerformed(t);
               }}
               onBlur={() => persist()}
+              editable={!signed}
             />
           </SectionCard>
 
@@ -1033,11 +1052,13 @@ export default function WorkOrderLifecycleScreen() {
             ) : (
               <Text style={{ color: colors.muted, fontSize: 12 }}>No spares booked yet.</Text>
             )}
-            <Button
-              title="Book spares"
-              kind="secondary"
-              onPress={() => router.push({ pathname: '/spares/[id]', params: { id: wo.id } })}
-            />
+            {!signed ? (
+              <Button
+                title="Book spares"
+                kind="secondary"
+                onPress={() => router.push({ pathname: '/spares/[id]', params: { id: wo.id } })}
+              />
+            ) : null}
           </SectionCard>
 
           <SectionCard title="Client sign-off">
@@ -1048,6 +1069,24 @@ export default function WorkOrderLifecycleScreen() {
                   Accepted by {bundle?.jobCard?.clientName}
                   {bundle?.jobCard?.signedAt ? ` at ${bundle.jobCard.signedAt.slice(11, 16)}` : ''}.
                 </Text>
+                {state === 'paused' ? (
+                  <Button
+                    title="Job card PDF (incomplete)"
+                    kind="secondary"
+                    onPress={() => void sharePdf()}
+                  />
+                ) : null}
+              </>
+            ) : state === 'paused' && wo.lifecycle?.blocksResume ? (
+              <>
+                <Text style={{ color: colors.muted, fontSize: 12 }}>
+                  The office has this job now. The client signs the incomplete job card so the
+                  work done so far is acknowledged and booked.
+                </Text>
+                <Button
+                  title="Client sign-off"
+                  onPress={() => router.push({ pathname: '/signoff/[id]', params: { id: wo.id } })}
+                />
               </>
             ) : (
               <Text style={{ color: colors.muted, fontSize: 12 }}>

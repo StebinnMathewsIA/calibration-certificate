@@ -126,7 +126,20 @@ export default function SignOffScreen() {
         clientSignature: clientSig,
         techSignature: readCache<string>(voSignatureCacheKey(identity?.subject ?? '')) ?? undefined,
       });
-      Alert.alert('Job complete', 'The client has accepted the work and the job is signed off.');
+      // A pause that hands the job back does not complete at seal (#166):
+      // the signature acknowledges the incomplete work and the office
+      // takes it from here.
+      const rec = (readCache<{ id: string; lifecycle?: { state?: string; blocksResume?: boolean } }[]>(
+        'wo:records',
+      ) ?? []).find((w) => w.id === String(id));
+      if (rec?.lifecycle?.state === 'paused' && rec.lifecycle.blocksResume) {
+        Alert.alert(
+          'Job card signed',
+          'The client has acknowledged the work done so far. The job stays with the office; the card prints with an Incomplete watermark.',
+        );
+      } else {
+        Alert.alert('Job complete', 'The client has accepted the work and the job is signed off.');
+      }
       router.back();
     } catch (err) {
       Alert.alert('Could not sign', err instanceof Error ? err.message : String(err));

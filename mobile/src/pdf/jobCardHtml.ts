@@ -137,6 +137,10 @@ export interface JobCardOptions {
   customerSignatureSvg?: string;
   /** The technician's saved handwritten signature. */
   technicianSignatureSvg?: string;
+  /** Full-page diagonal stamp on every page, e.g. INCOMPLETE for a job
+   * card printed while the work order is paused (#166). A half-done card
+   * must not look like a finished one. */
+  watermark?: string;
 }
 
 /** The site rules printed on the original in 5pt: Prowalco's HSE
@@ -237,7 +241,15 @@ export function jobCardHtml(job: JobCard, opts: JobCardOptions = {}): string {
   footer { position: fixed; bottom: 4mm; left: 0; right: 0; text-align: center;
            font-size: 6.5pt; color: #555; }
   .page-break { page-break-before: always; }
+  /* position:fixed repeats on every printed page, so one element stamps
+     the whole document (#166). Light enough to read through, loud enough
+     that nobody mistakes a half-done card for a finished one. */
+  .wm { position: fixed; top: 42%; left: -10%; right: -10%; text-align: center;
+        transform: rotate(-30deg); font-size: 84pt; font-weight: 800;
+        letter-spacing: 14px; text-transform: uppercase;
+        color: rgba(155, 38, 38, 0.13); z-index: 999; pointer-events: none; }
 </style></head><body>
+${opts.watermark ? `<div class="wm">${esc(opts.watermark)}</div>` : ''}
 
 <div class="head">
   <h1>Job Card</h1>

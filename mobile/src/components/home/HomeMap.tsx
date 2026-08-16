@@ -24,11 +24,16 @@ import { MAP_STYLE } from './mapStyle';
 
 type Maps = typeof import('react-native-maps') | null;
 let maps: Maps = null;
+let mapsError: string | null = null;
 try {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   maps = require('react-native-maps');
-} catch {
-  maps = null; // old native build: placeholder until the new build is installed
+} catch (e) {
+  // Old native build, or the module failed to link: the placeholder
+  // carries the REAL reason, because "install the new build" turned out
+  // to be a guess when a freshly built binary showed the same thing.
+  maps = null;
+  mapsError = e instanceof Error ? e.message : String(e);
 }
 
 export type MapPin = {
@@ -117,7 +122,7 @@ export function HomeMap({
         <Text style={{ color: colors.muted, fontSize: 12, textAlign: 'center', paddingHorizontal: 16 }}>
           {maps
             ? 'The map appears once your position or a work order location is known.'
-            : 'The map arrives with the next app build.'}
+            : `The map module did not load: ${(mapsError ?? 'not in this build').slice(0, 160)}`}
         </Text>
       </View>
     );

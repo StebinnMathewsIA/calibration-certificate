@@ -16,7 +16,7 @@
  */
 import NetInfo from '@react-native-community/netinfo';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, AppState, Text, View } from 'react-native';
+import { ActivityIndicator, AppState, Image, Text, View } from 'react-native';
 import { refreshCoreCaches } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import { notifyFreshnessSettled } from '../sync/freshness';
@@ -125,9 +125,11 @@ export function FreshnessGate() {
         }}
         accessibilityLabel="Checking for changes"
       >
-        <Text style={{ color: '#fff', fontFamily: fonts.heading, fontSize: 26 }}>
-          prowalco
-        </Text>
+        <Image
+          source={require('../../assets/prowalco-logo.png')}
+          style={{ width: 200, height: 76, resizeMode: 'contain' }}
+          accessibilityLabel="Prowalco"
+        />
         <ActivityIndicator color="#fff" style={{ marginTop: 18 }} />
         <Text style={{ color: '#fff', opacity: 0.75, fontSize: 13, marginTop: 12 }}>
           Checking for changes

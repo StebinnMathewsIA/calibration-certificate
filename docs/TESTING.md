@@ -959,3 +959,30 @@ arrived from the work order record are read-only.
       one muted
 - [ ] Save & start verification works exactly as before, including the
       incomplete-hose refusal
+
+## Home redesign (#157)
+
+Ships in two stages: everything except the live map arrives as an OTA
+update (force-quit and reopen twice); the map needs the new native build
+with the Google Maps keys, and until then shows "The map arrives with
+the next app build."
+
+- [ ] Home shows the greeting, your town under it (with location
+      permission granted), the search field, four number cards, the date
+      chip beside the map strip, then the three sections
+- [ ] Sections order: In progress (started first, then on the way),
+      Upcoming, Complete and stopped
+- [ ] The in-progress card's play pill ticks the live time on job in
+      minutes; recorded labour shows as "Time recorded" on complete cards
+- [ ] Cards show the oil company disc (Prowalco fallback), the two-line
+      work required or work performed excerpt, Estimated in hour format,
+      Travelled and Spares from the job card, and the overdue tag bottom
+      right on a normal white card
+- [ ] On-the-way cards show "Distance to site" (straight line times the
+      road factor) when position is known
+- [ ] Search filters the list by site, company, reference or work text
+- [ ] The number cards show the day's totals and reset on the SA day
+- [ ] Measures alert, certificates in progress, archived note and the
+      team section still render below the work list
+- [ ] AFTER the native build: the map strip shows your position and the
+      surrounding pins with distance chips, overdue pins chipped red

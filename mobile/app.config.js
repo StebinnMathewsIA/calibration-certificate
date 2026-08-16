@@ -18,6 +18,23 @@ module.exports = ({ config }) => ({
     ? { updates: { url: `https://u.expo.dev/${config.extra.eas.projectId}` } }
     : {}),
   runtimeVersion: { policy: 'appVersion' },
+  // Google Maps keys for the Home map (#157), from EAS environment
+  // variables, never the repo (it is public). A build without them still
+  // succeeds: the map component shows its placeholder instead.
+  android: {
+    ...config.android,
+    config: {
+      ...(config.android?.config ?? {}),
+      googleMaps: { apiKey: process.env.GOOGLE_MAPS_API_KEY_ANDROID ?? '' },
+    },
+  },
+  ios: {
+    ...config.ios,
+    config: {
+      ...(config.ios?.config ?? {}),
+      googleMapsApiKey: process.env.GOOGLE_MAPS_API_KEY_IOS ?? '',
+    },
+  },
   extra: {
     ...(config.extra ?? {}),
     apiUrl: process.env.EXPO_PUBLIC_API_URL ?? 'https://prowalco-calibration-api.onrender.com',

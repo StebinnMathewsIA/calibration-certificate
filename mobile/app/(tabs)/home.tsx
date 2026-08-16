@@ -1,23 +1,45 @@
+/**
+ * Home (#157, the owner-reviewed redesign). Top to bottom: greeting with
+ * the device's town, search, the day's four number cards, the date chip
+ * beside the map of surrounding work orders, then the work list in three
+ * sections: In progress (started, then on the way), Upcoming, Complete
+ * and stopped. Below it, everything Home already carried: the measures
+ * alert, certificates in progress on this device, and the team section.
+ *
+ * The map needs the native Google Maps build; until a phone has it, the
+ * strip shows a quiet placeholder (see HomeMap for the lazy require).
+ */
 import { Redirect, useFocusEffect, useRouter } from 'expo-router';
-import React, { useCallback, useMemo, useState } from 'react';
-import { Alert, FlatList, Pressable, Text, View } from 'react-native';
+import * as Location from 'expo-location';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Alert, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import Svg, { Circle, Path } from 'react-native-svg';
 import type { CertificateState, Verification } from '@prowalco/schema';
 import {
+  HomeStats,
   TeamGroup,
-  getTeamWorkOrders,
-  listWorkOrders,
+  WorkOrderRecord,
   WorkOrderSummary,
+  getHomeStats,
+  getTeamWorkOrders,
+  listWorkOrderRecords,
+  listWorkOrders,
 } from '../../src/api/client';
-import { MyDay } from '../../src/components/MyDay';
 import { useAuth } from '../../src/auth/AuthContext';
 import { TrashIcon } from '../../src/components/BrandHeader';
 import { GreetingHeader } from '../../src/components/GreetingHeader';
 import { SyncBanner } from '../../src/components/SyncBanner';
+import { HomeMap, pinsFor } from '../../src/components/home/HomeMap';
+import { StatCards } from '../../src/components/home/StatCards';
+import { WorkOrderCard, homeSection } from '../../src/components/home/WorkOrderCard';
+import { parseWktPoint } from '../../src/components/MiniMap';
+import { Badge, colors, fonts, styles } from '../../src/components/ui';
 import { fetchThrough } from '../../src/db/cache';
+import { onFreshnessSettled } from '../../src/sync/freshness';
+import { roadKm } from '../../src/util/geo';
 import { getProfile } from '../../src/profile/profileStore';
 import * as repo from '../../src/db/certificateRepo';
 import { processQueue } from '../../src/queue/signQueue';
-import { Badge, colors, styles } from '../../src/components/ui';
 
 const IN_PROGRESS_LABEL: Partial<Record<CertificateState, string>> = {
   DRAFT: 'Draft',
@@ -35,17 +57,14 @@ const IN_PROGRESS_TONE: Partial<Record<CertificateState, 'ok' | 'warn' | 'bad' |
   SIGNED: 'ok',
 };
 
-/** Where tapping an in-progress record resumes. */
 function resumePath(state: CertificateState): string {
   if (state === 'QUEUED_FOR_SIGNING' || state === 'UPLOADING') return '/verification/[id]/queued';
   if (state === 'SIGNED' || state === 'SYNCED') return '/verification/[id]/issued';
   return '/verification/[id]/results';
 }
 
-/** Editable pre-signing states, the only ones that may be deleted (#41). */
 const isDraftState = (s: CertificateState) => s === 'DRAFT' || s === 'READY_TO_SIGN';
 
-/** "Last saved" readout (#40): relative while recent, absolute after a day. */
 function formatLastSaved(iso: string): string {
   const saved = new Date(iso);
   const mins = Math.floor((Date.now() - saved.getTime()) / 60_000);
@@ -58,28 +77,62 @@ function formatLastSaved(iso: string): string {
   return `${saved.toISOString().slice(0, 10)} ${hh}:${mm}`;
 }
 
+function SectionHead({ title, live }: { title: string; live?: boolean }) {
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 12, marginTop: 18 }}>
+      {live ? (
+        <View
+          style={{
+            width: 9,
+            height: 9,
+            borderRadius: 999,
+            backgroundColor: colors.green,
+          }}
+        />
+      ) : null}
+      <Text style={{ fontFamily: fonts.heading, fontSize: 18, color: colors.ink }}>{title}</Text>
+    </View>
+  );
+}
+
+/** The date chip beside the map, from the mock. */
+function DateChip() {
+  const now = new Date();
+  const dows = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  return (
+    <View
+      style={{
+        width: 96,
+        borderRadius: 20,
+        padding: 12,
+        justifyContent: 'center',
+        backgroundColor: colors.green,
+      }}
+    >
+      <Text style={{ color: '#fff', fontSize: 12, opacity: 0.9 }}>{dows[now.getDay()]}</Text>
+      <Text style={{ color: '#fff', fontFamily: fonts.heading, fontSize: 30, lineHeight: 34 }}>
+        {now.getDate()}
+      </Text>
+      <Text style={{ color: '#fff', fontSize: 12, opacity: 0.9 }}>{months[now.getMonth()]}</Text>
+    </View>
+  );
+}
+
 export default function HomeScreen() {
   const { identity, accessToken, loading } = useAuth();
   const router = useRouter();
+  const [records, setRecords] = useState<WorkOrderRecord[] | null>(null);
+  const [stats, setStats] = useState<HomeStats | null>(null);
   const [workOrders, setWorkOrders] = useState<WorkOrderSummary[]>([]);
   const [inProgress, setInProgress] = useState<repo.CertificateRecord[]>([]);
   const [archivedCount, setArchivedCount] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
-  // Reported by My day so the greeting can never contradict the list under
-  // it. The OnKey summaries in `workOrders` are still fetched, but only to
-  // archive drafts for closed work orders; they are no longer a second
-  // work list on screen.
-  const [myDayCount, setMyDayCount] = useState<number | null>(null);
-  // Bumped by the header refresh button. My day owns the work list, so the
-  // button has to reach it: refreshing used to reload everything EXCEPT
-  // the list the technician was looking at.
-  const [refreshSignal, setRefreshSignal] = useState(0);
+  const [query, setQuery] = useState('');
+  const [here, setHere] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [town, setTown] = useState<string | null>(null);
 
   const loadLocal = useCallback(() => {
-    // Every verification on this device that has not fully synced — drafts
-    // were previously orphaned the moment the VO left the results screen.
-    // Most recently worked-on first (#40): autosave touches updatedAt on
-    // every field change, so this surfaces the draft the VO was busy with.
     setInProgress(
       repo
         .listAll()
@@ -89,25 +142,42 @@ export default function HomeScreen() {
     setArchivedCount(repo.listArchived().length);
   }, []);
 
+  const loadRecords = useCallback(
+    (force = false) => {
+      fetchThrough<WorkOrderRecord[]>('wo:records', () => listWorkOrderRecords(accessToken), {
+        force,
+        onFresh: setRecords,
+      })
+        .then(setRecords)
+        .catch(() => setRecords((r) => r ?? []));
+      fetchThrough<HomeStats>('home:stats', () => getHomeStats(accessToken), {
+        force,
+        onFresh: setStats,
+      })
+        .then(setStats)
+        .catch(() => {});
+    },
+    [accessToken],
+  );
+
   const load = useCallback(async () => {
     setRefreshing(true);
     loadLocal();
+    loadRecords();
     try {
       const wo = await fetchThrough('workorders', () => listWorkOrders(accessToken));
-      // A work order reported closed archives its local drafts (#31). Only a
-      // positive 'completed' status archives — a fetch failure (offline, no
-      // cache) reaches the catch below and archives nothing.
+      // A work order reported closed archives its local drafts (#31).
       repo.archiveDraftsForClosedWorkOrders(
         wo.filter((w) => w.status === 'completed').map((w) => w.id),
       );
       setWorkOrders(wo.filter((w) => w.status !== 'completed'));
       loadLocal();
     } catch {
-      // offline with no cache — leave the list empty
+      // offline with no cache
     } finally {
       setRefreshing(false);
     }
-  }, [accessToken, loadLocal]);
+  }, [accessToken, loadLocal, loadRecords]);
 
   useFocusEffect(
     useCallback(() => {
@@ -115,24 +185,37 @@ export default function HomeScreen() {
     }, [load]),
   );
 
-  // Team view (#76): role holders see every technician's open work orders,
-  // collapsible per technician with status groups nested under each.
-  const [team, setTeam] = useState<TeamGroup[] | null>(null);
-  const [teamOpen, setTeamOpen] = useState<Record<string, boolean>>({});
-  useFocusEffect(
-    useCallback(() => {
-      let cancelled = false;
-      fetchThrough('team-workorders', () => getTeamWorkOrders(accessToken))
-        .then((t) => !cancelled && setTeam(t))
-        .catch(() => {});
-      return () => {
-        cancelled = true;
-      };
-    }, [accessToken]),
-  );
+  // Repaint from the caches the freshness gate just refreshed (#150).
+  useEffect(() => onFreshnessSettled(() => loadRecords()), [loadRecords]);
 
-  // Certified-measures status (#70): missing/expired blocks verifications,
-  // expiring within 30 days warns — surfaced right on Home.
+  // Position and town (#157): consented GPS, reverse geocoded by the
+  // PLATFORM's own geocoder via expo-location. No Google API involved.
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const perm = await Location.getForegroundPermissionsAsync();
+        if (!perm.granted) return;
+        const fix = await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
+        if (!alive) return;
+        setHere({ latitude: fix.coords.latitude, longitude: fix.coords.longitude });
+        const places = await Location.reverseGeocodeAsync(fix.coords);
+        const p = places[0];
+        if (alive && p) {
+          setTown([p.city ?? p.subregion, p.region].filter(Boolean).join(', ') || null);
+        }
+      } catch {
+        // No fix or no geocoder: the header simply shows no town.
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // Certified-measures status (#70).
   const measureAlert = useMemo(() => {
     if (!identity) return null;
     const active = getProfile(identity.subject).measures ?? [];
@@ -150,6 +233,21 @@ export default function HomeScreen() {
     ];
     return { blocking, text: parts.join(' · ') };
   }, [identity, workOrders]);
+
+  // Team view (#76), unchanged.
+  const [team, setTeam] = useState<TeamGroup[] | null>(null);
+  const [teamOpen, setTeamOpen] = useState<Record<string, boolean>>({});
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      fetchThrough('team-workorders', () => getTeamWorkOrders(accessToken))
+        .then((t) => !cancelled && setTeam(t))
+        .catch(() => {});
+      return () => {
+        cancelled = true;
+      };
+    }, [accessToken]),
+  );
 
   const retryItem = async (itemId: string) => {
     repo.clearRetryBackoff(itemId);
@@ -177,9 +275,49 @@ export default function HomeScreen() {
     );
   };
 
+  const sections = useMemo(() => {
+    const all = records ?? [];
+    const q = query.trim().toLowerCase();
+    const match = (w: WorkOrderRecord) =>
+      !q ||
+      [w.siteName, w.customerName, w.externalRef, w.workRequired]
+        .some((f) => (f ?? '').toLowerCase().includes(q));
+    const live = all.filter((w) => homeSection(w) === 'live' && match(w));
+    // Started before on the way: the top of the list is what is live NOW.
+    live.sort((a, b) => {
+      const rank = (w: WorkOrderRecord) => (w.lifecycle?.state === 'started' ? 0 : 1);
+      return rank(a) - rank(b);
+    });
+    const upcoming = all
+      .filter((w) => homeSection(w) === 'upcoming' && match(w))
+      .sort((a, b) => (a.completeBy ?? '9999').localeCompare(b.completeBy ?? '9999'));
+    const done = all
+      .filter((w) => homeSection(w) === 'done' && match(w))
+      .sort((a, b) =>
+        (b.lifecycle?.signedOffAt ?? b.lifecycle?.stoppedAt ?? b.lifecycle?.pausedAt ?? '').localeCompare(
+          a.lifecycle?.signedOffAt ?? a.lifecycle?.stoppedAt ?? a.lifecycle?.pausedAt ?? '',
+        ),
+      );
+    return { live, upcoming, done };
+  }, [records, query]);
+
+  const openCount = useMemo(
+    () => (records ?? []).filter((w) => w.lifecycle?.state !== 'signed_off').length,
+    [records],
+  );
+
+  const distanceFor = useCallback(
+    (wo: WorkOrderRecord): number | null => {
+      if (!here) return null;
+      const p = parseWktPoint(wo.gpsLocation);
+      return p ? roadKm(here, { latitude: p.lat, longitude: p.lon }) : null;
+    },
+    [here],
+  );
+
   if (!loading && !identity) return <Redirect href="/" />;
 
-  const inProgressCard = (item: repo.CertificateRecord, nested: boolean) => {
+  const inProgressCard = (item: repo.CertificateRecord) => {
     const v = item.form as Partial<Verification>;
     return (
       <Pressable
@@ -188,13 +326,7 @@ export default function HomeScreen() {
           router.push({ pathname: resumePath(item.state) as never, params: { id: item.id } })
         }
       >
-        <View
-          style={[
-            styles.card,
-            { flexDirection: 'row', alignItems: 'center' },
-            nested ? { marginLeft: 28, marginTop: 0 } : null,
-          ]}
-        >
+        <View style={[styles.card, { flexDirection: 'row', alignItems: 'center' }]}>
           <View style={{ flex: 1 }}>
             <Text style={{ fontWeight: '700', color: colors.ink }}>
               {v.site?.siteName ?? v.site?.customerName ?? 'Verification'}
@@ -254,14 +386,23 @@ export default function HomeScreen() {
   return (
     <View style={styles.screen}>
       <GreetingHeader
-        openWorkOrders={myDayCount ?? 0}
-        checking={myDayCount === null}
+        openWorkOrders={openCount}
+        checking={records === null}
         onRefresh={() => {
-          setRefreshSignal((n) => n + 1);
+          loadRecords(true);
           void load();
         }}
         refreshing={refreshing}
       />
+      {town ? (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginHorizontal: 12, marginTop: -4, marginBottom: 4 }}>
+          <Svg width={12} height={12} viewBox="0 0 24 24" fill="none">
+            <Path d="M12 21s-7-5.6-7-11a7 7 0 0 1 14 0c0 5.4-7 11-7 11z" stroke={colors.green} strokeWidth={2.2} />
+            <Circle cx={12} cy={10} r={2.4} stroke={colors.green} strokeWidth={2.2} />
+          </Svg>
+          <Text style={{ fontSize: 12.5, color: colors.muted }}>{town}</Text>
+        </View>
+      ) : null}
       <SyncBanner onQueueDrained={loadLocal} />
       {measureAlert ? (
         <Pressable
@@ -286,122 +427,171 @@ export default function HomeScreen() {
           </Text>
         </Pressable>
       ) : null}
-      <FlatList
-        ListFooterComponent={
-          <View>
-          {archivedCount > 0 ? (
-            <Text
-              style={{ marginHorizontal: 12, marginTop: 16, fontSize: 12, color: colors.muted }}
-            >
-              {archivedCount} archived draft{archivedCount === 1 ? '' : 's'} from closed work orders
-            </Text>
-          ) : null}
-          {team && team.length > 0 ? (
-            <View style={{ marginHorizontal: 12, marginTop: 16, marginBottom: 8 }}>
-              <Text style={{ fontWeight: '700', color: colors.ink, fontSize: 15, marginBottom: 4 }}>
-                Team work orders
-              </Text>
-              {team.map((g) => {
-                const open = teamOpen[g.staffCode] ?? false;
-                const byStatus = new Map<string, WorkOrderSummary[]>();
-                for (const wo of g.workOrders) {
-                  const k = wo.statusDetail ?? 'Open';
-                  const l = byStatus.get(k);
-                  if (l) l.push(wo);
-                  else byStatus.set(k, [wo]);
-                }
-                return (
-                  <View key={g.staffCode}>
-                    <Text
-                      onPress={() => setTeamOpen((e) => ({ ...e, [g.staffCode]: !open }))}
-                      accessibilityRole="button"
-                      style={{
-                        paddingVertical: 8,
-                        borderTopWidth: 1,
-                        borderColor: colors.line,
-                        fontWeight: '700',
-                        color: colors.ink,
-                        fontSize: 14,
-                      }}
-                    >
-                      {open ? '\u25be ' : '\u25b8 '}
-                      {g.name ?? g.staffCode}
-                      <Text style={{ color: colors.muted, fontWeight: '400', fontSize: 12 }}>
-                        {'  '}{g.workOrders.length} open
-                      </Text>
-                    </Text>
-                    {open
-                      ? [...byStatus.entries()].map(([status, wos]) => (
-                          <View key={status} style={{ marginLeft: 10 }}>
-                            <Text
-                              style={{
-                                color: colors.muted,
-                                fontSize: 11,
-                                marginTop: 6,
-                                textTransform: 'uppercase',
-                              }}
-                            >
-                              {status} ({wos.length})
-                            </Text>
-                            {wos.map((wo) => (
-                              <Text
-                                key={wo.id}
-                                onPress={() =>
-                                  router.push({ pathname: '/workorder/[id]', params: { id: wo.id } })
-                                }
-                                style={{ color: colors.blueText, fontSize: 13, paddingVertical: 4 }}
-                              >
-                                {wo.reference} · {wo.site.customerName} {wo.site.siteName}
-                                {wo.scheduledDate ? ` · due ${wo.scheduledDate}` : ''}
-                              </Text>
-                            ))}
-                          </View>
-                        ))
-                      : null}
-                  </View>
-                );
-              })}
-            </View>
-          ) : null}
+
+      <ScrollView contentContainerStyle={{ paddingBottom: 24 }}>
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 8,
+            marginHorizontal: 12,
+            backgroundColor: '#fff',
+            borderRadius: 999,
+            borderWidth: 1,
+            borderColor: colors.line,
+            paddingHorizontal: 14,
+            paddingVertical: 2,
+          }}
+        >
+          <Svg width={15} height={15} viewBox="0 0 24 24" fill="none">
+            <Circle cx={11} cy={11} r={7} stroke={colors.muted} strokeWidth={2.2} />
+            <Path d="M20 20l-3.6-3.6" stroke={colors.muted} strokeWidth={2.2} strokeLinecap="round" />
+          </Svg>
+          <TextInput
+            style={{ flex: 1, paddingVertical: 8, fontSize: 14, color: colors.ink }}
+            placeholder="Search a site or work order"
+            placeholderTextColor={colors.muted}
+            value={query}
+            onChangeText={setQuery}
+          />
+        </View>
+
+        <StatCards stats={stats} />
+
+        <View style={{ flexDirection: 'row', gap: 9, marginHorizontal: 12, marginTop: 10 }}>
+          <DateChip />
+          <View style={{ flex: 1 }}>
+            <HomeMap
+              here={here}
+              pins={pinsFor((records ?? []).filter((w) => w.lifecycle?.state !== 'signed_off'))}
+            />
           </View>
-        }
-        data={inProgress}
-        keyExtractor={(x) => x.id}
-        // The in-flow tab bar reserves its own space now (#45) — only a
-        // small breathing gap is needed.
-        contentContainerStyle={{ paddingBottom: 24 }}
-        ListHeaderComponent={
+        </View>
+
+        {sections.live.length > 0 ? (
           <>
-            {/* The work list (#95/#107): our work-order records with our
-                lifecycle, ranked and filterable by state. This is the ONLY
-                work list on Home. A second section used to repeat the same
-                jobs grouped by OnKey status, counted differently, and
-                opened a different screen. */}
-            <MyDay onCount={setMyDayCount} refreshSignal={refreshSignal} />
-            {inProgress.length > 0 ? (
-              <Text
-                style={{
-                  marginHorizontal: 12,
-                  marginTop: 4,
-                  fontWeight: '700',
-                  color: colors.ink,
-                  fontSize: 16,
-                }}
-              >
-                Certificates in progress on this device
-              </Text>
-            ) : null}
+            <SectionHead title="In progress" live />
+            {sections.live.map((w) => (
+              <WorkOrderCard key={w.id} wo={w} distanceKm={distanceFor(w)} />
+            ))}
           </>
-        }
-        renderItem={({ item }) => inProgressCard(item, false)}
-        ListEmptyComponent={
-          myDayCount === 0 ? (
-            <Text style={{ textAlign: 'center', color: colors.muted, marginTop: 20 }}>
-              No open work orders. Pull refresh when online.
+        ) : null}
+
+        {sections.upcoming.length > 0 ? (
+          <>
+            <SectionHead title="Upcoming" />
+            {sections.upcoming.map((w) => (
+              <WorkOrderCard key={w.id} wo={w} />
+            ))}
+          </>
+        ) : null}
+
+        {sections.done.length > 0 ? (
+          <>
+            <SectionHead title="Complete and stopped" />
+            {sections.done.map((w) => (
+              <WorkOrderCard key={w.id} wo={w} />
+            ))}
+          </>
+        ) : null}
+
+        {records !== null &&
+        sections.live.length + sections.upcoming.length + sections.done.length === 0 ? (
+          <Text style={{ textAlign: 'center', color: colors.muted, marginTop: 20 }}>
+            {query.trim()
+              ? 'Nothing matches that search.'
+              : 'No open work orders. Pull refresh when online.'}
+          </Text>
+        ) : null}
+
+        {inProgress.length > 0 ? (
+          <Text
+            style={{
+              marginHorizontal: 12,
+              marginTop: 18,
+              fontFamily: fonts.heading,
+              color: colors.ink,
+              fontSize: 18,
+            }}
+          >
+            Certificates in progress on this device
+          </Text>
+        ) : null}
+        {inProgress.map((item) => inProgressCard(item))}
+        {archivedCount > 0 ? (
+          <Text style={{ marginHorizontal: 12, marginTop: 16, fontSize: 12, color: colors.muted }}>
+            {archivedCount} archived draft{archivedCount === 1 ? '' : 's'} from closed work orders
+          </Text>
+        ) : null}
+
+        {team && team.length > 0 ? (
+          <View style={{ marginHorizontal: 12, marginTop: 16, marginBottom: 8 }}>
+            <Text style={{ fontWeight: '700', color: colors.ink, fontSize: 15, marginBottom: 4 }}>
+              Team work orders
             </Text>
-          ) : null
-        }
-      />
+            {team.map((g) => {
+              const open = teamOpen[g.staffCode] ?? false;
+              const byStatus = new Map<string, WorkOrderSummary[]>();
+              for (const wo of g.workOrders) {
+                const k = wo.statusDetail ?? 'Open';
+                const l = byStatus.get(k);
+                if (l) l.push(wo);
+                else byStatus.set(k, [wo]);
+              }
+              return (
+                <View key={g.staffCode}>
+                  <Text
+                    onPress={() => setTeamOpen((e) => ({ ...e, [g.staffCode]: !open }))}
+                    accessibilityRole="button"
+                    style={{
+                      paddingVertical: 8,
+                      borderTopWidth: 1,
+                      borderColor: colors.line,
+                      fontWeight: '700',
+                      color: colors.ink,
+                      fontSize: 14,
+                    }}
+                  >
+                    {open ? '▾ ' : '▸ '}
+                    {g.name ?? g.staffCode}
+                    <Text style={{ color: colors.muted, fontWeight: '400', fontSize: 12 }}>
+                      {'  '}{g.workOrders.length} open
+                    </Text>
+                  </Text>
+                  {open
+                    ? [...byStatus.entries()].map(([status, wos]) => (
+                        <View key={status} style={{ marginLeft: 10 }}>
+                          <Text
+                            style={{
+                              color: colors.muted,
+                              fontSize: 11,
+                              marginTop: 6,
+                              textTransform: 'uppercase',
+                            }}
+                          >
+                            {status} ({wos.length})
+                          </Text>
+                          {wos.map((wo) => (
+                            <Text
+                              key={wo.id}
+                              onPress={() =>
+                                router.push({ pathname: '/workorder/[id]', params: { id: wo.id } })
+                              }
+                              style={{ color: colors.blueText, fontSize: 13, paddingVertical: 4 }}
+                            >
+                              {wo.reference} · {wo.site.customerName} {wo.site.siteName}
+                              {wo.scheduledDate ? ` · due ${wo.scheduledDate}` : ''}
+                            </Text>
+                          ))}
+                        </View>
+                      ))
+                    : null}
+                </View>
+              );
+            })}
+          </View>
+        ) : null}
+      </ScrollView>
     </View>
   );
 }

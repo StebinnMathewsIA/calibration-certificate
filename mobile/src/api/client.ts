@@ -257,7 +257,27 @@ export interface WorkOrderRecord {
   /** WKT "POINT (lon lat)". */
   gpsLocation: string | null;
   isDemo: boolean;
+  /** What the job card holds so far (#157): the Home cards show outcomes
+   * without a per-card fetch. Null until a job card exists. */
+  jobCardSummary: {
+    workPerformed: string | null;
+    sparesCount: number;
+    travelledKm: number;
+    labourMinutes: number;
+  } | null;
   lifecycle: WoLifecycle | null;
+}
+
+/** The four number cards on Home (#157): the technician's day. */
+export interface HomeStats {
+  jobsComplete: number;
+  sparesUsed: number;
+  travelledKm: number;
+  labourHours: number;
+}
+
+export async function getHomeStats(token: string | null): Promise<HomeStats> {
+  return await fetchThrough('home:stats', () => rpc<HomeStats>('app_home_stats', token));
 }
 
 export interface PauseReason {

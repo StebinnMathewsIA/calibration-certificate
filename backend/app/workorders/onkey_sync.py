@@ -394,7 +394,8 @@ def derive_registers(db: Session) -> dict:
                 code, status_code, status_description, status_changed_on,
                 staff_code, site_number, equipment_number,
                 received_on, required_by, complete_by, completed_on,
-                contract_type, work_required, work_performed, updated_at)
+                contract_type, work_required, work_performed,
+                estimated_duration_minutes, updated_at)
             SELECT DISTINCT ON (data->>'Code')
                    data->>'Code',
                    nullif(data->>'WorkOrderQueueNewStatusCode', ''),
@@ -410,6 +411,8 @@ def derive_registers(db: Session) -> dict:
                    nullif(data->>'ContractType', ''),
                    nullif(data->>'WorkRequired', ''),
                    nullif(data->>'WorkPerformed', ''),
+                   CASE WHEN data->>'EstimatedDurationInMinutes' ~ '^[0-9]+$'
+                        THEN (data->>'EstimatedDurationInMinutes')::int END,
                    now()
             FROM onkey_woe001
             WHERE coalesce(data->>'Code', '') <> ''
@@ -436,6 +439,8 @@ def derive_registers(db: Session) -> dict:
                 contract_type = coalesce(EXCLUDED.contract_type, onkey_workorders.contract_type),
                 work_required = coalesce(EXCLUDED.work_required, onkey_workorders.work_required),
                 work_performed = coalesce(EXCLUDED.work_performed, onkey_workorders.work_performed),
+                estimated_duration_minutes = coalesce(EXCLUDED.estimated_duration_minutes,
+                                                      onkey_workorders.estimated_duration_minutes),
                 updated_at = now()
             """
         )

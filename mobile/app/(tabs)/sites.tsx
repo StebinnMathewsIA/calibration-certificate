@@ -18,7 +18,7 @@ import {
   listWorkOrderRecords,
 } from '../../src/api/client';
 import { useAuth } from '../../src/auth/AuthContext';
-import { fetchThrough } from '../../src/db/cache';
+import { fetchThrough, readCache, writeCache } from '../../src/db/cache';
 import { GreetingHeader } from '../../src/components/GreetingHeader';
 import { OilDisc } from '../../src/components/home/OilDisc';
 import { SyncBanner } from '../../src/components/SyncBanner';
@@ -41,22 +41,39 @@ export default function SitesScreen() {
   const [query, setQuery] = useState('');
   const [oil, setOil] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setRefreshing(true);
-    fetchThrough<WorkOrderRecord[]>('wo:records', () => listWorkOrderRecords(accessToken), {
-      onFresh: setRecords,
-    })
-      .then(setRecords)
-      .catch(() => {});
-    try {
-      const s = await fetchThrough('sites', () => listSites(accessToken));
-      setSites(s);
-    } catch {
-      // offline with no cache
-    } finally {
-      setRefreshing(false);
-    }
-  }, [accessToken]);
+  const load = useCallback(
+    async (force = false) => {
+      setRefreshing(true);
+      fetchThrough<WorkOrderRecord[]>('wo:records', () => listWorkOrderRecords(accessToken), {
+        onFresh: setRecords,
+      })
+        .then(setRecords)
+        .catch(() => {});
+      try {
+        // The register is 2,872 rows and changes rarely; refetching it on
+        // every focus both wastes forecourt data and exposes the tab to
+        // the server's 8 second statement budget on a bad night (#171).
+        // Once a day, or on an explicit pull refresh.
+        const fetchedAt = readCache<string>('sites:fetchedAt');
+        const fresh =
+          !!fetchedAt && Date.now() - new Date(fetchedAt).getTime() < 24 * 60 * 60 * 1000;
+        const cached = readCache<SiteResolved[]>('sites');
+        if (!force && fresh && cached && cached.length > 100) {
+          setSites(cached);
+        } else {
+          const s = await fetchThrough('sites', () => listSites(accessToken), { force: true });
+          setSites(s);
+          if (s.length > 100) writeCache('sites:fetchedAt', new Date().toISOString());
+        }
+      } catch {
+        const cached = readCache<SiteResolved[]>('sites');
+        if (cached) setSites(cached);
+      } finally {
+        setRefreshing(false);
+      }
+    },
+    [accessToken],
+  );
 
   useFocusEffect(
     useCallback(() => {
@@ -134,7 +151,7 @@ export default function SitesScreen() {
             ? 'Checking sites…'
             : `${sites.length} site${sites.length === 1 ? '' : 's'} on record`
         }
-        onRefresh={load}
+        onRefresh={() => load(true)}
         refreshing={refreshing}
       />
       <SyncBanner />

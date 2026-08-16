@@ -244,7 +244,7 @@ def sync(
         return {
             "mode": "roster",
             "accepted": True,
-            "note": "running in background — poll /v1/onkey/status",
+            "note": "running in background, poll /v1/onkey/status",
             "last": _roster_state["last"],
         }
 
@@ -256,7 +256,7 @@ def sync(
         threading.Thread(
             target=_run_backfill_background, args=(settings,), daemon=True, name="onkey-backfill"
         ).start()
-        return {"mode": "backfill", "accepted": True, "note": "running in background — poll /v1/onkey/status"}
+        return {"mode": "backfill", "accepted": True, "note": "running in background, poll /v1/onkey/status"}
 
     if mode in ("incremental", "recent"):
         lock = _sync_lock if mode == "incremental" else _recent_lock
@@ -279,7 +279,7 @@ def sync(
         return {
             "mode": mode,
             "accepted": True,
-            "note": "running in background — poll /v1/onkey/status",
+            "note": "running in background, poll /v1/onkey/status",
             "last": state["last"],
         }
 

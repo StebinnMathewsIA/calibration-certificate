@@ -1,10 +1,14 @@
 /**
  * The four number cards (#157): the technician's day at a glance. Jobs
  * complete, spares used, kilometres travelled and labour hours booked,
- * all summed server-side from the day's signed job cards.
+ * summed server-side from the day's signed job cards.
+ *
+ * One horizontally scrollable row of compact cards, icon left of the
+ * figure (owner adjustment: the two-by-two grid was too vertically
+ * heavy for information this small).
  */
 import React from 'react';
-import { Text, View } from 'react-native';
+import { ScrollView, Text, View } from 'react-native';
 import Svg, { Circle, Path } from 'react-native-svg';
 import { HomeStats } from '../../api/client';
 import { colors, fonts } from '../ui';
@@ -25,12 +29,15 @@ function Stat({
   return (
     <View
       style={{
-        flexBasis: '48.5%',
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 9,
         backgroundColor: '#fff',
-        borderRadius: 18,
+        borderRadius: 16,
         borderWidth: 1,
         borderColor: colors.line,
-        padding: 12,
+        paddingVertical: 10,
+        paddingHorizontal: 12,
       }}
     >
       <View
@@ -41,16 +48,17 @@ function Stat({
           backgroundColor: accent ? colors.greenTint : colors.bg,
           alignItems: 'center',
           justifyContent: 'center',
-          marginBottom: 7,
         }}
       >
         {icon}
       </View>
-      <Text style={{ fontFamily: fonts.heading, fontSize: 24, color: colors.ink, fontVariant: ['tabular-nums'] }}>
-        {value}
-        {unit ? <Text style={{ fontSize: 14, color: colors.muted }}> {unit}</Text> : null}
-      </Text>
-      <Text style={{ fontSize: 12, color: colors.muted, marginTop: 1 }}>{label}</Text>
+      <View>
+        <Text style={{ fontFamily: fonts.heading, fontSize: 19, lineHeight: 22, color: colors.ink, fontVariant: ['tabular-nums'] }}>
+          {value}
+          {unit ? <Text style={{ fontSize: 12.5, color: colors.muted }}> {unit}</Text> : null}
+        </Text>
+        <Text style={{ fontSize: 11.5, color: colors.muted }}>{label}</Text>
+      </View>
     </View>
   );
 }
@@ -80,20 +88,16 @@ export function StatCards({ stats }: { stats: HomeStats | null }) {
     </Svg>
   );
   return (
-    <View
-      style={{
-        flexDirection: 'row',
-        flexWrap: 'wrap',
-        justifyContent: 'space-between',
-        rowGap: 9,
-        marginHorizontal: 12,
-        marginTop: 10,
-      }}
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      style={{ marginTop: 10 }}
+      contentContainerStyle={{ paddingHorizontal: 12, gap: 8 }}
     >
       <Stat icon={tick} value={String(s.jobsComplete)} label="Jobs complete" accent />
       <Stat icon={box} value={String(s.sparesUsed)} label="Spares used" />
       <Stat icon={road} value={String(Math.round(s.travelledKm))} unit="km" label="Travelled" />
       <Stat icon={clock} value={s.labourHours.toFixed(1)} unit="h" label="Labour booked" />
-    </View>
+    </ScrollView>
   );
 }

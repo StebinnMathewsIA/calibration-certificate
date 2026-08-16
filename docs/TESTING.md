@@ -1101,3 +1101,16 @@ Home once after updating.
       mentions calibration or verification) shows both sections
 - [ ] A non-calibration job (for example a leak detector PM or a repair
       call) shows neither
+
+## Sites tab redesign (#168)
+
+Same OTA path. Pull refresh once on the tab to fetch the full register.
+
+- [ ] The tab lists your active sites on top (job count pills, most
+      jobs first) and every register site underneath, alphabetically
+- [ ] The oil company chips filter both sections; All clears; the
+      chips carry the brand discs
+- [ ] Search narrows by site name, customer, address or site number
+- [ ] Scrolling the full register (about 2,900 sites) stays smooth
+- [ ] Tapping any site opens its documents and history, even with no
+      work order there

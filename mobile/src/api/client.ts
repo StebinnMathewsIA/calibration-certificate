@@ -1123,6 +1123,9 @@ export interface SiteResolved {
   customerName: string;
   siteName: string;
   address: string;
+  /** From the OnKey register (#168): brands the disc and drives the
+   * Sites tab filter. Optional because cached rows predate the field. */
+  oilCompany?: string | null;
   telephone?: string | null;
   /** Name of contact on premises (#90). */
   contactPerson?: string | null;

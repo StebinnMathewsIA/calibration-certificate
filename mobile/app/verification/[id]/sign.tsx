@@ -15,6 +15,11 @@ import { enqueueForSigning } from '../../../src/queue/signQueue';
 
 const VERDICT_TONE = { pass: 'ok', marginal: 'warn', fail: 'bad', data_anomaly: 'bad' } as const;
 
+/** Switched off on the owner's instruction (#163): no auto-run, no card,
+ * no verdict friction. The backend endpoint, the schema and everything
+ * below stay wired, so bringing the review back is flipping this flag. */
+const CLAUDE_REVIEW_ENABLED = false;
+
 const inputStyle = {
   borderWidth: 1,
   borderColor: colors.line,
@@ -166,6 +171,7 @@ export default function SignScreen() {
   // button gets skipped; feedback that just appears gets read.
   const autoRan = useRef(false);
   useEffect(() => {
+    if (!CLAUDE_REVIEW_ENABLED) return;
     if (autoRan.current || analysis || analyzing) return;
     autoRan.current = true;
     void runAnalysis(true);
@@ -191,7 +197,7 @@ export default function SignScreen() {
   const sign = () => {
     // Gentle friction, never a block: the verdict is advisory and the VO
     // remains responsible (quality procedure).
-    const verdict = analysis?.result.verdict;
+    const verdict = CLAUDE_REVIEW_ENABLED ? analysis?.result.verdict : undefined;
     if (verdict === 'fail' || verdict === 'data_anomaly') {
       const top = analysis?.result.concerns[0] ?? analysis?.result.summary ?? '';
       Alert.alert(
@@ -302,6 +308,7 @@ export default function SignScreen() {
         })}
       </SectionCard>
 
+      {CLAUDE_REVIEW_ENABLED ? (
       <SectionCard title="Claude review (advisory)">
         {analyzing && !analysis ? (
           <View style={{ paddingVertical: 12, alignItems: 'center' }}>
@@ -347,6 +354,7 @@ export default function SignScreen() {
           </View>
         )}
       </SectionCard>
+      ) : null}
 
       <SectionCard title="Client (electronic copy)">
         <Text style={{ fontSize: 12, color: colors.muted }}>Client (Initial &amp; Surname)</Text>

@@ -33,7 +33,10 @@ export default function MapScreen() {
       .catch(() => {});
     (async () => {
       try {
-        const perm = await Location.getForegroundPermissionsAsync();
+        let perm = await Location.getForegroundPermissionsAsync();
+        if (!perm.granted && perm.canAskAgain) {
+          perm = await Location.requestForegroundPermissionsAsync();
+        }
         if (!perm.granted) return;
         const fix = await Location.getCurrentPositionAsync({
           accuracy: Location.Accuracy.Balanced,

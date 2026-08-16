@@ -194,7 +194,14 @@ export default function HomeScreen() {
     let alive = true;
     (async () => {
       try {
-        const perm = await Location.getForegroundPermissionsAsync();
+        // ASK, not just check (#157 field finding): a fresh install has
+        // no grant, and Home only ever checked, so the dot and the town
+        // never appeared. The system prompt carries the consent wording
+        // from the app config.
+        let perm = await Location.getForegroundPermissionsAsync();
+        if (!perm.granted && perm.canAskAgain) {
+          perm = await Location.requestForegroundPermissionsAsync();
+        }
         if (!perm.granted) return;
         const fix = await Location.getCurrentPositionAsync({
           accuracy: Location.Accuracy.Balanced,

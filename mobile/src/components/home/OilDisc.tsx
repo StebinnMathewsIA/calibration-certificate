@@ -10,7 +10,7 @@ import React from 'react';
 import { Text, View } from 'react-native';
 import { SvgXml } from 'react-native-svg';
 import { colors, fonts } from '../ui';
-import { OIL_DISC_BG, OIL_LOGOS } from './oilLogos';
+import { OIL_DISC_BG, OIL_LOGOS, OIL_LOGO_SCALE } from './oilLogos';
 
 type Brand = { label: string; bg: string; fg: string; ring: string };
 
@@ -52,7 +52,11 @@ export function OilDisc({ customerName, size = 46 }: { customerName: string | nu
           overflow: 'hidden',
         }}
       >
-        <SvgXml xml={logo} width={size * 0.64} height={size * 0.64} />
+        <SvgXml
+          xml={logo}
+          width={size * ((match && OIL_LOGO_SCALE[match[0]]) || 0.64)}
+          height={size * ((match && OIL_LOGO_SCALE[match[0]]) || 0.64)}
+        />
       </View>
     );
   }

@@ -11,7 +11,7 @@ import { processQueue } from '../../../src/queue/signQueue';
 const STEPS: { label: string; detail: string; states: CertificateState[] }[] = [
   {
     label: 'Queued on this device',
-    detail: 'Package saved durably — survives app restarts and airplane mode.',
+    detail: 'Package saved durably: survives app restarts and airplane mode.',
     states: ['QUEUED_FOR_SIGNING'],
   },
   {
@@ -42,8 +42,9 @@ export default function QueuedScreen() {
   const [record, setRecord] = useState(() => repo.getById(id));
 
   // Kick a drain immediately (the background runner's safety interval is
-  // 60 s) and poll local state while this screen is visible. Concurrent
-  // drains are safe: UPLOADING items are skipped and retries are idempotent.
+  // 60 s) and poll local state while this screen is visible. processQueue
+  // serializes drains internally (#178), so this joins any running drain
+  // rather than racing it.
   useEffect(() => {
     processQueue(accessToken).catch(() => {});
     const interval = setInterval(() => setRecord(repo.getById(id)), 1500);
@@ -85,14 +86,14 @@ export default function QueuedScreen() {
 
         {!done ? (
           <Text style={{ color: colors.muted, fontSize: 13 }}>
-            It is safe to close the app or keep working — signing finishes automatically when there
+            It is safe to close the app or keep working. Signing finishes automatically when there
             is connectivity, and the certificate is issued exactly once.
           </Text>
         ) : null}
 
         {record.lastError ? (
           <Text style={{ color: colors.amber, fontSize: 13, marginTop: 8 }}>
-            Last attempt: {record.lastError} — retrying automatically.
+            Last attempt: {record.lastError} (retrying automatically).
           </Text>
         ) : null}
       </SectionCard>

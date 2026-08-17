@@ -106,10 +106,33 @@ export async function backfillCertificateNumbers(accessToken: string | null): Pr
   }
 }
 
-/** Drains the queue. Called on launch, on app foreground, and whenever
- * connectivity returns (useSignQueue hook). Safe to call concurrently-ish:
- * items already UPLOADING are skipped. */
-export async function processQueue(accessToken: string | null): Promise<void> {
+/** Drains the queue. Called on launch, on app foreground, on reconnect, on
+ * the safety interval, on Home pull refresh, and by the signing status
+ * screen. Those triggers overlap in practice, so drains are serialized
+ * here rather than trusting every caller (#178): a second call while one
+ * is in flight joins the running drain instead of racing it. The race
+ * showed up on device as "Illegal state transition UPLOADING ->
+ * UPLOADING", with the loser's catch handler yanking the winner's
+ * in-flight item back to QUEUED mid-upload. */
+let draining: Promise<void> | null = null;
+
+export function processQueue(accessToken: string | null): Promise<void> {
+  if (draining) return draining;
+  draining = drainOnce(accessToken).finally(() => {
+    draining = null;
+  });
+  return draining;
+}
+
+async function drainOnce(accessToken: string | null): Promise<void> {
+  // With the drain mutex held, nothing is genuinely in flight in this
+  // process, so any UPLOADING row is an orphan: the app was killed mid
+  // upload. Return it to the queue; if the server did sign it, the
+  // idempotency key replays the stored result on the retry (#178).
+  for (const item of repo.listInState('UPLOADING')) {
+    repo.transition(item.id, 'QUEUED_FOR_SIGNING');
+  }
+
   const queued = repo.listInState('QUEUED_FOR_SIGNING');
   const nowIso = new Date().toISOString();
 
@@ -128,10 +151,13 @@ export async function processQueue(accessToken: string | null): Promise<void> {
         encoding: FileSystem.EncodingType.Base64,
       });
       if (sha256HexOfBase64(base64) !== item.pdfSha256) {
-        repo.recordRetryFailure(item.id, 'Local PDF failed integrity check — re-render required');
+        repo.recordRetryFailure(item.id, 'Local PDF failed integrity check, re-render required');
         continue;
       }
 
+      // Belt and braces under the mutex: skip anything that left the
+      // queue since the snapshot above.
+      if (repo.getById(item.id)?.state !== 'QUEUED_FOR_SIGNING') continue;
       repo.transition(item.id, 'UPLOADING');
       const submission: SignSubmission = {
         idempotencyKey: item.idempotencyKey,

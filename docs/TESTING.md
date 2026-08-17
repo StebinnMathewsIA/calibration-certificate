@@ -1161,3 +1161,17 @@ package loads.
 - [ ] Long site names on Home, Sites and Stock cards still fit
       acceptably (wrap or ellipsis, no clipped or overlapping text)
 - [ ] The navy app bar titles render in the new face, not a fallback
+
+## Sign queue drain race (#178)
+
+OTA update. Best reproduced with the certificate that is currently
+stuck retrying.
+
+- [ ] The stuck certificate (PWC-JHB-000023-00) finishes signing on its
+      own within a minute of opening the app with connectivity
+- [ ] Signing status no longer shows "Illegal state transition
+      UPLOADING -> UPLOADING"; on a clean sign the steps tick through
+      to Synced
+- [ ] Kill the app mid upload (airplane mode off, tap sign, force close
+      immediately): on relaunch the certificate still issues exactly
+      once

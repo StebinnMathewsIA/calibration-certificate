@@ -1149,3 +1149,15 @@ Same OTA path; pull refresh once on Sites.
       render)
 - [ ] The Sites tab loads all 2,872 register sites with their real
       names after a pull refresh
+
+## Heading typeface: full-width Barlow (#177)
+
+OTA update; force close and reopen the app twice so the new font
+package loads.
+
+- [ ] Headings across the app (greeting, card titles, site names, tab
+      labels, quantities) render in full-width Barlow, visibly wider
+      than the old Semi Condensed cut
+- [ ] Long site names on Home, Sites and Stock cards still fit
+      acceptably (wrap or ellipsis, no clipped or overlapping text)
+- [ ] The navy app bar titles render in the new face, not a fallback

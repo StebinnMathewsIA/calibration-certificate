@@ -9,10 +9,7 @@ if (!(globalThis as { Buffer?: unknown }).Buffer) {
   (globalThis as { Buffer?: unknown }).Buffer = Buffer;
 }
 
-import {
-  BarlowSemiCondensed_500Medium,
-  BarlowSemiCondensed_600SemiBold,
-} from '@expo-google-fonts/barlow-semi-condensed';
+import { Barlow_500Medium, Barlow_600SemiBold } from '@expo-google-fonts/barlow';
 import { Inter_400Regular, Inter_500Medium } from '@expo-google-fonts/inter';
 import { RobotoMono_400Regular, RobotoMono_500Medium } from '@expo-google-fonts/roboto-mono';
 import { useFonts } from 'expo-font';
@@ -40,8 +37,8 @@ function QueueRunner() {
 
 export default function RootLayout() {
   const [fontsLoaded] = useFonts({
-    BarlowSemiCondensed_500Medium,
-    BarlowSemiCondensed_600SemiBold,
+    Barlow_500Medium,
+    Barlow_600SemiBold,
     Inter_400Regular,
     Inter_500Medium,
     RobotoMono_400Regular,

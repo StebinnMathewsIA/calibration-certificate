@@ -51,10 +51,13 @@ export const colors = {
   amberTint: '#FDF2DC',
 };
 
-/** Font families (loaded in the root layout via @expo-google-fonts). */
+/** Font families (loaded in the root layout via @expo-google-fonts).
+ * Heading face: full-width Barlow, chosen over the Semi Condensed cut on
+ * the type studio mock (#177). Long site names wrap a little sooner; that
+ * is the accepted trade. */
 export const fonts = {
-  heading: 'BarlowSemiCondensed_600SemiBold',
-  headingMedium: 'BarlowSemiCondensed_500Medium',
+  heading: 'Barlow_600SemiBold',
+  headingMedium: 'Barlow_500Medium',
   body: 'Inter_400Regular',
   bodyMedium: 'Inter_500Medium',
   mono: 'RobotoMono_400Regular',

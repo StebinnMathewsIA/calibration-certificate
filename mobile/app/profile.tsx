@@ -382,18 +382,18 @@ export default function ProfileScreen() {
       </SectionCard>
 
       {whoami?.role ? (
-        <SectionCard title={`View as (${whoami.role})`}>
+        <SectionCard title={`Work as (${whoami.role})`}>
           <Text style={{ color: colors.muted, fontSize: 12, marginBottom: 8 }}>
-            See the app exactly as a technician does — their work orders, sites and insights.
-            Read-only: you can never sign or edit records as them.
+            Step into a technician's world: their work orders, sites, job cards and insights.
+            Anything you do there is recorded under your own name in the audit trail.
           </Text>
           <Badge
-            text={whoami.viewAsName ? `Viewing as ${whoami.viewAsName}` : 'Viewing as yourself'}
+            text={whoami.viewAsName ? `Working as ${whoami.viewAsName}` : 'Working as yourself'}
             tone={whoami.viewAsName ? 'warn' : 'ok'}
           />
           {whoami.viewAsName ? (
             <Button
-              title="Stop viewing as"
+              title="Stop working as"
               kind="secondary"
               busy={switching}
               onPress={() => void switchViewAs(null)}

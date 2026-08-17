@@ -98,7 +98,7 @@ export default function AdminScreen() {
 
       <SectionCard title="Roles">
         <Text style={{ color: colors.muted, fontSize: 12, marginBottom: 6 }}>
-          Managers can view-as their allocated technicians and search the certificate archive.
+          Managers can work as their allocated technicians and search the certificate archive.
           Admins can do everything, including this screen. The last admin can never be removed.
         </Text>
         {roles.map((r) => (

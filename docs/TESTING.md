@@ -1188,3 +1188,16 @@ OTA update.
       no further retries appear
 - [ ] While a certificate is uploading, and once it is signed or synced,
       no discard button is shown
+
+## Certificates attach to their work order card (#183)
+
+OTA update.
+
+- [ ] A certificate started from a work order shows as an inset row
+      under that work order's Home card, titled with the dispenser make
+      and model, then serial number and certificate number; the site
+      name is not repeated
+- [ ] Tapping the row resumes the certificate; Retry now, last saved
+      and the draft trash can still work from the attached row
+- [ ] The old standalone section appears only when a certificate has no
+      matching work order card on screen

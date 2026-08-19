@@ -338,7 +338,25 @@ export default function HomeScreen() {
 
   if (!loading && !identity) return <Redirect href="/" />;
 
-  const inProgressCard = (item: repo.CertificateRecord) => {
+  // Certificates ride their work order's card (#183): the card already
+  // names the site, so the attached row says only what the card cannot,
+  // which dispenser the certificate is for. The standalone section below
+  // survives solely for certificates with no matching card on screen.
+  const certsByWo = new Map<string, repo.CertificateRecord[]>();
+  for (const c of inProgress) {
+    const woId = (c.form as Partial<Verification>).workOrderId;
+    if (!woId) continue;
+    const l = certsByWo.get(woId);
+    if (l) l.push(c);
+    else certsByWo.set(woId, [c]);
+  }
+  const onScreenWoIds = new Set((records ?? []).map((w) => w.id));
+  const unattachedCerts = inProgress.filter((c) => {
+    const woId = (c.form as Partial<Verification>).workOrderId;
+    return !woId || !onScreenWoIds.has(woId);
+  });
+
+  const inProgressCard = (item: repo.CertificateRecord, attached = false) => {
     const v = item.form as Partial<Verification>;
     return (
       <Pressable
@@ -347,10 +365,23 @@ export default function HomeScreen() {
           router.push({ pathname: resumePath(item.state) as never, params: { id: item.id } })
         }
       >
-        <View style={[styles.card, { flexDirection: 'row', alignItems: 'center' }]}>
+        <View
+          style={[
+            styles.card,
+            { flexDirection: 'row', alignItems: 'center' },
+            attached && {
+              marginHorizontal: 24,
+              marginTop: 4,
+              padding: 12,
+              backgroundColor: '#F4F8FB',
+            },
+          ]}
+        >
           <View style={{ flex: 1 }}>
             <Text style={{ fontWeight: '700', color: colors.ink }}>
-              {v.site?.siteName ?? v.site?.customerName ?? 'Verification'}
+              {attached
+                ? (v.dispenser?.makeModel ?? 'Dispenser verification')
+                : (v.site?.siteName ?? v.site?.customerName ?? 'Verification')}
             </Text>
             <Text style={{ color: colors.muted, fontSize: 12 }}>
               {v.dispenser?.serialNumber ? `S/N ${v.dispenser.serialNumber} · ` : ''}
@@ -487,7 +518,10 @@ export default function HomeScreen() {
           <>
             <SectionHead title="In progress" live />
             {sections.live.map((w) => (
-              <WorkOrderCard key={w.id} wo={w} distanceKm={distanceFor(w)} />
+              <View key={w.id}>
+                <WorkOrderCard wo={w} distanceKm={distanceFor(w)} />
+                {(certsByWo.get(w.id) ?? []).map((c) => inProgressCard(c, true))}
+              </View>
             ))}
           </>
         ) : null}
@@ -525,7 +559,10 @@ export default function HomeScreen() {
           <>
             <SectionHead title="Upcoming" />
             {sections.upcoming.map((w) => (
-              <WorkOrderCard key={w.id} wo={w} />
+              <View key={w.id}>
+                <WorkOrderCard wo={w} />
+                {(certsByWo.get(w.id) ?? []).map((c) => inProgressCard(c, true))}
+              </View>
             ))}
           </>
         ) : null}
@@ -534,7 +571,10 @@ export default function HomeScreen() {
           <>
             <SectionHead title="Complete and stopped" />
             {sections.done.map((w) => (
-              <WorkOrderCard key={w.id} wo={w} />
+              <View key={w.id}>
+                <WorkOrderCard wo={w} />
+                {(certsByWo.get(w.id) ?? []).map((c) => inProgressCard(c, true))}
+              </View>
             ))}
           </>
         ) : null}
@@ -548,7 +588,7 @@ export default function HomeScreen() {
           </Text>
         ) : null}
 
-        {inProgress.length > 0 ? (
+        {unattachedCerts.length > 0 ? (
           <Text
             style={{
               marginHorizontal: 12,
@@ -561,7 +601,7 @@ export default function HomeScreen() {
             Certificates in progress on this device
           </Text>
         ) : null}
-        {inProgress.map((item) => inProgressCard(item))}
+        {unattachedCerts.map((item) => inProgressCard(item))}
         {archivedCount > 0 ? (
           <Text style={{ marginHorizontal: 12, marginTop: 16, fontSize: 12, color: colors.muted }}>
             {archivedCount} archived draft{archivedCount === 1 ? '' : 's'} from closed work orders

@@ -1259,3 +1259,14 @@ OTA update.
       opening (once GPS resolves)
 - [ ] The Home strip does the same on a fresh app start
 - [ ] The full map still pans and zooms freely
+
+## Job card preview in the app (#191)
+
+OTA update.
+
+- [ ] Tapping the signed job card's Open shows the document inside the
+      app, signatures and booked spares included, pinch-zoomable
+- [ ] Share PDF from the preview produces the same document as the old
+      direct share
+- [ ] A paused job's "Job card PDF (incomplete)" preview carries the
+      full-page Incomplete watermark

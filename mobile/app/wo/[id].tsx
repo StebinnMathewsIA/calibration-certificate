@@ -21,7 +21,6 @@
  */
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Location from 'expo-location';
-import * as Sharing from 'expo-sharing';
 import React, { useCallback, useMemo, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
 import { Alert, Linking, Pressable, Text, TextInput, View } from 'react-native';
@@ -58,8 +57,6 @@ import { fetchThrough, readCache, writeCache } from '../../src/db/cache';
 import { rejectedTransitions } from '../../src/sync/outbox';
 import { formatDay, formatDuration, overdueDays } from '../../src/util/format';
 import { formatKm, roadKm } from '../../src/util/geo';
-import { toJobCard } from '../../src/pdf/jobCardMap';
-import { renderJobCardPdf } from '../../src/pdf/renderPdf';
 
 /** Same cache key My day reads. The two MUST agree: this screen used to
  * fetch the list itself, so a failed request left it on "Loading..."
@@ -658,28 +655,6 @@ export default function WorkOrderLifecycleScreen() {
   const { main: workMain, note: workNote } = splitWorkRequired(wo.workRequired);
   const late = overdueDays(wo.completeBy);
 
-  const sharePdf = async () => {
-    if (!bundle) return;
-    setBusy(true);
-    try {
-      const { uri } = await renderJobCardPdf(toJobCard(bundle), {
-        customerSignatureSvg: bundle.jobCard?.clientSignature ?? undefined,
-        technicianSignatureSvg: bundle.jobCard?.techSignature ?? undefined,
-        // A card printed while the job is paused is not a finished card
-        // and must not look like one (#166).
-        watermark: state === 'paused' ? 'Incomplete' : undefined,
-      });
-      if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(uri, { mimeType: 'application/pdf', UTI: 'com.adobe.pdf' });
-      } else {
-        Alert.alert('Job card ready', uri);
-      }
-    } catch (err) {
-      Alert.alert('Could not build the job card', err instanceof Error ? err.message : String(err));
-    } finally {
-      setBusy(false);
-    }
-  };
 
   const openMaps = () => {
     const query = sitePoint ? `${sitePoint.lat},${sitePoint.lon}` : encodeURIComponent(wo.siteName ?? '');
@@ -1073,7 +1048,9 @@ export default function WorkOrderLifecycleScreen() {
                   <Button
                     title="Job card PDF (incomplete)"
                     kind="secondary"
-                    onPress={() => void sharePdf()}
+                    onPress={() =>
+                      router.push({ pathname: '/jobcard/[id]', params: { id: String(id), wm: '1' } })
+                    }
                   />
                 ) : null}
               </>
@@ -1139,9 +1116,11 @@ export default function WorkOrderLifecycleScreen() {
 
           {signed ? (
             <Pressable
-              onPress={() => void sharePdf()}
+              onPress={() =>
+                router.push({ pathname: '/jobcard/[id]', params: { id: String(id) } })
+              }
               accessibilityRole="button"
-              accessibilityLabel="Open the signed job card PDF"
+              accessibilityLabel="Open the signed job card"
               style={{
                 flexDirection: 'row',
                 alignItems: 'center',

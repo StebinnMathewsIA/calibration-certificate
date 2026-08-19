@@ -59,10 +59,11 @@ class Settings(BaseSettings):
     onkey_base_url: str = ""
     onkey_username: str = ""
     onkey_password: str = ""
-    # Work order export sync (SOAP). FIELDOPS - WOE succeeds WOE001: same
+    # Work order export sync (SOAP). FIELDOPS - WOE succeeded WOE001: same
     # column names for everything the registers read, plus ImportanceCode,
     # the work order's own status, site name, staff email and asset GPS.
-    # Set ONKEY_REPORT_CODE and ONKEY_DATASET_NAME back to WOE001 to revert.
+    # WOE001 is retired in OnKey itself (2026-08-20, #181) and there is NO
+    # revert path: the registers now depend on columns it never had.
     onkey_connection: str = "ONKEY"
     onkey_report_code: str = "FIELDOPS - WOE"
     onkey_dataset_name: str = "FIELDOPS - WOE"

@@ -1,4 +1,4 @@
-"""OnKey WOE001 export sync (#47).
+"""OnKey FieldOps export sync (#47, #180).
 
 Ported from Prowalco's existing export tooling. OnKey exposes a SOAP API:
 
@@ -8,11 +8,17 @@ Ported from Prowalco's existing export tooling. OnKey exposes a SOAP API:
                                MaxRecordCount, Parameters[StartDate, EndDate])
                                -> XML dataset (rows of <field>value</field>)
 
+The work order report is FIELDOPS - WOE (65 columns), with FIELDOPS -
+WOE DELTA and FIELDOPS - PROBE serving the cursor lane (#180). WOE001,
+the narrow report this module was first built against, is retired in
+OnKey as of 2026-08-20; only the raw table's name still remembers it.
+
 The export caps at MaxRecordCount, so date ranges are pulled month-by-month
 and auto-split to week/day chunks when a chunk hits the cap. Every row lands
-verbatim (all columns) as jsonb in onkey_woe001, keyed by a content hash:
-re-pulling a window is a no-op for unchanged rows, so a 5-minute incremental
-poll writes only the delta the WOE001 interface can express.
+verbatim (all columns) as jsonb in onkey_woe001 (named for the original
+report, kept to avoid churning every register query), keyed by a content
+hash: re-pulling a window is a no-op for unchanged rows, so a windowed
+poll writes only the delta the export interface can express.
 """
 import hashlib
 import io
@@ -346,7 +352,7 @@ def upsert_rows(db: Session, rows_by_hash: dict[str, dict]) -> tuple[int, int]:
     return (len(new_hashes), len(existing))
 
 
-# SQL casts abort on malformed values; WOE001 dates are ISO-with-offset, and
+# SQL casts abort on malformed values; the export's dates are ISO-with-offset, and
 # this guard keeps one stray value from failing the whole derivation.
 _SAFE_TS = """
 CASE WHEN {col} ~ '^\\d{{4}}-\\d{{2}}-\\d{{2}}' THEN ({col})::timestamptz ELSE NULL END
@@ -358,7 +364,7 @@ def _ts(col_expr: str) -> str:
 
 
 def derive_registers(db: Session, row_hashes: list[str] | None = None) -> dict:
-    """Mine the raw WOE001 snapshot log into the technician / site /
+    """Mine the raw FIELDOPS - WOE snapshot log into the technician / site /
     equipment / current-work-order registers (#54). Latest queue transition
     per work order Code wins. Idempotent — runs after every sync.
 

@@ -70,8 +70,11 @@ identified by `ReportCode`); the request carries `ReportCode`,
 Our production use (corrected 2026-08-20, the original WOE001 shorthand
 here caused real confusion): the work-order lane polls the 65-column
 `FIELDOPS - WOE` report (WOE001 was the narrow early-phase report from
-issue 47, long retired; the live ReportCode comes from Render env via
-`settings.onkey_report_code`). The registers ride the other FieldOps
+issue 47, out of use since FieldOps and formally retired inside OnKey
+by the owner on 2026-08-20, #181; the live ReportCode comes from Render
+env via `settings.onkey_report_code`). The delta lane (#180) adds
+`FIELDOPS - WOE DELTA` (same columns, cursor-parameterised on
+`@Since`) and `FIELDOPS - PROBE` (one-row watermark check). The registers ride the other FieldOps
 reports: `FIELDOPS - USERS`, `- STAFF`, `- INV`, `- IMP`, `- REASON`,
 `- QUEUE`, `- STATEMAP`, `- PROGRESS`, `- DOC`. Cadence is every 10
 minutes since migration 117. FIELDOPS - WOE outputs
@@ -152,7 +155,7 @@ Logon). Facts that remove the guesswork:
 - **ImportWorkTaskLabourItem** (ChildImportItem): `StaffCode`,
   `NormalTimeInMinutes`, `Overtime1/2/3InMinutes`, `PerformedOn`,
   `Notes`, `TradeCode`, `WorkTaskId` (long). Labour (#98) needs the WORK
-  TASK id, so the read side must surface task ids (extend WOE001 or a
+  TASK id, so the read side must surface task ids (extend FIELDOPS - WOE or a
   small export).
 - **ImportWorkTaskSpare** (ChildImportItem): `WorkOrderCode`,
   `TaskCode`/`TaskId`, `ItemCode`, `ItemDescription`, `ItemType` (int,
@@ -181,7 +184,7 @@ Logon). Facts that remove the guesswork:
   That is answerable by trial and error against per-record
   RecordFailures, which is already the agreed method for mandatory
   columns, and it needs no WSDL.
-- The seven [TEST] work orders are NOT in our mirror: WOE001 only pulls
+- The seven [TEST] work orders are NOT in our mirror: the WO export only pulls
   open statuses and they sit at Completed / Costing Complete. Testing
   the visible lifecycle needs one flipped to an open status, or a
   temporary read extension.

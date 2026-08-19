@@ -1,15 +1,15 @@
-"""OnKey sync endpoints (#47), driven by the scheduled GitHub Actions cron
-(.github/workflows/onkey-sync.yml) every 5 minutes — which also keeps the
-free-tier Render instance awake. Guarded by ONKEY_SYNC_TOKEN (empty token
+"""OnKey sync endpoints (#47), driven by pg_cron kicks (migrations 117
+and 118 hold the catalogue). Guarded by ONKEY_SYNC_TOKEN (empty token
 disables the endpoints entirely).
 
-BOTH modes run in a background thread and /status reports progress. The
+ALL modes run in a background thread and /status reports progress. The
 incremental window used to run inline, which was fine for the narrow
-WOE001 report; the 65-column FIELDOPS - WOE export outlives any sensible
-client timeout, and a caller hanging up aborted the run before the
-registers were derived. Raw rows landed, the registers stayed stale, and
-nothing said so for three days. mode=derive rebuilds the registers from
-rows already stored, without touching OnKey."""
+WOE001 report of the early phase (retired 2026-08-20); the 65-column
+FIELDOPS - WOE export outlives any sensible client timeout, and a caller
+hanging up aborted the run before the registers were derived. Raw rows
+landed, the registers stayed stale, and nothing said so for three days.
+mode=derive rebuilds the registers from rows already stored, without
+touching OnKey."""
 import hmac
 import json
 import threading

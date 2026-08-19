@@ -1,4 +1,4 @@
-"""Technician resolution over the mined WOE001 registers (#55, #57).
+"""Technician resolution over the mined FieldOps registers (#55, #57).
 
 The signed-in email is the join key. Demo alias emails
 (ONKEY_DEMO_ALIAS_EMAILS) resolve dynamically to whichever technician

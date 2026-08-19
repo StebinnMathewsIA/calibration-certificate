@@ -11,8 +11,8 @@ v1 was designed assuming the backend would talk to OnKey live, so every app
 read went phone → FastAPI (Render free, cross-continent) → Supabase
 (6–8 sequential queries, N+1 on dispensers, per-request alias aggregate).
 Opening a work order cost ~3 s of pure round trips for a few KB of data.
-The WOE001 sync made that shape obsolete: **Supabase already holds a
-5-minute-fresh copy of everything**, so the middleman read path is waste.
+The FieldOps work-order sync (formerly WOE001, retired 2026-08-20) made that shape obsolete: **Supabase already holds a
+near-live copy of everything**, so the middleman read path is waste.
 
 ## 2. Ground truth (owner interview)
 
@@ -23,7 +23,7 @@ The WOE001 sync made that shape obsolete: **Supabase already holds a
 | Cheap Android tablets, strictly one per technician | Android-first; no biometric assumption; device = possession factor |
 | Client no longer signs | Client-signature flow removed; sealed cert + auto-email is the deliverable |
 | Scope = NRCS verification certificates only | No general job-type modelling (future option) |
-| WOE001 SOAP polling is permanent; no write-back | The 5-min sync is production infrastructure |
+| FieldOps SOAP polling is permanent; no write-back | The sync (delta lane, #180) is production infrastructure |
 | Certificates retained indefinitely, inspected on demand | Write-once archive, per site+dispenser history, starts at go-live |
 | A dispenser can move between sites | Relocation clears identity assumptions (archived, never deleted) |
 | Managers: whole-company visibility, pre-filtered to their team | RLS allows manager read; UI defaults to allocated technicians |
@@ -77,7 +77,7 @@ acceptable:
 
 The email pipeline is built **dormant** for the PoC: sending activates when
 `@prowalco.co.za` DNS access (SPF/DKIM) is granted post-approval.
-This service also hosts the 5-min WOE001 SOAP sync. PoC hosting: current
+This service also hosts the FieldOps SOAP sync (delta lane, #180). PoC hosting: current
 Render free service, reduced to these duties.
 
 ### 3.4 Web app (managers + admins)

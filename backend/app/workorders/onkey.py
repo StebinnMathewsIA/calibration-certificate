@@ -1,5 +1,5 @@
 """OnKeyProvider (#55): serves the app from the registers mined out of the
-WOE001 sync — onkey_workorders / onkey_sites / onkey_equipment /
+FIELDOPS - WOE sync: onkey_workorders / onkey_sites / onkey_equipment /
 onkey_technicians. No SOAP here; the sync job is the only OnKey caller.
 
 The signed-in email resolves to a staff code (demo aliases ride the busiest
@@ -51,7 +51,7 @@ def _site_seed(row) -> dict:
 
 
 def _equipment_seed(row) -> dict:
-    # Make/model/serial are not in WOE001 — the identity screen completes them.
+    # Make/model/serial are not in the export; the identity screen completes them.
     return {"id": row.equipment_number, "siteId": row.site_number or ""}
 
 

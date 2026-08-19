@@ -1,5 +1,10 @@
 # Work-order management phase: execution plan
 
+> Update (2026-08-20, #181): where this plan says WOE001, read
+> `FIELDOPS - WOE`; WOE001 is retired, in OnKey too. The side-by-side
+> successor already ran: the FieldOps report took over production, and
+> the delta/probe lane (#180) now sits on top of it.
+
 Status: planned 2026-08-01 with the owner. Sources: the Field Technician
 App Requirements Checklist (44 current-state FRs proven in the legacy
 Pragma Work Manager app + 45 target-state BLs), the 2018 Work Manager

@@ -7,6 +7,13 @@ for a production-ready integration, replacing reliance on WOE001 alone.
 Report codes below are proposals; the author may rename them, the
 `ReportCode` string is configuration on our side either way.
 
+> Historical note (2026-08-20, #181): the successor that actually shipped
+> is `FIELDOPS - WOE`, joined by `FIELDOPS - WOE DELTA` and `FIELDOPS -
+> PROBE` for the cursor lane (#180). WOE001 is retired, in OnKey too.
+> The PWR-* reports below remain the unbuilt proposal for the full read
+> surface; where this document speaks of WOE001 as current, read
+> FIELDOPS - WOE.
+
 General rules for every report:
 - Include a stable primary key column (the OnKey Id AND the Code where
   both exist). Ids are int64.

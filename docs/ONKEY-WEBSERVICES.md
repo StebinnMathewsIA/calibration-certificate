@@ -67,8 +67,18 @@ identified by `ReportCode`); the request carries `ReportCode`,
 `DataSet` has `Data` (rows as CDATA XML named by DataSetName) and
 `Schema` (column names/types), so results are self-describing.
 
-Our production use: report `WOE001` polled every 5 minutes by the sync
-service, parsed into the `onkey_*` register tables. Any new read the
+Our production use (corrected 2026-08-20, the original WOE001 shorthand
+here caused real confusion): the work-order lane polls the 65-column
+`FIELDOPS - WOE` report (WOE001 was the narrow early-phase report from
+issue 47, long retired; the live ReportCode comes from Render env via
+`settings.onkey_report_code`). The registers ride the other FieldOps
+reports: `FIELDOPS - USERS`, `- STAFF`, `- INV`, `- IMP`, `- REASON`,
+`- QUEUE`, `- STATEMAP`, `- PROGRESS`, `- DOC`. Cadence is every 10
+minutes since migration 117. FIELDOPS - WOE outputs
+`WorkOrderLastModifiedOn` and its where-clause filters on
+coalesce(queue-transition time, last-modified time), which is the
+high-water-mark expression the delta design of issue 180 reuses.
+Any new read the
 work-order phase needs (e.g. richer WO detail, status history) is "author
 a new Analyser Report in OnKey, call it with ExportData", NOT a new
 service. That authoring happens in Prowalco's OnKey instance, so new

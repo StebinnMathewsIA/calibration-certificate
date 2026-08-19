@@ -1228,3 +1228,15 @@ OTA update.
       known) carries a thin brand-green border; the full map does not
 - [ ] The chip's day and month lines are slightly larger and fully
       visible beside the overlapping map
+
+## Device key errors surfaced, attempt timestamp (#187)
+
+OTA update; open the stuck certificate's signing status screen and let
+one retry run (or tap Retry now on Home).
+
+- [ ] The Last attempt line now carries the attempt's time
+- [ ] If the 403 loop continues, the line names the REAL failure
+      ("Device key unavailable on this phone: ..."), report that text
+      back verbatim
+- [ ] On a phone where signing works, a certificate still signs
+      normally end to end

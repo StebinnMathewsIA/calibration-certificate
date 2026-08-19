@@ -94,7 +94,12 @@ export default function QueuedScreen() {
 
         {record.lastError ? (
           <Text style={{ color: colors.amber, fontSize: 13, marginTop: 8 }}>
-            Last attempt: {record.lastError} (retrying automatically).
+            Last attempt{' '}
+            {new Date(record.updatedAt).toLocaleTimeString([], {
+              hour: '2-digit',
+              minute: '2-digit',
+            })}
+            : {record.lastError} (retrying automatically).
           </Text>
         ) : null}
       </SectionCard>

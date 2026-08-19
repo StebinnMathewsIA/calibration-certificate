@@ -238,7 +238,14 @@ async function ensureDeviceEnrolled(accessToken: string | null): Promise<void> {
 
 /** Device-binding proof for one upload (#52): ECDSA over
  * `deviceId.timestamp.pdfSha256`, computed at upload time (device is online
- * here, so the freshness window applies to clock skew only). */
+ * here, so the freshness window applies to clock skew only).
+ *
+ * Failures are LOUD (#187): this used to swallow and return undefined,
+ * sending the upload headerless, which enforcement rejects with "device
+ * headers missing", a reason that hides the true cause. A phone stuck in
+ * that loop showed only "API error 403" while the actual exception
+ * (secure store, key generation, signing) was discarded here. Raising
+ * puts the real error on the queue card, where it can be read and fixed. */
 export async function buildDeviceAuth(pdfSha256: string): Promise<DeviceAuth | undefined> {
   try {
     const deviceId = await getDeviceId();
@@ -249,8 +256,9 @@ export async function buildDeviceAuth(pdfSha256: string): Promise<DeviceAuth | u
       timestamp,
       signature: signDeviceMessage(key.privateKeyPem, `${deviceId}.${timestamp}.${pdfSha256}`),
     };
-  } catch {
-    return undefined;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new SignQueueError(`Device key unavailable on this phone: ${msg}`);
   }
 }
 

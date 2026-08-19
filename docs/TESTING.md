@@ -1240,3 +1240,12 @@ one retry run (or tap Retry now on Home).
       back verbatim
 - [ ] On a phone where signing works, a certificate still signs
       normally end to end
+
+## Device signature: explicit bytes into quick-crypto (#188)
+
+OTA update; force close and reopen the app.
+
+- [ ] The stuck certificate PWC-JHB-000023-00 signs end to end on
+      Retry now: Queued, Uploading, Digitally signed, Synced
+- [ ] If it still fails, the Last attempt line names a NEW error
+      (report it verbatim); "buffer encoding" must not appear again

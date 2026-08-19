@@ -1210,3 +1210,12 @@ OTA update.
       order pin is inside the frame, however far away, plus your own
       position
 - [ ] The full map still frames everything and pans/zooms as before
+
+## Date chip and map overlap (#185)
+
+OTA update.
+
+- [ ] The green chip shows the short day name (Wed), date and month,
+      all fully visible
+- [ ] The map strip overlaps the chip's right side with a clean rounded
+      seam; tapping the overlapped area still opens the full map

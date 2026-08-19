@@ -95,10 +95,11 @@ function SectionHead({ title, live }: { title: string; live?: boolean }) {
   );
 }
 
-/** The date chip beside the map, from the mock. */
+/** The date chip beside the map, from the mock. Short day name and a
+ * width that expects the map to overlap its right side (#185). */
 function DateChip() {
   const now = new Date();
-  const dows = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const dows = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   return (
     <View
@@ -503,9 +504,12 @@ export default function HomeScreen() {
       <ScrollView contentContainerStyle={{ paddingBottom: 24 }}>
         <StatCards stats={stats} />
 
-        <View style={{ flexDirection: 'row', gap: 9, marginHorizontal: 12, marginTop: 10 }}>
+        <View style={{ flexDirection: 'row', marginHorizontal: 12, marginTop: 10 }}>
           <DateChip />
-          <View style={{ flex: 1 }}>
+          {/* The map rides over the chip's empty right half (#185): the
+              short day name leaves it free, and the map card's own
+              rounded border keeps the seam clean. */}
+          <View style={{ flex: 1, marginLeft: -34 }}>
             <HomeMap
               here={here}
               pins={pinsFor((records ?? []).filter((w) => w.lifecycle?.state !== 'signed_off'))}

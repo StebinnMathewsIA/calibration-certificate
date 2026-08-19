@@ -377,31 +377,31 @@ export default function WorkOrderLifecycleScreen() {
     };
   }, []);
 
-  // The job card rides along from started onward (#159).
+  // The job card rides along from started onward (#159). Reloaded on
+  // EVERY focus, not just mount (#190): the spares page edits the same
+  // job card, and a mount-only fetch meant returning from it showed the
+  // stale list, whose autosave then overwrote the booking. Parts are
+  // taken from the server unconditionally, because this page has no
+  // parts editor and therefore no local parts edits to protect; visits
+  // and work performed keep the dirty guard.
   const phase: 'pre' | 'active' | 'done' =
     state === 'started' || state === 'paused' ? 'active' : state === 'stopped' || state === 'signed_off' ? 'done' : 'pre';
-  React.useEffect(() => {
-    if (phase === 'pre') return;
-    getJobCard(accessToken, String(id), {
-      onFresh: (fresh) => {
-        setBundle(fresh);
-        if (!dirty.current) {
-          setVisits(fresh.jobCard?.visits?.length ? fresh.jobCard.visits : [blankVisit()]);
-          setParts(fresh.jobCard?.parts ?? []);
-          setPerformed(fresh.jobCard?.workPerformed ?? '');
-        }
-      },
-    })
-      .then((b) => {
-        setBundle(b);
-        if (!dirty.current) {
-          setVisits(b.jobCard?.visits?.length ? b.jobCard.visits : [blankVisit()]);
-          setParts(b.jobCard?.parts ?? []);
-          setPerformed(b.jobCard?.workPerformed ?? '');
-        }
-      })
-      .catch(() => {});
-  }, [accessToken, id, phase]);
+  const applyBundle = useCallback((b: JobCardBundle) => {
+    setBundle(b);
+    setParts(b.jobCard?.parts ?? []);
+    if (!dirty.current) {
+      setVisits(b.jobCard?.visits?.length ? b.jobCard.visits : [blankVisit()]);
+      setPerformed(b.jobCard?.workPerformed ?? '');
+    }
+  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      if (phase === 'pre') return;
+      getJobCard(accessToken, String(id), { onFresh: applyBundle })
+        .then(applyBundle)
+        .catch(() => {});
+    }, [accessToken, id, phase, applyBundle]),
+  );
 
   // Ask OnKey for the work tasks when the bundle carries none (#152).
   // Once per screen visit, in the background; the result lands in the

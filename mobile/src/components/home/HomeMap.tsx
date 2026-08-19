@@ -16,7 +16,7 @@ import React from 'react';
 import { Platform, Pressable, Text, View } from 'react-native';
 import { WorkOrderRecord } from '../../api/client';
 import { parseWktPoint } from '../MiniMap';
-import { formatKm, haversineKm, roadKm } from '../../util/geo';
+import { formatKm, roadKm } from '../../util/geo';
 import { overdueDays } from '../../util/format';
 import { colors, fonts } from '../ui';
 import { OilDisc } from './OilDisc';
@@ -216,16 +216,13 @@ function HomeMapInner({
         overflow: 'hidden' as const,
       };
 
-  // Framing (#157 field finding): the strip is "my surroundings", so
-  // with a known position it frames only the pins within 80 km, not a
-  // test fleet scattered across the country. The full map frames
-  // everything; it can be zoomed. No position: frame all pins.
+  // Framing (#184, reversing the #157 80 km radius): every map frames
+  // the technician's position plus EVERY pin. A pin outside the frame
+  // read as a missing work order, so "my surroundings" lost to "all my
+  // work". The strip cannot be zoomed, so the frame IS the view.
   const focus = here ?? pins[0];
-  const near =
-    !interactive && here ? pins.filter((p) => haversineKm(here, p) <= 80) : pins;
-  const framed = interactive ? near : near.slice(0, 8);
-  const lats = [focus.latitude, ...framed.map((p) => p.latitude)];
-  const lons = [focus.longitude, ...framed.map((p) => p.longitude)];
+  const lats = [focus.latitude, ...pins.map((p) => p.latitude)];
+  const lons = [focus.longitude, ...pins.map((p) => p.longitude)];
   const latDelta = Math.max(0.08, (Math.max(...lats) - Math.min(...lats)) * 1.6);
   const lonDelta = Math.max(0.08, (Math.max(...lons) - Math.min(...lons)) * 1.6);
 

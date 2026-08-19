@@ -1201,3 +1201,12 @@ OTA update.
       and the draft trash can still work from the attached row
 - [ ] The old standalone section appears only when a certificate has no
       matching work order card on screen
+
+## Maps frame every pin (#184)
+
+OTA update.
+
+- [ ] The Home map strip zooms out far enough that every open work
+      order pin is inside the frame, however far away, plus your own
+      position
+- [ ] The full map still frames everything and pans/zooms as before

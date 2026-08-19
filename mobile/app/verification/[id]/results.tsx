@@ -10,6 +10,7 @@ import {
   computeEfd,
   testPlanFor,
 } from '@prowalco/schema';
+import { discardCertificate } from '../../../src/certs/discard';
 import { Badge, Button, SectionCard, colors, fonts } from '../../../src/components/ui';
 import { FormScrollView } from '../../../src/components/FormScrollView';
 import * as repo from '../../../src/db/certificateRepo';
@@ -549,6 +550,26 @@ export default function ResultsScreen() {
 
       <View style={{ marginHorizontal: 12 }}>
         <Button title="Continue to sign" onPress={continueToSign} />
+        <Button
+          title="Discard draft"
+          kind="danger"
+          onPress={() =>
+            Alert.alert(
+              'Discard this draft?',
+              `${record?.certificateNumber ?? 'This certificate'} and everything entered on it will be deleted from this device. This cannot be undone.`,
+              [
+                { text: 'Keep', style: 'cancel' },
+                {
+                  text: 'Discard',
+                  style: 'destructive',
+                  onPress: () => {
+                    discardCertificate(id).finally(() => router.replace('/home'));
+                  },
+                },
+              ],
+            )
+          }
+        />
       </View>
     </FormScrollView>
   );

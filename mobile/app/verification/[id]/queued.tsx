@@ -1,8 +1,9 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, ScrollView, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, ScrollView, Text, View } from 'react-native';
 import type { CertificateState } from '@prowalco/schema';
 import { useAuth } from '../../../src/auth/AuthContext';
+import { discardCertificate } from '../../../src/certs/discard';
 import { Button, SectionCard, colors, styles } from '../../../src/components/ui';
 import * as repo from '../../../src/db/certificateRepo';
 import { processQueue } from '../../../src/queue/signQueue';
@@ -106,6 +107,31 @@ export default function QueuedScreen() {
           />
         ) : null}
         <Button title="Back to work orders" kind="secondary" onPress={() => router.replace('/home')} />
+        {record.state === 'QUEUED_FOR_SIGNING' ? (
+          // Discard is only offered while the package sits in the queue
+          // (#182): UPLOADING is in flight this instant, and an issued
+          // document is a retention item.
+          <Button
+            title="Discard certificate"
+            kind="danger"
+            onPress={() =>
+              Alert.alert(
+                'Discard this certificate?',
+                `${record.certificateNumber ?? 'This certificate'} was approved with your identity check and carries the client's drawn signature. Discarding deletes it from this device before it is issued. This cannot be undone.`,
+                [
+                  { text: 'Keep', style: 'cancel' },
+                  {
+                    text: 'Discard',
+                    style: 'destructive',
+                    onPress: () => {
+                      discardCertificate(id).finally(() => router.replace('/home'));
+                    },
+                  },
+                ],
+              )
+            }
+          />
+        ) : null}
       </View>
     </ScrollView>
   );

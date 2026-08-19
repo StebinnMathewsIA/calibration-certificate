@@ -1175,3 +1175,16 @@ stuck retrying.
 - [ ] Kill the app mid upload (airplane mode off, tap sign, force close
       immediately): on relaunch the certificate still issues exactly
       once
+
+## Discard unissued certificates (#182)
+
+OTA update.
+
+- [ ] A draft verification's results screen offers "Discard draft"; after
+      the confirm, the certificate disappears from the Home in-progress
+      card and its work order's verification can start fresh
+- [ ] The signing status screen of a queued certificate offers "Discard
+      certificate" with the stronger warning; discarding removes it and
+      no further retries appear
+- [ ] While a certificate is uploading, and once it is signed or synced,
+      no discard button is shown

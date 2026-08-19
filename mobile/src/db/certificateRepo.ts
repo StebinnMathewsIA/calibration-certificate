@@ -67,6 +67,20 @@ export function getById(id: string): CertificateRecord | null {
   return row ? fromRow(row) : null;
 }
 
+/** Deletes an unissued certificate outright (#182). Only pre-issue states
+ * may go: an issued document is a retention item and is never deletable,
+ * and an UPLOADING package is in flight this instant. Returns the deleted
+ * record so the caller can remove its rendered PDF files. */
+export function discard(id: string): CertificateRecord {
+  const rec = getById(id);
+  if (!rec) throw new Error(`Certificate ${id} not found`);
+  if (!['DRAFT', 'READY_TO_SIGN', 'QUEUED_FOR_SIGNING'].includes(rec.state)) {
+    throw new Error(`A ${rec.state} certificate cannot be discarded`);
+  }
+  db.runSync('DELETE FROM certificates WHERE id = ?', [id]);
+  return rec;
+}
+
 export function listAll(): CertificateRecord[] {
   return db
     .getAllSync<Row>('SELECT * FROM certificates WHERE archived_at IS NULL ORDER BY created_at DESC')

@@ -73,6 +73,15 @@ class Settings(BaseSettings):
     onkey_export_parameters: str = (
         '{"BaseStatus": "%", "StaffEmail": "%", "SiteCode": "%", "MinId": "0"}'
     )
+    # The delta lane (#180): FIELDOPS - PROBE is a one-row watermark check
+    # (max work order / queue LastModifiedOn plus a total count, no
+    # parameters), FIELDOPS - WOE DELTA is FIELDOPS - WOE with the date
+    # window replaced by "modified since @Since" on EITHER timestamp,
+    # which also fixes the coalesce blind spot where a plain edit to a
+    # queued work order never moved the windowed filter. Both authored in
+    # the Analyser by the owner, 2026-08-19.
+    onkey_probe_report_code: str = "FIELDOPS - PROBE"
+    onkey_delta_report_code: str = "FIELDOPS - WOE DELTA"
     # Bearer token the sync endpoints require (the scheduled GitHub Actions
     # cron presents it). Empty = sync endpoints disabled.
     onkey_sync_token: str = ""

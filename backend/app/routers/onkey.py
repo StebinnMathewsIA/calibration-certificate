@@ -41,6 +41,10 @@ _sync_state: dict = {"running": False, "last": None}
 # exactly the staleness the fast lane exists to remove.
 _recent_lock = threading.Lock()
 _recent_state: dict = {"running": False, "last": None}
+# The delta lane (#180): probe-then-fetch, its own guard for the same
+# reason the recent lane has one.
+_delta_lock = threading.Lock()
+_delta_state: dict = {"running": False, "last": None}
 # The nightly roster sync (#149): both FieldOps reports plus the refresh
 # in ONE background job, because three separate pg_cron slots meant three
 # chances to lose the worker-slot lottery, and both fetches lost it on
@@ -226,7 +230,7 @@ def _require_sync_token(authorization: str | None, settings: Settings) -> None:
 
 @router.post("/sync")
 def sync(
-    mode: str = Query(default="incremental", pattern="^(recent|incremental|backfill|derive|roster)$"),
+    mode: str = Query(default="incremental", pattern="^(recent|incremental|backfill|derive|roster|delta)$"),
     authorization: str | None = Header(default=None),
     db: Session = Depends(get_db),
     settings: Settings = Depends(get_settings),
@@ -258,9 +262,13 @@ def sync(
         ).start()
         return {"mode": "backfill", "accepted": True, "note": "running in background, poll /v1/onkey/status"}
 
-    if mode in ("incremental", "recent"):
-        lock = _sync_lock if mode == "incremental" else _recent_lock
-        state = _sync_state if mode == "incremental" else _recent_state
+    if mode in ("incremental", "recent", "delta"):
+        guards = {
+            "incremental": (_sync_lock, _sync_state),
+            "recent": (_recent_lock, _recent_state),
+            "delta": (_delta_lock, _delta_state),
+        }
+        lock, state = guards[mode]
         with lock:
             if state["running"]:
                 return {

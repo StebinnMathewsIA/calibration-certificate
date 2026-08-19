@@ -242,6 +242,52 @@ class OnKeySoapClient:
             raise RuntimeError(f"OnKey export failed: {response.Errors}")
         return parse_export_xml(response.DataSet.Data)
 
+    def export_probe(self) -> dict:
+        """FIELDOPS - PROBE (#180): one row, the two change watermarks and
+        a total count, no parameters. The cheap question asked before the
+        expensive export."""
+        parameter_array = self._export_client.get_type("ns0:ArrayOfExportQueryParameter")
+        response = self._export_service.ExportData(
+            _soapheaders={"SessionId": self._session_id},
+            ReportCode=self._settings.onkey_probe_report_code,
+            DataSetName=self._settings.onkey_dataset_name,
+            MaxRecordCount=1,
+            Parameters=parameter_array([]),
+        )
+        if getattr(response, "Errors", None):
+            raise RuntimeError(f"OnKey probe failed: {response.Errors}")
+        rows = parse_export_xml(response.DataSet.Data)
+        return rows[0] if rows else {}
+
+    def export_delta(self, since: datetime, min_id: int) -> list[dict]:
+        """FIELDOPS - WOE DELTA (#180): everything modified since the
+        cursor, on either the work order's own timestamp or its queue
+        row's. Same 65 columns as FIELDOPS - WOE, so row hashes match and
+        both lanes share onkey_woe001. Paged by MinId like the original."""
+        parameter_type = self._export_client.get_type("ns0:ExportQueryParameter")
+        parameter_array = self._export_client.get_type("ns0:ArrayOfExportQueryParameter")
+        extras = self._extra_parameters()
+        extras.pop("MinId", None)  # paged here, not fixed from config
+        response = self._export_service.ExportData(
+            _soapheaders={"SessionId": self._session_id},
+            ReportCode=self._settings.onkey_delta_report_code,
+            DataSetName=self._settings.onkey_dataset_name,
+            MaxRecordCount=self._settings.onkey_max_records,
+            Parameters=parameter_array(
+                [
+                    parameter_type(Name="Since", Value=_param_date(since)),
+                    parameter_type(Name="MinId", Value=str(min_id)),
+                ]
+                + [
+                    parameter_type(Name=name, Value=value)
+                    for name, value in extras.items()
+                ]
+            ),
+        )
+        if getattr(response, "Errors", None):
+            raise RuntimeError(f"OnKey delta export failed: {response.Errors}")
+        return parse_export_xml(response.DataSet.Data)
+
 
 # ---------------------------------------------------------------------------
 # Persistence + orchestration
@@ -627,16 +673,119 @@ def derive_registers(db: Session, row_hashes: list[str] | None = None) -> dict:
     return counts
 
 
+DELTA_CURSOR_KEY = "woe_delta_cursor"
+# How far the first delta run (no cursor yet) reaches back, and the
+# overlap subtracted from the cursor on every fetch so clock skew between
+# probe and export can never lose an edit. Duplicates cost nothing: the
+# row hash makes a re-fetched unchanged row a no-op.
+DELTA_FIRST_RUN_DAYS = 2
+DELTA_OVERLAP = timedelta(seconds=60)
+
+
+def _probe_watermark(probe: dict) -> datetime | None:
+    """The later of the two probe timestamps, parsed on OnKey's clock."""
+    stamps = []
+    for key in ("WoLastModifiedOn", "QueueLastModifiedOn"):
+        raw = probe.get(key)
+        if not raw:
+            continue
+        try:
+            stamps.append(datetime.fromisoformat(raw))
+        except ValueError:
+            continue
+    return max(stamps) if stamps else None
+
+
+def run_delta_sync(db: Session, settings: Settings) -> SyncSummary:
+    """The probe-then-fetch lane (#180). Ask FIELDOPS - PROBE for the
+    change watermark; only when it has moved past the stored cursor (or
+    the total count changed) fetch FIELDOPS - WOE DELTA from the cursor
+    and push it through the same hash-dedup pipeline as every other lane.
+    All timestamps live on OnKey's clock, never ours: the cursor stores
+    what the probe reported, and Since goes back out as that value minus
+    a one-minute overlap."""
+    stored = db.execute(
+        text("SELECT value FROM onkey_config WHERE key = :k"), {"k": DELTA_CURSOR_KEY}
+    ).scalar()
+    prev_mark = None
+    prev_total = None
+    if isinstance(stored, dict):
+        try:
+            prev_mark = datetime.fromisoformat(stored.get("watermark", ""))
+        except ValueError:
+            prev_mark = None
+        prev_total = stored.get("total")
+
+    summary = SyncSummary(mode="delta", window_start="", window_end="")
+    columns: set[str] = set()
+    with OnKeySoapClient(settings) as client:
+        probe = client.export_probe()
+        mark = _probe_watermark(probe)
+        total = int(probe["Total"]) if str(probe.get("Total", "")).isdigit() else None
+        if mark is None:
+            raise RuntimeError(f"probe returned no watermark: {probe!r}")
+        unchanged = (
+            prev_mark is not None
+            and mark <= prev_mark
+            and (total is None or total == prev_total)
+        )
+        summary.window_end = mark.isoformat()
+        if unchanged:
+            summary.window_start = prev_mark.isoformat()
+            return summary
+
+        since = (prev_mark or mark - timedelta(days=DELTA_FIRST_RUN_DAYS)) - DELTA_OVERLAP
+        summary.window_start = since.isoformat()
+        min_id = 0
+        while True:
+            rows = client.export_delta(since, min_id)
+            chunk = {row_content_hash(r): r for r in rows}
+            if chunk:
+                inserted, refreshed = upsert_rows(db, chunk)
+                summary.rows_fetched += len(chunk)
+                summary.rows_inserted += inserted
+                summary.rows_refreshed += refreshed
+                for row in chunk.values():
+                    columns.update(row.keys())
+                # Same windowed derive as the recent lane (#172): the
+                # delta window is the present by construction.
+                summary.registers = derive_registers(db, list(chunk.keys()))
+            if len(rows) < settings.onkey_max_records:
+                break
+            min_id = max(int(r["Id"]) for r in rows if str(r.get("Id", "")).isdigit()) + 1
+
+    db.execute(
+        text(
+            "INSERT INTO onkey_config (key, value, updated_at) "
+            "VALUES (:k, cast(:v as jsonb), now()) "
+            "ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = now()"
+        ),
+        {"k": DELTA_CURSOR_KEY, "v": json.dumps({"watermark": mark.isoformat(), "total": total})},
+    )
+    # Arrival-driven derivation (#180): a change just landed, so the seed
+    # and reconcile run NOW instead of waiting for their cron slots, which
+    # stay only as the fallback heartbeat (migration 117).
+    if summary.rows_inserted:
+        db.execute(text("SELECT wo_seed_from_onkey_guarded()"))
+        db.execute(text("SELECT wo_reconcile()"))
+    db.commit()
+    summary.columns = sorted(columns)
+    return summary
+
+
 def run_sync(db: Session, settings: Settings, mode: str) -> SyncSummary:
-    """mode 'recent': the fast lane, a narrow window (default 2 days) run
-    every minute so a technician on site sees the planner's latest
-    assignment;
+    """mode 'delta': the probe-then-fetch lane (#180), a one-row watermark
+    check that only exports when something actually changed;
+    mode 'recent': the fast lane, a narrow window (default 2 days), now
+    the delta lane's shadow validator;
     mode 'incremental': the wide 35-day sweep, the safety net for changes
     the narrow window's date filter cannot see (a reassignment that moves
     WorkOrderLastModifiedOn but not the queue transition time);
     mode 'backfill': everything since ONKEY_BACKFILL_START;
     mode 'derive': no export at all, just rebuild the registers from rows
     already in onkey_woe001."""
+    if mode == "delta":
+        return run_delta_sync(db, settings)
     end = datetime.now().replace(hour=23, minute=59, second=59, microsecond=0)
     if mode == "derive":
         # The registers are a pure function of the raw snapshot table, so

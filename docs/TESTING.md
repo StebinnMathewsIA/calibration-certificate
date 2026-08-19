@@ -1219,3 +1219,12 @@ OTA update.
       all fully visible
 - [ ] The map strip overlaps the chip's right side with a clean rounded
       seam; tapping the overlapped area still opens the full map
+
+## Green map border, larger chip text (#186)
+
+OTA update.
+
+- [ ] The Home map strip (and its placeholder when no position is
+      known) carries a thin brand-green border; the full map does not
+- [ ] The chip's day and month lines are slightly larger and fully
+      visible beside the overlapping map

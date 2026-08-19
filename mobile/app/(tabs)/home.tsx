@@ -111,11 +111,11 @@ function DateChip() {
         backgroundColor: colors.green,
       }}
     >
-      <Text style={{ color: '#fff', fontSize: 12, opacity: 0.9 }}>{dows[now.getDay()]}</Text>
+      <Text style={{ color: '#fff', fontSize: 14, opacity: 0.9 }}>{dows[now.getDay()]}</Text>
       <Text style={{ color: '#fff', fontFamily: fonts.heading, fontSize: 30, lineHeight: 34 }}>
         {now.getDate()}
       </Text>
-      <Text style={{ color: '#fff', fontSize: 12, opacity: 0.9 }}>{months[now.getMonth()]}</Text>
+      <Text style={{ color: '#fff', fontSize: 14, opacity: 0.9 }}>{months[now.getMonth()]}</Text>
     </View>
   );
 }

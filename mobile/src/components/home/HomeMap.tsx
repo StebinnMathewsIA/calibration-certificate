@@ -109,8 +109,9 @@ export function HomeMap({
     : {
         height: height ?? 130,
         borderRadius: 20,
-        borderWidth: 1,
-        borderColor: colors.line,
+        // Brand green, tying the strip to the date chip it overlaps (#186).
+        borderWidth: 1.5,
+        borderColor: colors.green,
         overflow: 'hidden' as const,
       };
   if (!maps || (!here && pins.length === 0)) {
@@ -211,8 +212,9 @@ function HomeMapInner({
     : {
         height: height ?? 130,
         borderRadius: 20,
-        borderWidth: 1,
-        borderColor: colors.line,
+        // Brand green, tying the strip to the date chip it overlaps (#186).
+        borderWidth: 1.5,
+        borderColor: colors.green,
         overflow: 'hidden' as const,
       };
 

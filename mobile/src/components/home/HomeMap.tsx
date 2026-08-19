@@ -228,8 +228,19 @@ function HomeMapInner({
   const latDelta = Math.max(0.08, (Math.max(...lats) - Math.min(...lats)) * 1.6);
   const lonDelta = Math.max(0.08, (Math.max(...lons) - Math.min(...lons)) * 1.6);
 
+  // The GPS fix usually resolves AFTER the map mounts, and initialRegion
+  // is read exactly once, so the frame never widened to include the late
+  // dot (#189): a work order 1,650 km away showed the site only, with
+  // the position marker rendered far off screen. Keying the
+  // non-interactive view on the coarse position remounts it once when
+  // the fix arrives; the interactive map keeps its gesture state.
+  const frameKey = interactive
+    ? 'free'
+    : `${here ? `${here.latitude.toFixed(2)},${here.longitude.toFixed(2)}` : 'nofix'}:${pins.length}`;
+
   const map = (
     <MapView
+      key={frameKey}
       style={{ flex: 1 }}
       provider={PROVIDER_GOOGLE}
       customMapStyle={MAP_STYLE}

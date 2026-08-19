@@ -1249,3 +1249,13 @@ OTA update; force close and reopen the app.
       Retry now: Queued, Uploading, Digitally signed, Synced
 - [ ] If it still fails, the Last attempt line names a NEW error
       (report it verbatim); "buffer encoding" must not appear again
+
+## Maps include the late-arriving position (#189)
+
+OTA update.
+
+- [ ] Opening a far-away work order shows both the site pin and your
+      own position dot in one frame within a few seconds of the screen
+      opening (once GPS resolves)
+- [ ] The Home strip does the same on a fresh app start
+- [ ] The full map still pans and zooms freely

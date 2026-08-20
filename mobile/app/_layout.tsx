@@ -78,6 +78,7 @@ export default function RootLayout() {
         <Stack.Screen name="spares/[id]" options={{ title: 'Spares' }} />
         <Stack.Screen name="signoff/[id]" options={{ title: 'Client sign-off' }} />
         <Stack.Screen name="jobcard/[id]" options={{ title: 'Job card' }} />
+        <Stack.Screen name="pastwork/[ref]" options={{ title: 'Past work' }} />
         <Stack.Screen name="site/[id]" options={{ title: 'Site' }} />
         <Stack.Screen name="map" options={{ title: 'Work order map' }} />
         <Stack.Screen name="dispenser/[id]/identity" options={{ title: 'Dispenser identity' }} />

@@ -1348,8 +1348,17 @@ export default function WorkOrderLifecycleScreen() {
       {(phase === 'pre' || phase === 'done' || state === 'paused') && past.length > 0 ? (
         <SectionCard title="Past work at this site">
           {past.map((p, i) => (
-            <View
+            <Pressable
               key={`${p.ref}-${i}`}
+              disabled={!p.ref}
+              onPress={() =>
+                router.push({
+                  pathname: '/pastwork/[ref]',
+                  params: { ref: String(p.ref), when: p.when ?? '', what: p.what },
+                })
+              }
+              accessibilityRole="button"
+              accessibilityLabel={`Open past work order ${p.ref ?? ''}`}
               style={{ paddingVertical: 8, borderTopWidth: i === 0 ? 0 : 1, borderTopColor: colors.line }}
             >
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' }}>
@@ -1359,7 +1368,12 @@ export default function WorkOrderLifecycleScreen() {
               <Text style={{ fontSize: 12.5, color: colors.muted, marginTop: 2 }} numberOfLines={2}>
                 {p.what}
               </Text>
-            </View>
+              {p.ref ? (
+                <Text style={{ fontSize: 11.5, color: colors.blueText, marginTop: 3, fontFamily: fonts.bodyMedium }}>
+                  View detail
+                </Text>
+              ) : null}
+            </Pressable>
           ))}
         </SectionCard>
       ) : null}

@@ -1270,3 +1270,15 @@ OTA update.
       direct share
 - [ ] A paused job's "Job card PDF (incomplete)" preview carries the
       full-page Incomplete watermark
+
+## Past work rows open a detail view (#192)
+
+OTA update; the RPC deploys with the push.
+
+- [ ] Tapping a past work row on a work order opens the Past work
+      screen with technician, dates, status, asset, and the full work
+      required and performed text
+- [ ] A [TEST]# row (not in OnKey) shows the summary and "OnKey has no
+      further detail for this reference"
+- [ ] Offline, the screen still opens with the summary it was tapped
+      with

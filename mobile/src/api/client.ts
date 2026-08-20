@@ -302,6 +302,28 @@ export async function getPastSiteWork(
   );
 }
 
+/** Full detail for one past work order at a site (#192), from the
+ * FieldOps mirror. Null when the reference is not in the register. */
+export interface PastWorkDetail {
+  ref: string;
+  status: string | null;
+  technician: string | null;
+  receivedOn: string | null;
+  completedOn: string | null;
+  assetCode: string | null;
+  workRequired: string | null;
+  workPerformed: string | null;
+}
+
+export async function getPastWorkDetail(
+  token: string | null,
+  ref: string,
+): Promise<PastWorkDetail | null> {
+  return await fetchThrough(`wo:pastdetail:${ref}`, () =>
+    rpc<PastWorkDetail | null>('app_wo_past_work_detail', token, { p_ref: ref }),
+  );
+}
+
 export interface PauseReason {
   code: string;
   label: string;

@@ -53,6 +53,39 @@ _roster_lock = threading.Lock()
 _roster_state: dict = {"running": False, "last": None}
 
 
+def _start_run(mode: str, started_at: datetime) -> str | None:
+    """Write the run row the moment the run STARTS, state 'running'
+    (#193). Three sweep kicks were delivered with no run row at all: the
+    process died mid-run, and completion-only recording meant the death
+    left no trace. A run that never finishes now leaves this row as its
+    tombstone, with the start time that dates the death. Best effort:
+    None means the marker could not be written and completion falls back
+    to inserting the whole row."""
+    db = SessionLocal()
+    try:
+        run_id = db.execute(
+            text(
+                """
+                INSERT INTO onkey_sync_runs (
+                    id, run_kind, state, rows_fetched, rows_inserted,
+                    detail, error, started_at, finished_at)
+                VALUES (
+                    gen_random_uuid(), :kind, 'running', 0, 0,
+                    '{}'::jsonb, NULL, :started, NULL)
+                RETURNING id
+                """
+            ),
+            {"kind": mode, "started": started_at},
+        ).scalar()
+        db.commit()
+        return str(run_id) if run_id else None
+    except Exception:  # noqa: BLE001 — bookkeeping must never fail a sync
+        db.rollback()
+        return None
+    finally:
+        db.close()
+
+
 def _record_run(
     mode: str,
     state: str,
@@ -62,37 +95,63 @@ def _record_run(
     rows_inserted: int = 0,
     detail: dict | None = None,
     error: str | None = None,
+    run_id: str | None = None,
 ) -> None:
-    """Write the run to onkey_sync_runs on its own session.
+    """Write the run's outcome to onkey_sync_runs on its own session.
 
     The in-memory _sync_state is lost whenever Render restarts, so it
     cannot answer 'when did a sync last succeed'. That question is the
     whole alert: the three-day outage was invisible precisely because
     nothing durable recorded the failures. A separate session is used so
-    a failed run's poisoned transaction cannot swallow its own record."""
+    a failed run's poisoned transaction cannot swallow its own record.
+    With a start marker (run_id) the row is updated in place; without
+    one, the old insert-at-completion shape remains the fallback."""
     db = SessionLocal()
     try:
-        db.execute(
-            text(
-                """
-                INSERT INTO onkey_sync_runs (
-                    id, run_kind, state, rows_fetched, rows_inserted,
-                    detail, error, started_at, finished_at)
-                VALUES (
-                    gen_random_uuid(), :kind, :state, :fetched, :inserted,
-                    CAST(:detail AS jsonb), :error, :started, now())
-                """
-            ),
-            {
-                "kind": mode,
-                "state": state,
-                "fetched": rows_fetched,
-                "inserted": rows_inserted,
-                "detail": json.dumps(detail or {}),
-                "error": error,
-                "started": started_at,
-            },
-        )
+        updated = 0
+        if run_id:
+            updated = db.execute(
+                text(
+                    """
+                    UPDATE onkey_sync_runs SET
+                        state = :state, rows_fetched = :fetched,
+                        rows_inserted = :inserted,
+                        detail = CAST(:detail AS jsonb),
+                        error = :error, finished_at = now()
+                    WHERE id = CAST(:id AS uuid)
+                    """
+                ),
+                {
+                    "state": state,
+                    "fetched": rows_fetched,
+                    "inserted": rows_inserted,
+                    "detail": json.dumps(detail or {}),
+                    "error": error,
+                    "id": run_id,
+                },
+            ).rowcount
+        if not updated:
+            db.execute(
+                text(
+                    """
+                    INSERT INTO onkey_sync_runs (
+                        id, run_kind, state, rows_fetched, rows_inserted,
+                        detail, error, started_at, finished_at)
+                    VALUES (
+                        gen_random_uuid(), :kind, :state, :fetched, :inserted,
+                        CAST(:detail AS jsonb), :error, :started, now())
+                    """
+                ),
+                {
+                    "kind": mode,
+                    "state": state,
+                    "fetched": rows_fetched,
+                    "inserted": rows_inserted,
+                    "detail": json.dumps(detail or {}),
+                    "error": error,
+                    "started": started_at,
+                },
+            )
         db.commit()
     except Exception:  # noqa: BLE001 — bookkeeping must never fail a sync
         db.rollback()
@@ -103,6 +162,7 @@ def _record_run(
 def _run_sync_background(settings: Settings, mode: str, state: dict, running_flag: dict) -> None:
     db = SessionLocal()
     started_at = datetime.now(timezone.utc)
+    run_id = _start_run(mode, started_at)
     try:
         summary = run_sync(db, settings, mode)
         state["last"] = {
@@ -126,6 +186,7 @@ def _run_sync_background(settings: Settings, mode: str, state: dict, running_fla
                 "registers": summary.registers,
                 "window": {"start": summary.window_start, "end": summary.window_end},
             },
+            run_id=run_id,
         )
     except Exception as exc:  # noqa: BLE001 — reported via /status
         message = f"{type(exc).__name__}: {str(exc)[:500]}"
@@ -135,7 +196,7 @@ def _run_sync_background(settings: Settings, mode: str, state: dict, running_fla
             "error": message,
             "finishedAt": datetime.now(timezone.utc).isoformat(),
         }
-        _record_run(mode, "failed", started_at, error=message)
+        _record_run(mode, "failed", started_at, error=message, run_id=run_id)
     finally:
         # Hand the OnKey session lease back the moment the run ends (#134).
         #
@@ -180,6 +241,7 @@ def _run_roster_background(settings: Settings) -> None:
     other sync mode."""
     db = SessionLocal()
     started_at = datetime.now(timezone.utc)
+    run_id = _start_run("roster", started_at)
     try:
         from ..workorders.onkey_sync import OnKeySoapClient
 
@@ -202,6 +264,7 @@ def _run_roster_background(settings: Settings) -> None:
             started_at,
             rows_fetched=sum(c["fetched"] for c in counts.values()),
             detail={"reports": counts, "refresh": refresh},
+            run_id=run_id,
         )
     except Exception as exc:  # noqa: BLE001 — reported via /status and the run record
         message = f"{type(exc).__name__}: {str(exc)[:500]}"
@@ -210,7 +273,7 @@ def _run_roster_background(settings: Settings) -> None:
             "error": message,
             "finishedAt": datetime.now(timezone.utc).isoformat(),
         }
-        _record_run("roster", "failed", started_at, error=message)
+        _record_run("roster", "failed", started_at, error=message, run_id=run_id)
     finally:
         try:
             _release_lease("roster")

@@ -87,8 +87,12 @@ class Settings(BaseSettings):
     # cron presents it). Empty = sync endpoints disabled.
     onkey_sync_token: str = ""
     # Incremental pulls re-fetch this rolling window; content-hash dedupe
-    # makes unchanged rows no-ops, so only the delta is written.
-    onkey_sync_window_days: int = 35
+    # makes unchanged rows no-ops, so only the delta is written. 35 days
+    # became 14 with #193: the window was sized when the sweep was the
+    # only safety net, the delta lane (#180) now carries recency, and the
+    # 35-day export is the prime suspect in the sweep's silent
+    # mid-run deaths (memory ceiling).
+    onkey_sync_window_days: int = 14
     onkey_backfill_start: str = "2024-01-01"
     # /v1/onkey/status calls the sync stale once this many minutes have
     # passed with no register refresh, and the scheduled workflow fails on

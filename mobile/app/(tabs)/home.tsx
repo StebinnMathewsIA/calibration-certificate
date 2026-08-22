@@ -130,13 +130,6 @@ export default function HomeScreen() {
   const [archivedCount, setArchivedCount] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const [query, setQuery] = useState('');
-  const todayStr = new Date().toISOString().slice(0, 10);
-  // Dismissible once per day (#157 owner adjustment): the warning stays
-  // closed until tomorrow. The BLOCKING variant ignores this, because a
-  // hidden reason for a refused verification is worse than a banner.
-  const [alertDismissed, setAlertDismissed] = useState<boolean>(
-    () => readCache<string>('measures-alert:dismissed') === new Date().toISOString().slice(0, 10),
-  );
   const [here, setHere] = useState<{ latitude: number; longitude: number } | null>(null);
   const [town, setTown] = useState<string | null>(null);
 
@@ -457,47 +450,36 @@ export default function HomeScreen() {
         </View>
       ) : null}
       <SyncBanner onQueueDrained={loadLocal} />
-      {measureAlert && (measureAlert.blocking || !alertDismissed) ? (
+      {measureAlert ? (
+        // The expiry story moved to the point of use (#197): starting a
+        // test warns plan-scoped, and Home keeps only this exclamation.
         <Pressable
           onPress={() => router.push('/profile')}
+          accessibilityRole="button"
+          accessibilityLabel={`Certified measures need attention: ${measureAlert.text}. Opens the measures register.`}
           style={{
-            marginHorizontal: 12,
-            marginBottom: 8,
-            borderRadius: 12,
+            alignSelf: 'flex-end',
+            marginRight: 12,
+            marginBottom: 6,
+            width: 30,
+            height: 30,
+            borderRadius: 999,
+            alignItems: 'center',
+            justifyContent: 'center',
             borderWidth: 1.5,
-            padding: 10,
             borderColor: measureAlert.blocking ? colors.red : colors.amberFill,
             backgroundColor: measureAlert.blocking ? colors.redTint : colors.amberTint,
           }}
         >
-          <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
-            <View style={{ flex: 1 }}>
-              <Text style={{ fontWeight: '700', color: measureAlert.blocking ? colors.red : colors.amber, fontSize: 13 }}>
-                {measureAlert.blocking
-                  ? 'Proving measures: verifications blocked'
-                  : 'Proving measures expiring soon'}
-              </Text>
-              <Text style={{ color: colors.ink, fontSize: 12, marginTop: 2 }}>
-                {measureAlert.text}. Tap to manage your certified measures.
-              </Text>
-            </View>
-            {!measureAlert.blocking ? (
-              <Pressable
-                onPress={() => {
-                  writeCache('measures-alert:dismissed', todayStr);
-                  setAlertDismissed(true);
-                }}
-                hitSlop={10}
-                accessibilityRole="button"
-                accessibilityLabel="Dismiss until tomorrow"
-                style={{ marginLeft: 8, marginTop: 1 }}
-              >
-                <Svg width={15} height={15} viewBox="0 0 24 24" fill="none">
-                  <Path d="M6 6l12 12M18 6L6 18" stroke={colors.amber} strokeWidth={2.4} strokeLinecap="round" />
-                </Svg>
-              </Pressable>
-            ) : null}
-          </View>
+          <Text
+            style={{
+              fontFamily: fonts.heading,
+              fontSize: 17,
+              color: measureAlert.blocking ? colors.red : colors.amber,
+            }}
+          >
+            !
+          </Text>
         </Pressable>
       ) : null}
 

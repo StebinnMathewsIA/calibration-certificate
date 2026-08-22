@@ -210,6 +210,37 @@ export default function RegisterScreen() {
       return;
     }
 
+    // Expiring soon (#197): the warning lives at the point of use, not
+    // Home. Plan-scoped like the gate: a 200L nearing expiry never
+    // interrupts a standard 20L/5L test.
+    const soon = new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+    const expiring = activeMeasures.filter(
+      (m) =>
+        plan.requiredMeasures.some((s) => s === m.size) &&
+        m.expiryDate >= today &&
+        m.expiryDate <= soon,
+    );
+    if (expiring.length > 0) {
+      const lines = expiring
+        .map((m) => `• ${m.size} measure ${m.serialNumber} expires ${m.expiryDate}`)
+        .join('\n');
+      Alert.alert(
+        'Measures expiring soon',
+        `${lines}\n\nThis verification can proceed today. Plan recertification before they lapse.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Start anyway', onPress: () => void reallyStart() },
+        ],
+      );
+      return;
+    }
+    await reallyStart();
+  };
+
+  const reallyStart = async () => {
+    const verifying = hoses.filter((_, i) => selected[i]);
+    if (!identity) return;
+    const activeMeasures = getProfile(identity.subject).measures ?? [];
     setBusy(true);
     try {
       const detail: Omit<DispenserDetail, 'dispenserId' | 'updatedAt'> = {

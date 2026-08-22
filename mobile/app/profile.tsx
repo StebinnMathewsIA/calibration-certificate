@@ -1,6 +1,7 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useState } from 'react';
-import { Alert, Image, Text, TextInput, View } from 'react-native';
+import { Alert, Image, Pressable, Text, TextInput, View } from 'react-native';
+import Svg, { Path, SvgXml } from 'react-native-svg';
 import { useAuth } from '../src/auth/AuthContext';
 import {
   MeasureRecord,
@@ -17,7 +18,7 @@ import {
 } from '../src/api/client';
 import { syncAll } from '../src/sync/syncEngine';
 import { CameraCaptureModal } from '../src/components/CameraCaptureModal';
-import { Badge, Button, DateInput, SectionCard, colors } from '../src/components/ui';
+import { Badge, Button, DateInput, SectionCard, colors, fonts } from '../src/components/ui';
 import { FormScrollView } from '../src/components/FormScrollView';
 import { fetchThrough, readCache, writeCache } from '../src/db/cache';
 import {
@@ -64,6 +65,23 @@ export default function ProfileScreen() {
   const [addCalDate, setAddCalDate] = useState('');
   const [addExpiry, setAddExpiry] = useState('');
   const [addBusy, setAddBusy] = useState(false);
+  // The expiry the form filled automatically (#196): user edits win, but
+  // re-picking the calibration date re-derives an untouched expiry.
+  const autoExpiry = React.useRef('');
+
+  const yearAfter = (iso: string): string => {
+    const [y, m, d] = iso.split('-').map(Number);
+    const next = new Date(y + 1, m - 1, d);
+    if (next.getMonth() !== m - 1) next.setDate(0); // 29 Feb -> 28 Feb
+    return `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}-${String(next.getDate()).padStart(2, '0')}`;
+  };
+
+  const onCalDatePicked = (iso: string) => {
+    setAddCalDate(iso);
+    const derived = yearAfter(iso);
+    if (!addExpiry || addExpiry === autoExpiry.current) setAddExpiry(derived);
+    autoExpiry.current = derived;
+  };
   // Role + view-as (#71).
   const [whoami, setWhoami] = useState<Whoami | null>(null);
   const [techList, setTechList] = useState<TechnicianOption[]>([]);
@@ -317,6 +335,23 @@ export default function ProfileScreen() {
       );
       return;
     }
+    // The dates must make sense before they gate signing (#196).
+    const today = new Date().toISOString().slice(0, 10);
+    if (addCalDate > today) {
+      Alert.alert('Check the calibration date', 'The calibration date cannot be in the future.');
+      return;
+    }
+    if (addExpiry <= addCalDate) {
+      Alert.alert('Check the expiry date', 'The expiry date must be after the calibration date.');
+      return;
+    }
+    if (addExpiry <= today) {
+      Alert.alert(
+        'This measure is already expired',
+        `The expiry date ${addExpiry} is not in the future. Only in-date measures can gate verifications; check the lab certificate.`,
+      );
+      return;
+    }
     setAddBusy(true);
     try {
       const body = {
@@ -557,15 +592,50 @@ export default function ProfileScreen() {
               </Text>
             ) : null}
             <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
-              {['200L', '20L', '5L'].map((s) => (
-                <View key={s} style={{ flex: 1 }}>
-                  <Button
-                    title={s}
-                    kind={addSize === s ? 'primary' : 'secondary'}
-                    onPress={() => setAddSize(addSize === s ? null : s)}
-                  />
-                </View>
-              ))}
+              {['200L', '20L', '5L'].map((s) => {
+                // Status on the chip (#196): the register reads at a glance.
+                const m = measures.find((x) => x.size === s);
+                const today = new Date().toISOString().slice(0, 10);
+                const days = m
+                  ? Math.floor(
+                      (new Date(`${m.expiryDate}T00:00:00`).getTime() -
+                        new Date(`${today}T00:00:00`).getTime()) /
+                        86400000,
+                    )
+                  : null;
+                const status = !m
+                  ? { text: 'not registered', color: colors.muted }
+                  : days! < 0
+                    ? { text: 'expired', color: colors.red }
+                    : days! <= 30
+                      ? { text: `${days} d left`, color: colors.amber }
+                      : { text: `${days} d`, color: colors.muted };
+                const sel = addSize === s;
+                return (
+                  <Pressable
+                    key={s}
+                    onPress={() => setAddSize(sel ? null : s)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${s} measure, ${status.text}`}
+                    style={{
+                      flex: 1,
+                      borderWidth: 1.5,
+                      borderColor: sel ? colors.green : colors.line,
+                      backgroundColor: sel ? colors.green : '#fff',
+                      borderRadius: 12,
+                      paddingVertical: 8,
+                      alignItems: 'center',
+                    }}
+                  >
+                    <Text style={{ fontFamily: fonts.heading, fontSize: 15, color: sel ? colors.navy : colors.ink }}>
+                      {s}
+                    </Text>
+                    <Text style={{ fontSize: 10.5, color: sel ? colors.navy : status.color, marginTop: 1 }}>
+                      {status.text}
+                    </Text>
+                  </Pressable>
+                );
+              })}
             </View>
             {addSize ? (
               <>
@@ -587,15 +657,35 @@ export default function ProfileScreen() {
                 <View style={{ flexDirection: 'row', gap: 8 }}>
                   <View style={{ flex: 1 }}>
                     <Text style={{ fontSize: 12, color: colors.muted }}>Calibration date</Text>
-                    <DateInput value={addCalDate} onChange={setAddCalDate} />
+                    <DateInput
+                      value={addCalDate}
+                      onChange={onCalDatePicked}
+                      maximumDate={new Date()}
+                    />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 12, color: colors.muted }}>Expiry date</Text>
-                    <DateInput value={addExpiry} onChange={setAddExpiry} />
+                    <Text style={{ fontSize: 12, color: colors.muted }}>
+                      Expiry date{addExpiry && addExpiry === autoExpiry.current ? ' (1 year later)' : ''}
+                    </Text>
+                    <DateInput
+                      value={addExpiry}
+                      onChange={setAddExpiry}
+                      minimumDate={
+                        /^\d{4}-\d{2}-\d{2}$/.test(addCalDate)
+                          ? new Date(`${addCalDate}T00:00:00`)
+                          : undefined
+                      }
+                    />
                   </View>
                 </View>
+                {measures.some((m) => m.size === addSize) ? (
+                  <Text style={{ fontSize: 12, color: colors.amber, marginTop: 6, marginBottom: 2 }}>
+                    Registering this retires the current {addSize} measure{' '}
+                    {measures.find((m) => m.size === addSize)?.serialNumber}. Its history is kept.
+                  </Text>
+                ) : null}
                 <Button
-                  title={`Register ${addSize} measure${measures.some((m) => m.size === addSize) ? ' (supersedes current)' : ''}`}
+                  title={`Register ${addSize} measure`}
                   onPress={() => void submitMeasure()}
                   busy={addBusy}
                 />
@@ -640,28 +730,80 @@ export default function ProfileScreen() {
       />
 
       <SectionCard title="My signature">
-        <Text style={{ color: colors.muted, fontSize: 12, marginBottom: 8 }}>
-          Draw your signature once. It is saved on this device and embedded into every certificate
-          you sign, so the VO signature looks like yours.
-        </Text>
-        <Badge
-          text={signatureSvg ? 'Signature saved ✓' : 'No signature yet'}
-          tone={signatureSvg ? 'ok' : 'warn'}
-        />
-        <Button
-          title={signatureSvg ? 'Update my signature' : 'Add my signature'}
-          kind="secondary"
-          onPress={() =>
-            router.push({
-              pathname: '/signature',
-              params: {
-                cacheKey: voSignatureCacheKey(subject),
-                title: 'Your signature',
-                hint: 'Sign in the box below — this becomes your VO signature on certificates.',
-              },
-            })
-          }
-        />
+        {signatureSvg ? (
+          // The signature itself, with the edit pencil at its top right
+          // (#198): what prints on certificates is what the card shows.
+          <View
+            style={{
+              borderWidth: 1,
+              borderColor: colors.line,
+              borderRadius: 12,
+              backgroundColor: '#fff',
+              padding: 8,
+              marginBottom: 8,
+            }}
+          >
+            <Pressable
+              onPress={() =>
+                router.push({
+                  pathname: '/signature',
+                  params: {
+                    cacheKey: voSignatureCacheKey(subject),
+                    title: 'Your signature',
+                    hint: 'Sign in the box below. This becomes your VO signature on certificates.',
+                  },
+                })
+              }
+              hitSlop={10}
+              accessibilityRole="button"
+              accessibilityLabel="Update my signature"
+              style={{
+                position: 'absolute',
+                top: 8,
+                right: 8,
+                zIndex: 1,
+                width: 34,
+                height: 34,
+                borderRadius: 999,
+                backgroundColor: colors.bg,
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Svg width={17} height={17} viewBox="0 0 24 24" fill="none">
+                <Path
+                  d="M4 20l1.2-4.2L16.6 4.4a2.05 2.05 0 012.9 2.9L8.2 18.8 4 20z"
+                  stroke={colors.navy}
+                  strokeWidth={2}
+                  strokeLinejoin="round"
+                />
+              </Svg>
+            </Pressable>
+            <SvgXml xml={signatureSvg} width="100%" height={90} />
+          </View>
+        ) : (
+          <>
+            <Text style={{ color: colors.muted, fontSize: 12, marginBottom: 8 }}>
+              Draw your signature once. It is saved on this device and embedded into every
+              certificate you sign, so the VO signature looks like yours.
+            </Text>
+            <Badge text="No signature yet" tone="warn" />
+            <Button
+              title="Add my signature"
+              kind="secondary"
+              onPress={() =>
+                router.push({
+                  pathname: '/signature',
+                  params: {
+                    cacheKey: voSignatureCacheKey(subject),
+                    title: 'Your signature',
+                    hint: 'Sign in the box below. This becomes your VO signature on certificates.',
+                  },
+                })
+              }
+            />
+          </>
+        )}
       </SectionCard>
 
       <View style={{ marginHorizontal: 12 }}>

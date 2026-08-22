@@ -2,6 +2,8 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import React from 'react';
 import {
   ActivityIndicator,
+  Modal,
+  Platform,
   Pressable,
   StyleSheet,
   Switch,
@@ -239,41 +241,115 @@ export function SwitchField<T extends FieldValues>({ control, name, label }: Tex
   );
 }
 
+const isoOf = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
 /** Native date picker presented as an input row. Value is a YYYY-MM-DD
- * string; days never shift across timezones (local-midnight parsing). */
+ * string; days never shift across timezones (local-midnight parsing).
+ *
+ * iOS gets an app-owned bottom sheet (#195): the compact inline picker
+ * used to render its own second date chip beside our field and a
+ * translucent popover that composited into mud over the page, and
+ * because it only reported CHANGES, today (already selected on open)
+ * could never be picked. The sheet's confirm commits whatever the
+ * calendar shows, so today works by construction. Android keeps the
+ * native dialog, whose OK already commits unchanged dates. */
 export function DateInput({
   value,
   onChange,
   placeholder = 'Select date',
+  minimumDate,
+  maximumDate,
 }: {
   value: string;
   onChange: (isoDate: string) => void;
   placeholder?: string;
+  minimumDate?: Date;
+  maximumDate?: Date;
 }) {
   const [show, setShow] = React.useState(false);
-  const date = /^\d{4}-\d{2}-\d{2}$/.test(value) ? new Date(`${value}T00:00:00`) : new Date();
+  const current = /^\d{4}-\d{2}-\d{2}$/.test(value) ? new Date(`${value}T00:00:00`) : new Date();
+  const [draft, setDraft] = React.useState<Date>(current);
+
+  const field = (
+    <Pressable
+      onPress={() => {
+        setDraft(current);
+        setShow(true);
+      }}
+      style={styles.input}
+    >
+      <Text style={[styles.mono, { fontSize: 14, color: value ? colors.ink : colors.muted }]}>
+        {value || placeholder}
+      </Text>
+    </Pressable>
+  );
+
+  if (Platform.OS !== 'ios') {
+    return (
+      <View>
+        {field}
+        {show ? (
+          <DateTimePicker
+            value={current}
+            mode="date"
+            minimumDate={minimumDate}
+            maximumDate={maximumDate}
+            onChange={(event, selected) => {
+              setShow(false);
+              if (event.type === 'set' && selected) onChange(isoOf(selected));
+            }}
+          />
+        ) : null}
+      </View>
+    );
+  }
+
   return (
     <View>
-      <Pressable onPress={() => setShow(true)} style={styles.input}>
-        <Text style={[styles.mono, { fontSize: 14, color: value ? colors.ink : colors.muted }]}>
-          {value || placeholder}
-        </Text>
-      </Pressable>
-      {show ? (
-        <DateTimePicker
-          value={date}
-          mode="date"
-          onChange={(event, selected) => {
-            setShow(false);
-            if (event.type === 'set' && selected) {
-              const y = selected.getFullYear();
-              const m = String(selected.getMonth() + 1).padStart(2, '0');
-              const d = String(selected.getDate()).padStart(2, '0');
-              onChange(`${y}-${m}-${d}`);
-            }
-          }}
-        />
-      ) : null}
+      {field}
+      <Modal visible={show} transparent animationType="fade" onRequestClose={() => setShow(false)}>
+        <Pressable
+          onPress={() => setShow(false)}
+          style={{ flex: 1, backgroundColor: 'rgba(16, 32, 47, 0.45)', justifyContent: 'flex-end' }}
+        >
+          <Pressable
+            onPress={() => {}}
+            style={{
+              backgroundColor: '#fff',
+              borderTopLeftRadius: 20,
+              borderTopRightRadius: 20,
+              padding: 16,
+              paddingBottom: 28,
+            }}
+          >
+            <DateTimePicker
+              value={draft}
+              mode="date"
+              display="inline"
+              minimumDate={minimumDate}
+              maximumDate={maximumDate}
+              onChange={(_event, selected) => {
+                if (selected) setDraft(selected);
+              }}
+            />
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 4 }}>
+              <View style={{ flex: 1 }}>
+                <Button title="Cancel" kind="secondary" onPress={() => setShow(false)} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Button
+                  title="Use this date"
+                  onPress={() => {
+                    onChange(isoOf(draft));
+                    setShow(false);
+                  }}
+                />
+              </View>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }

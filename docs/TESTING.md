@@ -1282,3 +1282,37 @@ OTA update; the RPC deploys with the push.
       further detail for this reference"
 - [ ] Offline, the screen still opens with the summary it was tapped
       with
+
+## Measures and profile UX batch (#195, #196, #197, #198)
+
+OTA update.
+
+- [ ] Date fields open ONE picker in an app-styled bottom sheet (iOS);
+      today can be picked and confirmed with "Use this date"
+- [ ] Picking a calibration date fills the expiry one year later;
+      expiry before calibration, future calibration dates, and
+      already-expired expiry dates are refused with plain messages
+- [ ] The 200L / 20L / 5L chips show live status (days left, expiring,
+      expired, not registered)
+- [ ] Replacing a measure states which serial is being retired above
+      the Register button
+- [ ] Home shows only a small exclamation disc when measures need
+      attention; tapping it opens the profile
+- [ ] Starting a verification whose plan measures expire within 30 days
+      asks Start anyway / Cancel; an expired 200L does not affect a
+      standard 20L/5L test in any way
+- [ ] The signature card shows the drawn signature with a pencil at its
+      top right; the pencil opens the pad and the preview updates on
+      return
+
+## Verification work order toggle (#200)
+
+OTA update; the RPC and column deploy with the push.
+
+- [ ] A started repair work order's job card carries the "Verification
+      work order" switch; turning it on reveals the dispensers and
+      verification sections and survives app restart and pull refresh
+- [ ] Turning it off hides them again; a signed job card hides the
+      switch
+- [ ] The change is recorded as a work order event with the technician's
+      email

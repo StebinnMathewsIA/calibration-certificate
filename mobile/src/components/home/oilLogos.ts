@@ -29,6 +29,8 @@ export const OIL_LOGO_IMAGES: Record<string, ImageSourcePropType> = {
   puma: require('../../../assets/oil-puma.png'),
   sasol: require('../../../assets/oil-sasol.png'),
   astron: require('../../../assets/oil-astron.png'),
+  afgri: require('../../../assets/oil-afgri.png'),
+  moov: require('../../../assets/oil-moov.png'),
 };
 
 /** Image scale inside the disc. At or above 1 the asset IS the disc:
@@ -39,6 +41,9 @@ export const OIL_IMAGE_SCALE: Record<string, number> = {
   puma: 1.08,
   sasol: 0.66,
   astron: 1.02,
+  // Wide wordmark, cropped to the mark; width-limited in the disc.
+  afgri: 0.82,
+  moov: 0.68,
 };
 
 export const OIL_LOGOS: Record<string, string> = {

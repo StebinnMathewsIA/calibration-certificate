@@ -32,6 +32,8 @@ const BRANDS: [string, Brand][] = [
   ['astron', { label: 'A', bg: '#FFFFFF', fg: '#0A4E9B', ring: '#E4231F' }],
   ['caltex', { label: 'C', bg: '#FFFFFF', fg: '#DA2032', ring: '#0A4E9B' }],
   ['puma', { label: 'P', bg: '#1D1D1B', fg: '#FFFFFF', ring: '#E30613' }],
+  ['afgri', { label: 'A', bg: '#FFFFFF', fg: '#2A3890', ring: '#25A244' }],
+  ['moov', { label: 'M', bg: '#FFFFFF', fg: '#D0103A', ring: '#14294E' }],
 ];
 
 export function OilDisc({ customerName, size = 46 }: { customerName: string | null; size?: number }) {

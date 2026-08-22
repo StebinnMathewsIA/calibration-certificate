@@ -3,7 +3,7 @@ import React from 'react';
 import { Pressable, Text, View } from 'react-native';
 import { useAuth } from '../auth/AuthContext';
 import { colors } from './ui';
-import { getProfile, profileInitials, profileGaps } from '../profile/profileStore';
+import { getProfile, measuresStatus, profileInitials, profileGaps } from '../profile/profileStore';
 import { readCache } from '../db/cache';
 
 /** Two-letter initials from a name. Handles "First Last" -> "FL", a single
@@ -35,13 +35,23 @@ export function HeaderProfileButton({ variant = 'onNavy' }: { variant?: 'onNavy'
   // is the one control on every screen, so the problem is visible long
   // before they are standing in front of a client.
   const gaps = profileGaps(identity?.subject ?? '', readCache);
+  // Certified measures ride the same badge (#211): the register lives on
+  // the profile and the avatar is the door to it. Red when a gap or a
+  // blocking measure problem, amber when a measure merely expires soon.
+  const measures = measuresStatus(identity?.subject ?? '');
+  const badge = gaps.length > 0 || measures !== null;
+  const badgeBlocking = gaps.length > 0 || (measures?.blocking ?? false);
+  const spoken = [
+    ...gaps,
+    ...(measures ? [`Certified measures need attention: ${measures.text}`] : []),
+  ];
 
   return (
     <Pressable
       onPress={() => router.push('/profile')}
       accessibilityRole="button"
       accessibilityLabel={
-        gaps.length ? `Open profile. ${gaps.join('. ')}` : 'Open profile'
+        spoken.length ? `Open profile. ${spoken.join('. ')}` : 'Open profile'
       }
       hitSlop={8}
       style={{
@@ -63,7 +73,7 @@ export function HeaderProfileButton({ variant = 'onNavy' }: { variant?: 'onNavy'
       >
         {initials}
       </Text>
-      {gaps.length ? (
+      {badge ? (
         <View
           // A plain typographic mark, not an emoji, per the brand rules.
           // Positioned outside the circle so it reads on both tints.
@@ -74,7 +84,7 @@ export function HeaderProfileButton({ variant = 'onNavy' }: { variant?: 'onNavy'
             minWidth: 16,
             height: 16,
             borderRadius: 8,
-            backgroundColor: colors.red,
+            backgroundColor: badgeBlocking ? colors.red : colors.amberFill,
             borderWidth: 1.5,
             borderColor: onLight ? '#fff' : colors.navy,
             alignItems: 'center',

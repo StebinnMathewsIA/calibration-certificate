@@ -19,7 +19,6 @@ import type { CertificateState, Verification } from '@prowalco/schema';
 import {
   HomeStats,
   WorkOrderRecord,
-  WorkOrderSummary,
   getHomeStats,
   listWorkOrderRecords,
   listWorkOrders,
@@ -36,7 +35,6 @@ import { Badge, colors, fonts, styles } from '../../src/components/ui';
 import { fetchThrough, readCache, writeCache } from '../../src/db/cache';
 import { onFreshnessSettled } from '../../src/sync/freshness';
 import { roadKm } from '../../src/util/geo';
-import { getProfile } from '../../src/profile/profileStore';
 import * as repo from '../../src/db/certificateRepo';
 import { processQueue } from '../../src/queue/signQueue';
 
@@ -124,7 +122,6 @@ export default function HomeScreen() {
   const router = useRouter();
   const [records, setRecords] = useState<WorkOrderRecord[] | null>(null);
   const [stats, setStats] = useState<HomeStats | null>(null);
-  const [workOrders, setWorkOrders] = useState<WorkOrderSummary[]>([]);
   const [inProgress, setInProgress] = useState<repo.CertificateRecord[]>([]);
   const [archivedCount, setArchivedCount] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
@@ -170,7 +167,6 @@ export default function HomeScreen() {
       repo.archiveDraftsForClosedWorkOrders(
         wo.filter((w) => w.status === 'completed').map((w) => w.id),
       );
-      setWorkOrders(wo.filter((w) => w.status !== 'completed'));
       loadLocal();
     } catch {
       // offline with no cache
@@ -228,25 +224,6 @@ export default function HomeScreen() {
       alive = false;
     };
   }, []);
-
-  // Certified-measures status (#70).
-  const measureAlert = useMemo(() => {
-    if (!identity) return null;
-    const active = getProfile(identity.subject).measures ?? [];
-    const today = new Date().toISOString().slice(0, 10);
-    const soon = new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString().slice(0, 10);
-    const missing = ['200L', '20L', '5L'].filter((s) => !active.some((m) => m.size === s));
-    const expired = active.filter((m) => m.expiryDate < today);
-    const expiring = active.filter((m) => m.expiryDate >= today && m.expiryDate <= soon);
-    if (missing.length + expired.length + expiring.length === 0) return null;
-    const blocking = missing.length > 0 || expired.length > 0;
-    const parts = [
-      ...missing.map((s) => `${s} not registered`),
-      ...expired.map((m) => `${m.size} expired ${m.expiryDate}`),
-      ...expiring.map((m) => `${m.size} expires ${m.expiryDate}`),
-    ];
-    return { blocking, text: parts.join(' · ') };
-  }, [identity, workOrders]);
 
   const retryItem = async (itemId: string) => {
     repo.clearRetryBackoff(itemId);
@@ -434,38 +411,8 @@ export default function HomeScreen() {
         </View>
       ) : null}
       <SyncBanner onQueueDrained={loadLocal} />
-      {measureAlert ? (
-        // The expiry story moved to the point of use (#197): starting a
-        // test warns plan-scoped, and Home keeps only this exclamation.
-        <Pressable
-          onPress={() => router.push('/profile')}
-          accessibilityRole="button"
-          accessibilityLabel={`Certified measures need attention: ${measureAlert.text}. Opens the measures register.`}
-          style={{
-            alignSelf: 'flex-end',
-            marginRight: 12,
-            marginBottom: 6,
-            width: 30,
-            height: 30,
-            borderRadius: 999,
-            alignItems: 'center',
-            justifyContent: 'center',
-            borderWidth: 1.5,
-            borderColor: measureAlert.blocking ? colors.red : colors.amberFill,
-            backgroundColor: measureAlert.blocking ? colors.redTint : colors.amberTint,
-          }}
-        >
-          <Text
-            style={{
-              fontFamily: fonts.heading,
-              fontSize: 17,
-              color: measureAlert.blocking ? colors.red : colors.amber,
-            }}
-          >
-            !
-          </Text>
-        </Pressable>
-      ) : null}
+      {/* The measures exclamation now rides the avatar itself (#211):
+          HeaderProfileButton badges red/amber from measuresStatus. */}
 
       <ScrollView contentContainerStyle={{ paddingBottom: 24 }}>
         <StatCards stats={stats} />

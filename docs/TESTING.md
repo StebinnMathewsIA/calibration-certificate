@@ -1371,3 +1371,20 @@ OTA update.
 
 - [ ] Home no longer shows the "Team work orders" accordion at the
       bottom, for any role
+
+## Stock follows Work as (#210)
+
+Server-side, after the CI run completes.
+
+- [ ] With Work as set to a technician who has a verified van, Stock
+      shows "Your van" with that van's items, not the Teams hierarchy
+- [ ] Clearing Work as restores the Teams hierarchy for the admin
+
+## Measures exclamation on the avatar (#211)
+
+OTA update.
+
+- [ ] With a missing or expired measure, the avatar badge is red; with
+      only an expiring-soon measure it is amber; all current, no badge
+- [ ] The standalone exclamation row under the Home header is gone
+- [ ] Tapping the avatar opens the profile as before

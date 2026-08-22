@@ -107,6 +107,31 @@ export function profileGaps(
   return gaps;
 }
 
+/** Certified-measures state for the avatar badge (#211): red when a size
+ * is missing or expired (blocks a test plan), amber when only expiring
+ * within 30 days. Null when everything is current. Mirrors the plan-scoped
+ * gate's data (#197) without deciding for it. */
+export function measuresStatus(
+  subject: string,
+): { blocking: boolean; text: string } | null {
+  if (!subject) return null;
+  const active = getProfile(subject).measures ?? [];
+  const today = new Date().toISOString().slice(0, 10);
+  const soon = new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+  const missing = ['200L', '20L', '5L'].filter((s) => !active.some((m) => m.size === s));
+  const expired = active.filter((m) => m.expiryDate < today);
+  const expiring = active.filter((m) => m.expiryDate >= today && m.expiryDate <= soon);
+  if (missing.length + expired.length + expiring.length === 0) return null;
+  return {
+    blocking: missing.length > 0 || expired.length > 0,
+    text: [
+      ...missing.map((s) => `${s} not registered`),
+      ...expired.map((m) => `${m.size} expired ${m.expiryDate}`),
+      ...expiring.map((m) => `${m.size} expires ${m.expiryDate}`),
+    ].join(' · '),
+  };
+}
+
 /** True when this technician can put their name to a document. */
 export function hasProfileSignature(
   subject: string,

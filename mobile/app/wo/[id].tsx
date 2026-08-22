@@ -23,7 +23,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as Location from 'expo-location';
 import React, { useCallback, useMemo, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
-import { Alert, Linking, Pressable, Text, TextInput, View } from 'react-native';
+import { Alert, Linking, Pressable, Switch, Text, TextInput, View } from 'react-native';
 import Svg, { Circle, Path } from 'react-native-svg';
 import {
   DispenserResolved,
@@ -43,6 +43,7 @@ import {
   listSiteDispensers,
   listWorkOrderRecords,
   saveJobCard,
+  setWorkOrderCalibration,
   standDownWorkOrder,
   transitionWorkOrder,
 } from '../../src/api/client';
@@ -443,6 +444,23 @@ export default function WorkOrderLifecycleScreen() {
   );
   const performedOk = performed.trim().length > 0;
   const signed = bundle?.jobCard?.state === 'signed';
+
+  // Manual verification override (#200): the classifier reads the work
+  // required text, but a repair job can end in a legally required
+  // verification once a meter is opened. The technician flips it here;
+  // true or false wins over the classifier server-side.
+  const toggleCalibration = (v: boolean) => {
+    if (!wo) return;
+    const prev = wo.isCalibration;
+    setWo({ ...wo, isCalibration: v });
+    setWorkOrderCalibration(accessToken, String(id), v).catch((err) => {
+      setWo((w) => (w ? { ...w, isCalibration: prev } : w));
+      Alert.alert(
+        'Could not update the work order',
+        err instanceof Error ? err.message : String(err),
+      );
+    });
+  };
   const completeGateOk = visitOk && performedOk;
   const gateNote =
     phase === 'active' && !completeGateOk ? 'Fill the job card first' : null;
@@ -1001,6 +1019,36 @@ export default function WorkOrderLifecycleScreen() {
               onBlur={() => persist()}
               editable={!signed}
             />
+
+            {!signed ? (
+              // Normal work order or verification work order (#200).
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 10,
+                  marginTop: 12,
+                  borderTopWidth: 1,
+                  borderTopColor: colors.line,
+                  paddingTop: 10,
+                }}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: colors.ink, fontSize: 13.5, fontFamily: fonts.bodyMedium }}>
+                    Verification work order
+                  </Text>
+                  <Text style={{ color: colors.muted, fontSize: 11.5, marginTop: 1 }}>
+                    Adds the dispensers and verification sections to this job.
+                  </Text>
+                </View>
+                <Switch
+                  value={!!wo.isCalibration}
+                  onValueChange={toggleCalibration}
+                  trackColor={{ true: colors.green }}
+                  accessibilityLabel="Verification work order"
+                />
+              </View>
+            ) : null}
           </SectionCard>
 
           <SectionCard title="Spares booked">

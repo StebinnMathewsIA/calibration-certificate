@@ -335,6 +335,17 @@ export async function listWorkOrderRecords(token: string | null): Promise<WorkOr
   return await rpc<WorkOrderRecord[]>('app_wo_list', token);
 }
 
+/** Manual verification override (#200): the technician on the forecourt
+ * knows a repair job needs a verification even when the work required
+ * text never says so. True or false wins over the classifier. */
+export async function setWorkOrderCalibration(
+  token: string | null,
+  workOrderId: string,
+  on: boolean,
+): Promise<void> {
+  await rpc('app_wo_set_calibration', token, { p_work_order_id: workOrderId, p_on: on });
+}
+
 /** Where our lifecycle and OnKey disagree on the technician's own work
  * (migration 047). The planner writes too, and Allocated to To be Planned
  * fired 49 times in a few days, so this is normal traffic that has to be

@@ -1404,3 +1404,13 @@ OTA update.
       history
 - [ ] The first certificate sealed after the purge is numbered 000001
       for its branch
+
+## Official oil brand marks (#212)
+
+OTA update.
+
+- [ ] A Shell site's work order card shows the official pecten on white
+- [ ] A Puma site's card shows the Puma Energy roundel filling the disc
+- [ ] A Sasol site's card shows the molecule mark on white
+- [ ] An Astron site's card shows the orange Astron tile as the disc
+- [ ] The same marks appear on the map pins and the work order screen

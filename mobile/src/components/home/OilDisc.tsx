@@ -10,7 +10,13 @@ import React from 'react';
 import { Image, Text, View } from 'react-native';
 import { SvgXml } from 'react-native-svg';
 import { colors, fonts } from '../ui';
-import { OIL_DISC_BG, OIL_LOGOS, OIL_LOGO_SCALE } from './oilLogos';
+import {
+  OIL_DISC_BG,
+  OIL_IMAGE_SCALE,
+  OIL_LOGOS,
+  OIL_LOGO_IMAGES,
+  OIL_LOGO_SCALE,
+} from './oilLogos';
 
 type Brand = { label: string; bg: string; fg: string; ring: string };
 
@@ -32,7 +38,37 @@ export function OilDisc({ customerName, size = 46 }: { customerName: string | nu
   const key = (customerName ?? '').toLowerCase();
   const match = BRANDS.find(([frag]) => key.includes(frag));
   const brand = match?.[1];
+  const image = match ? OIL_LOGO_IMAGES[match[0]] : undefined;
   const logo = match ? OIL_LOGOS[match[0]] : undefined;
+  if (image) {
+    // Owner-supplied official raster (#212). At scale >= 1 the asset is
+    // the disc (Puma's roundel, Astron's tile), clipped by the circle;
+    // smaller marks sit on white like the vectors do.
+    const scale = (match && OIL_IMAGE_SCALE[match[0]]) || 0.7;
+    return (
+      <View
+        accessibilityLabel={customerName ?? undefined}
+        style={{
+          width: size,
+          height: size,
+          borderRadius: 999,
+          backgroundColor: '#fff',
+          borderWidth: 1.5,
+          borderColor: colors.line,
+          alignItems: 'center',
+          justifyContent: 'center',
+          overflow: 'hidden',
+        }}
+      >
+        <Image
+          source={image}
+          style={{ width: size * scale, height: size * scale }}
+          resizeMode="contain"
+          accessibilityIgnoresInvertColors
+        />
+      </View>
+    );
+  }
   if (logo) {
     // The real mark, on white or on its brand fill (Engen sits on Engen
     // blue, per the owner-supplied treatment), cropped by the disc.

@@ -101,6 +101,7 @@ export default function RootLayout() {
           }}
         />
         <Stack.Screen name="verification/[id]/issued" options={{ title: 'Certificate' }} />
+        <Stack.Screen name="verification/[id]/reject" options={{ title: 'Rejection certificate' }} />
       </Stack>
       {/* After the Stack so the overlay renders above it (#150). */}
       <FreshnessGate />

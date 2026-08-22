@@ -22,6 +22,8 @@ import { Badge, Button, SectionCard, colors } from '../../../src/components/ui';
 import { FormScrollView } from '../../../src/components/FormScrollView';
 import { fetchThrough } from '../../../src/db/cache';
 import * as repo from '../../../src/db/certificateRepo';
+import { WebView } from 'react-native-webview';
+import { rejectionHtml } from '../../../src/pdf/rejectionHtml';
 import { renderRejectionPdf, persistSignedPdf } from '../../../src/pdf/renderPdf';
 import { getProfile } from '../../../src/profile/profileStore';
 import { buildDeviceAuth, getDeviceId } from '../../../src/queue/signQueue';
@@ -81,6 +83,8 @@ export default function RejectScreen() {
   const [busy, setBusy] = useState(false);
   const [issuedUri, setIssuedUri] = useState<string | null>(null);
   const [issuedNumber, setIssuedNumber] = useState<string | null>(null);
+  // The sealed document's payload, kept for the inline preview (#203).
+  const [sealedRejection, setSealedRejection] = useState<RejectionCertificate | null>(null);
   // One idempotency key per screen visit: retries never double-issue.
   const idempotencyKey = useRef(Crypto.randomUUID());
 
@@ -166,6 +170,7 @@ export default function RejectScreen() {
       const uri = await persistSignedPdf(response.certificateNumber, response.signedPdfBase64);
       setIssuedUri(uri);
       setIssuedNumber(response.certificateNumber);
+      setSealedRejection(rejection);
     } catch (err) {
       Alert.alert(
         'Could not seal the rejection certificate',
@@ -193,6 +198,34 @@ export default function RejectScreen() {
           </Text>
           <Button title="Share sealed rejection certificate" onPress={() => void share()} />
         </SectionCard>
+        {sealedRejection ? (
+          // The document itself (#203): the exact template the sealed PDF
+          // was rendered from, pinch-zoomable.
+          <View
+            style={{
+              marginHorizontal: 12,
+              marginTop: 4,
+              height: 480,
+              borderRadius: 12,
+              overflow: 'hidden',
+              borderWidth: 1,
+              borderColor: colors.line,
+              backgroundColor: '#fff',
+            }}
+          >
+            <WebView
+              source={{
+                html: rejectionHtml(sealedRejection).replace(
+                  '<head>',
+                  '<head><meta name="viewport" content="width=820, user-scalable=yes">',
+                ),
+              }}
+              originWhitelist={['about:blank']}
+              setSupportMultipleWindows={false}
+              style={{ flex: 1, backgroundColor: '#fff' }}
+            />
+          </View>
+        ) : null}
       </FormScrollView>
     );
   }
@@ -238,7 +271,14 @@ export default function RejectScreen() {
             style={{ flexDirection: 'row', alignItems: 'center', marginVertical: 4 }}
           >
             <Text style={{ flex: 1, fontSize: 13, color: colors.ink }}>{label}</Text>
-            <Switch value={value} onValueChange={setter} />
+            {/* Visible in BOTH states (#203): the iOS off-state track is
+                near-white on a white card by default. */}
+            <Switch
+              value={value}
+              onValueChange={setter}
+              trackColor={{ true: colors.green, false: colors.line }}
+              ios_backgroundColor={colors.line}
+            />
           </View>
         ))}
       </SectionCard>

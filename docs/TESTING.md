@@ -1335,3 +1335,13 @@ OTA update.
 - [ ] Rejecting a hose shows the -REJ number read-only on the sign-off
       (no typing), and the rejection certificate issued afterwards
       carries exactly that number
+
+## Rejection flow polish (#203)
+
+OTA update.
+
+- [ ] The three physical-step toggles are clearly visible when off and
+      brand green when on
+- [ ] After sealing, the rejection certificate document shows inline,
+      pinch-zoomable, above the share button
+- [ ] The screen header reads "Rejection certificate"

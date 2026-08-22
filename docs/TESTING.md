@@ -1327,3 +1327,11 @@ OTA update.
       profile"; filling it there and coming back shows the value and
       signing proceeds without restarting the flow
 - [ ] The sign button stays disabled while the pliers number is missing
+
+## Rejection certificate number is derived (#202)
+
+OTA update.
+
+- [ ] Rejecting a hose shows the -REJ number read-only on the sign-off
+      (no typing), and the rejection certificate issued afterwards
+      carries exactly that number

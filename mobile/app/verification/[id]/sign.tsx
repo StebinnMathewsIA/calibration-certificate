@@ -112,7 +112,10 @@ export default function SignScreen() {
       client: { name: clientName, email: clientEmail.trim() || undefined },
       declarationAccepted: declaration,
       expiryDate: expiry || undefined,
-      rejectionCertNumber: anyRejected ? rejectionCert || undefined : undefined,
+      rejectionCertNumber: anyRejected
+        ? (initial.certificateNumber ? `${initial.certificateNumber}-REJ` : rejectionCert) ||
+          undefined
+        : undefined,
     },
   });
 
@@ -314,7 +317,22 @@ export default function SignScreen() {
         {anyRejected ? (
           <>
             <Text style={{ fontSize: 12, color: colors.muted }}>Rejection Cert. No. (a hose was rejected)</Text>
-            <TextInput style={inputStyle} value={rejectionCert} onChangeText={setRejectionCert} />
+            {initial?.certificateNumber ? (
+              // Derived, never typed (#202): the rejection certificate is
+              // OUR document (SANS TEST PROC02 5.5.5), issued from the
+              // rejection flow after signing under this exact number.
+              <View style={{ marginTop: 2, marginBottom: 8 }}>
+                <Text style={{ fontFamily: fonts.mono, fontSize: 15, color: colors.ink }}>
+                  {initial.certificateNumber}-REJ
+                </Text>
+                <Text style={{ fontSize: 11.5, color: colors.muted, marginTop: 2 }}>
+                  Issued from the rejection flow after signing. The office forwards a copy to
+                  NRCS.
+                </Text>
+              </View>
+            ) : (
+              <TextInput style={inputStyle} value={rejectionCert} onChangeText={setRejectionCert} />
+            )}
           </>
         ) : null}
       </SectionCard>

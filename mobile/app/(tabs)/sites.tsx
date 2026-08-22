@@ -18,6 +18,7 @@ import {
   listWorkOrderRecords,
 } from '../../src/api/client';
 import { useAuth } from '../../src/auth/AuthContext';
+import { BrandRefreshDrop, brandRefreshControl } from '../../src/components/BrandRefresh';
 import { fetchThrough, readCache, writeCache } from '../../src/db/cache';
 import { GreetingHeader } from '../../src/components/GreetingHeader';
 import { OilDisc } from '../../src/components/home/OilDisc';
@@ -38,6 +39,8 @@ export default function SitesScreen() {
   const [sites, setSites] = useState<SiteResolved[]>([]);
   const [records, setRecords] = useState<WorkOrderRecord[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+  // Pull gesture only (#214), separate from the focus-load flag.
+  const [pulling, setPulling] = useState(false);
   const [query, setQuery] = useState('');
   const [oil, setOil] = useState<string | null>(null);
 
@@ -163,8 +166,19 @@ export default function SitesScreen() {
         keyboardShouldPersistTaps="handled"
         initialNumToRender={16}
         windowSize={7}
+        refreshControl={brandRefreshControl(pulling, () => {
+          void (async () => {
+            setPulling(true);
+            try {
+              await load(true);
+            } finally {
+              setPulling(false);
+            }
+          })();
+        })}
         ListHeaderComponent={
           <View>
+            <BrandRefreshDrop pulling={pulling} />
             <TextInput
               value={query}
               onChangeText={setQuery}

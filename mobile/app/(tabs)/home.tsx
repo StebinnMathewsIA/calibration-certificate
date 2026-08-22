@@ -24,6 +24,7 @@ import {
   listWorkOrders,
 } from '../../src/api/client';
 import { useAuth } from '../../src/auth/AuthContext';
+import { BrandRefreshDrop, brandRefreshControl } from '../../src/components/BrandRefresh';
 import { TrashIcon } from '../../src/components/BrandHeader';
 import { GreetingHeader } from '../../src/components/GreetingHeader';
 import { SyncBanner } from '../../src/components/SyncBanner';
@@ -125,6 +126,9 @@ export default function HomeScreen() {
   const [inProgress, setInProgress] = useState<repo.CertificateRecord[]>([]);
   const [archivedCount, setArchivedCount] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
+  // Pull gesture only (#214): the focus-load refreshing flag must never
+  // drive RefreshControl or the list yanks open on every visit.
+  const [pulling, setPulling] = useState(false);
   const [query, setQuery] = useState('');
   const [here, setHere] = useState<{ latitude: number; longitude: number } | null>(null);
   const [town, setTown] = useState<string | null>(null);
@@ -414,7 +418,21 @@ export default function HomeScreen() {
       {/* The measures exclamation now rides the avatar itself (#211):
           HeaderProfileButton badges red/amber from measuresStatus. */}
 
-      <ScrollView contentContainerStyle={{ paddingBottom: 24 }}>
+      <ScrollView
+        contentContainerStyle={{ paddingBottom: 24 }}
+        refreshControl={brandRefreshControl(pulling, () => {
+          void (async () => {
+            setPulling(true);
+            try {
+              loadRecords(true);
+              await load();
+            } finally {
+              setPulling(false);
+            }
+          })();
+        })}
+      >
+        <BrandRefreshDrop pulling={pulling} />
         <StatCards stats={stats} />
 
         <View style={{ flexDirection: 'row', marginHorizontal: 12, marginTop: 10 }}>

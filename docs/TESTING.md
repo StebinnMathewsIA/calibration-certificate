@@ -1422,3 +1422,13 @@ OTA update.
 - [ ] An AFGRI site's work order card shows the AFGRI mark instead of
       the Prowalco fallback disc
 - [ ] A Moov site's card shows the Moov ribbon M
+
+## Pull to refresh with the droplet in the gap (#214)
+
+OTA update.
+
+- [ ] Pulling down on Home refreshes the work orders and stat cards;
+      while it runs, the Prowalco droplet pulses in the white gap (iOS)
+- [ ] Same gesture on the Sites tab refetches the register
+- [ ] Opening the tabs normally does NOT pop the pull spinner open
+- [ ] On Android the indicator is the native circle in brand green

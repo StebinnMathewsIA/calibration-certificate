@@ -1,6 +1,6 @@
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Switch, Text, TextInput, View } from 'react-native';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Alert, Pressable, Switch, Text, TextInput, View } from 'react-native';
 import { WebView } from 'react-native-webview';
 import type { AnalysisResponse, Verification } from '@prowalco/schema';
 import { MPE_PERCENT, analysisResponseSchema, validateReadyToSign } from '@prowalco/schema';
@@ -47,11 +47,20 @@ export default function SignScreen() {
   const { accessToken, identity } = useAuth();
   const record = useMemo(() => repo.getById(id), [id]);
   const initial = record?.form as Verification | undefined;
-  // The VO's saved profile (name, pliers no, signature) prefills the sign-off.
-  const profile = useMemo(() => getProfile(identity?.subject ?? ''), [identity?.subject]);
-
+  // The VO's saved profile (name, pliers no, signature) feeds the
+  // sign-off. Re-read on every focus (#201): the pliers number is
+  // profile-owned, so "Add it in your profile" and coming back must show
+  // the value without restarting the flow.
+  const [profile, setProfile] = useState(() => getProfile(identity?.subject ?? ''));
   const [pliers, setPliers] = useState(
-    initial?.signOff?.vo?.pliersNumber || profile.pliersNumber || '',
+    getProfile(identity?.subject ?? '').pliersNumber || initial?.signOff?.vo?.pliersNumber || '',
+  );
+  useFocusEffect(
+    useCallback(() => {
+      const p = getProfile(identity?.subject ?? '');
+      setProfile(p);
+      setPliers(p.pliersNumber || initial?.signOff?.vo?.pliersNumber || '');
+    }, [identity?.subject, initial?.signOff?.vo?.pliersNumber]),
   );
   const [expiry, setExpiry] = useState(initial?.signOff?.expiryDate ?? plusOneYear());
   const [clientName, setClientName] = useState(initial?.signOff?.client?.name ?? '');
@@ -252,7 +261,50 @@ export default function SignScreen() {
 
       <SectionCard title="Sign-off details">
         <Text style={{ fontSize: 12, color: colors.muted }}>VO Pliers No.</Text>
-        <TextInput style={inputStyle} value={pliers} onChangeText={setPliers} />
+        {pliers ? (
+          // Profile-owned (#201): shown, not typed. The stamp number must
+          // match the physical pliers, so it changes in one place only.
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: 8,
+              marginTop: 2,
+            }}
+          >
+            <Text style={{ fontFamily: fonts.mono, fontSize: 15, color: colors.ink }}>{pliers}</Text>
+            <Pressable
+              onPress={() => router.push('/profile')}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Edit the pliers number in your profile"
+            >
+              <Text
+                style={{
+                  color: colors.blueText,
+                  fontSize: 12.5,
+                  textDecorationLine: 'underline',
+                  fontFamily: fonts.bodyMedium,
+                }}
+              >
+                Edit in profile
+              </Text>
+            </Pressable>
+          </View>
+        ) : (
+          <View style={{ marginBottom: 8, marginTop: 2 }}>
+            <Text style={{ color: colors.amber, fontSize: 12.5, marginBottom: 6 }}>
+              Your VO pliers number is not on your profile. It prints on every certificate and
+              must match your stamp, so it is filled in once, there.
+            </Text>
+            <Button
+              title="Add it in your profile"
+              kind="secondary"
+              onPress={() => router.push('/profile')}
+            />
+          </View>
+        )}
         <Text style={{ fontSize: 12, color: colors.muted, marginBottom: 3 }}>
           Expiry date of certificate
         </Text>

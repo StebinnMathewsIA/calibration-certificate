@@ -1316,3 +1316,14 @@ OTA update; the RPC and column deploy with the push.
       switch
 - [ ] The change is recorded as a work order event with the technician's
       email
+
+## Pliers number is profile-owned (#201)
+
+OTA update.
+
+- [ ] With a pliers number on the profile, the sign-off shows it
+      read-only with an "Edit in profile" link
+- [ ] With none, the sign-off shows the note and "Add it in your
+      profile"; filling it there and coming back shows the value and
+      signing proceeds without restarting the flow
+- [ ] The sign button stays disabled while the pliers number is missing

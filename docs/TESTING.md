@@ -1388,3 +1388,19 @@ OTA update.
       only an expiring-soon measure it is amber; all current, no badge
 - [ ] The standalone exclamation row under the Home header is gone
 - [ ] Tapping the avatar opens the profile as before
+
+## Our registry is THE asset registry; OnKey assets off and purged (#209)
+
+Server change is live after the CI run; the site screen add flow is an
+OTA update.
+
+- [ ] A site that only ever had OnKey-seeded pumps now shows "No
+      dispensers registered at this site yet" with an Add a dispenser
+      button on the site screen
+- [ ] Adding a dispenser there (with the serial barcode scan) makes it
+      appear in the list and in the work order's Dispensers on site
+- [ ] Verifying it and returning on a later visit prefills everything
+- [ ] Old test certificates no longer appear in any site or dispenser
+      history
+- [ ] The first certificate sealed after the purge is numbered 000001
+      for its branch

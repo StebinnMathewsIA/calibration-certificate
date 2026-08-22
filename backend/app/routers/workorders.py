@@ -83,27 +83,11 @@ def _dispenser_record(d: Dispenser) -> dict:
     }
 
 
-def _dispenser_from_seed(seed: dict) -> dict:
-    return {
-        "id": seed["id"],
-        "siteId": seed["siteId"],
-        "make": seed.get("make", ""),
-        "model": seed.get("model", ""),
-        "serialNumber": seed.get("serialNumber", ""),
-        "saApprovalNumber": seed.get("saApprovalNumber", ""),
-        "status": "active",
-        "source": "onkey",
-        "addedBy": None,
-        "addedAt": None,
-        "retiredBy": None,
-        "retiredAt": None,
-        "updatedAt": None,
-        "inStore": False,
-    }
-
-
 # ---------------------------------------------------------------------------
-# Resolution (store wins over seed)
+# Resolution. Sites still fall back to the OnKey seed; dispensers do NOT:
+# our registry is THE asset registry (#209, owner decision after the OnKey
+# asset data proved unreliable in the field). A dispenser exists only once
+# a technician has added it.
 # ---------------------------------------------------------------------------
 
 
@@ -115,28 +99,19 @@ def _resolve_site(db: Session, provider: WorkOrderProvider, site_id: str) -> dic
     return _site_from_seed(seed) if seed else None
 
 
-def _resolve_dispensers(db: Session, provider: WorkOrderProvider, work_order: dict) -> list[dict]:
+def _resolve_dispensers(db: Session, work_order: dict) -> list[dict]:
     site_id = work_order["siteId"]
-    # Union of the WO's seed dispensers and any canonical dispensers at the site
-    # (e.g. ones the technician added that OnKey doesn't know about).
     stored = {
         d.id: d
         for d in db.scalars(select(Dispenser).where(Dispenser.site_id == site_id)).all()
     }
-    order: list[str] = list(work_order.get("dispenserIds", []))
+    # The WO's dispenser hints order the ones we hold; unknown ids are not
+    # shown (the technician picks or adds the real dispenser on site).
+    order = [did for did in work_order.get("dispenserIds", []) if did in stored]
     for did in stored:
         if did not in order:
             order.append(did)
-
-    out: list[dict] = []
-    for did in order:
-        if did in stored:
-            out.append(_dispenser_record(stored[did]))
-        else:
-            seed = provider.get_dispenser(did)
-            if seed:
-                out.append(_dispenser_from_seed(seed))
-    return out
+    return [_dispenser_record(stored[did]) for did in order]
 
 
 # ---------------------------------------------------------------------------
@@ -191,7 +166,7 @@ def get_workorder(
     return {
         "workOrder": wo,
         "site": _resolve_site(db, provider, wo["siteId"]),
-        "dispensers": _resolve_dispensers(db, provider, wo),
+        "dispensers": _resolve_dispensers(db, wo),
     }
 
 
@@ -219,27 +194,10 @@ def list_site_dispensers(
     site_id: str,
     identity: Identity = Depends(get_identity),
     db: Session = Depends(get_db),
-    provider: WorkOrderProvider = Depends(get_workorder_provider),
 ) -> dict:
-    """Active + retired dispensers at a site (our store wins over the seed)."""
-    stored = {
-        d.id: d
-        for d in db.scalars(select(Dispenser).where(Dispenser.site_id == site_id)).all()
-    }
-    order: list[str] = [s["id"] for s in provider.list_dispensers(site_id)]
-    for did in stored:
-        if did not in order:
-            order.append(did)
-
-    out: list[dict] = []
-    for did in order:
-        if did in stored:
-            out.append(_dispenser_record(stored[did]))
-        else:
-            seed = provider.get_dispenser(did)
-            if seed:
-                out.append(_dispenser_from_seed(seed))
-    return {"dispensers": out}
+    """Active + retired dispensers at a site: our registry, nothing else (#209)."""
+    stored = db.scalars(select(Dispenser).where(Dispenser.site_id == site_id)).all()
+    return {"dispensers": [_dispenser_record(d) for d in sorted(stored, key=lambda d: d.id)]}
 
 
 @router.get("/sites/{site_id}")
@@ -294,15 +252,11 @@ def get_dispenser(
     dispenser_id: str,
     identity: Identity = Depends(get_identity),
     db: Session = Depends(get_db),
-    provider: WorkOrderProvider = Depends(get_workorder_provider),
 ) -> dict:
     stored = db.get(Dispenser, dispenser_id)
-    if stored is not None:
-        return _dispenser_record(stored)
-    seed = provider.get_dispenser(dispenser_id)
-    if seed is None:
+    if stored is None:
         raise HTTPException(status_code=404, detail="Unknown dispenser")
-    return _dispenser_from_seed(seed)
+    return _dispenser_record(stored)
 
 
 def _require_identity_fields(payload: dict) -> None:
@@ -351,23 +305,13 @@ def edit_dispenser(
     payload: dict = Body(...),
     identity: Identity = Depends(get_identity),
     db: Session = Depends(get_db),
-    provider: WorkOrderProvider = Depends(get_workorder_provider),
 ) -> dict:
-    """Persist the technician's completed/corrected dispenser identity. Seeds
-    from OnKey the first time, then becomes our canonical record."""
+    """Persist the technician's corrected dispenser identity. Only registry
+    rows exist now (#209); new assets come in through POST /dispensers."""
     _require_identity_fields(payload)
     d = db.get(Dispenser, dispenser_id)
-    seed = provider.get_dispenser(dispenser_id)
     if d is None:
-        if seed is None:
-            raise HTTPException(status_code=404, detail="Unknown dispenser")
-        d = Dispenser(
-            id=dispenser_id,
-            site_id=seed["siteId"],
-            status="active",
-            source="onkey",
-        )
-        db.add(d)
+        raise HTTPException(status_code=404, detail="Unknown dispenser")
     d.make = payload["make"]
     d.model = payload["model"]
     d.serial_number = payload["serialNumber"]
@@ -385,25 +329,11 @@ def retire_dispenser(
     payload: dict = Body(default={}),
     identity: Identity = Depends(get_identity),
     db: Session = Depends(get_db),
-    provider: WorkOrderProvider = Depends(get_workorder_provider),
 ) -> dict:
-    """Soft-retire a decommissioned dispenser (never a hard delete). If it only
-    existed as a seed, materialise the canonical record first."""
+    """Soft-retire a decommissioned dispenser (never a hard delete)."""
     d = db.get(Dispenser, dispenser_id)
     if d is None:
-        seed = provider.get_dispenser(dispenser_id)
-        if seed is None:
-            raise HTTPException(status_code=404, detail="Unknown dispenser")
-        d = Dispenser(
-            id=dispenser_id,
-            site_id=seed["siteId"],
-            make=seed.get("make", ""),
-            model=seed.get("model", ""),
-            serial_number=seed.get("serialNumber", ""),
-            sa_approval_number=seed.get("saApprovalNumber", ""),
-            source="onkey",
-        )
-        db.add(d)
+        raise HTTPException(status_code=404, detail="Unknown dispenser")
     d.status = "retired"
     d.retired_by = identity.name
     d.retired_at = _now()

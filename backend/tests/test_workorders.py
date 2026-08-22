@@ -24,16 +24,31 @@ def test_list_workorders_for_signed_in_technician(client):
     assert wo["site"]["customerName"] == "Engen"
 
 
-def test_get_workorder_bundle_resolves_site_and_dispensers(client):
+def test_get_workorder_bundle_resolves_site_and_registry_dispensers(client):
+    # Dispensers come ONLY from our registry (#209): the OnKey seed is off,
+    # so a bundle carries store rows and nothing materialises from seeds.
+    disp_id = _uid("DISP-B")
+    created = client.post(
+        "/v1/dispensers",
+        json={
+            "id": disp_id,
+            "siteId": "SITE-001",
+            "make": "Tatsuno",
+            "model": "SS-LX-E",
+            "serialNumber": f"TSN-{disp_id}",
+            "saApprovalNumber": "119-AA20",
+        },
+    )
+    assert created.status_code == 200, created.text
+
     resp = client.get("/v1/workorders/WO-001")
     assert resp.status_code == 200, resp.text
     bundle = resp.json()
     assert bundle["workOrder"]["id"] == "WO-001"
     assert bundle["site"]["siteName"] == "North Road Fuel Depot"
     ids = {d["id"] for d in bundle["dispensers"]}
-    assert {"DISP-001", "DISP-002"} <= ids
-    disp1 = next(d for d in bundle["dispensers"] if d["id"] == "DISP-001")
-    assert disp1["make"] == "Tatsuno"
+    assert disp_id in ids
+    assert all(d["inStore"] for d in bundle["dispensers"])
 
 
 def test_list_sites_for_technician(client):
@@ -43,11 +58,11 @@ def test_list_sites_for_technician(client):
     assert "SITE-001" in ids  # the E2E technician's work-order site
 
 
-def test_list_site_dispensers(client):
+def test_list_site_dispensers_registry_only(client):
+    # Registry rows only (#209): every row returned is a stored record.
     resp = client.get("/v1/sites/SITE-001/dispensers")
     assert resp.status_code == 200, resp.text
-    ids = {d["id"] for d in resp.json()["dispensers"]}
-    assert {"DISP-001", "DISP-002"} <= ids
+    assert all(d["inStore"] for d in resp.json()["dispensers"])
 
 
 def test_workorder_not_assigned_is_forbidden(client):
@@ -103,23 +118,22 @@ def test_add_edit_retire_dispenser_roundtrip(client):
     assert client.get(f"/v1/dispensers/{disp_id}").json()["status"] == "retired"
 
 
-def test_edit_seed_dispenser_persists_and_wins(client):
-    # DISP-002 is a partial seed (no identity). Completing it persists a
-    # canonical record that then wins over the seed.
+def test_unknown_dispenser_never_materialises_from_seed(client):
+    # The OnKey seed is switched off (#209): an id we do not hold is a 404
+    # on read AND on edit; nothing quietly creates a record from a seed.
+    ghost = _uid("DISP-GHOST")
+    assert client.get(f"/v1/dispensers/{ghost}").status_code == 404
     resp = client.post(
-        "/v1/dispensers/DISP-002",
+        f"/v1/dispensers/{ghost}",
         json={
             "make": "Tatsuno",
             "model": "SS-LX-E",
-            "serialNumber": "TSN-DISP002",
+            "serialNumber": "TSN-GHOST",
             "saApprovalNumber": "119-AA20",
         },
     )
-    assert resp.status_code == 200, resp.text
-    assert resp.json()["serialNumber"] == "TSN-DISP002"
-    # source stays 'onkey' because the record originated from a seed.
-    assert resp.json()["source"] == "onkey"
-    assert client.get("/v1/dispensers/DISP-002").json()["serialNumber"] == "TSN-DISP002"
+    assert resp.status_code == 404
+    assert client.post(f"/v1/dispensers/{ghost}/retire").status_code == 404
 
 
 def test_site_upsert_roundtrip(client):

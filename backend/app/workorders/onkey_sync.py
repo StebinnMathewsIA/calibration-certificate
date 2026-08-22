@@ -457,29 +457,11 @@ def derive_registers(db: Session, row_hashes: list[str] | None = None) -> dict:
         params,
     )
 
-    db.execute(
-        text(
-            f"""
-            INSERT INTO onkey_equipment (equipment_number, site_number, description, updated_at)
-            SELECT DISTINCT ON (data->>'EquipmentNumber')
-                   data->>'EquipmentNumber',
-                   nullif(data->>'SiteNumber', ''),
-                   nullif(data->>'WorkOrderAssetParentAssetParentAssetDescription', ''),
-                   now()
-            FROM onkey_woe001
-            WHERE coalesce(data->>'EquipmentNumber', '') <> '' {win}
-            ORDER BY data->>'EquipmentNumber', start_date_ts DESC NULLS LAST
-            ON CONFLICT (equipment_number) DO UPDATE SET
-                site_number = coalesce(EXCLUDED.site_number, onkey_equipment.site_number),
-                description = coalesce(EXCLUDED.description, onkey_equipment.description),
-                updated_at = now()
-            WHERE (onkey_equipment.site_number, onkey_equipment.description) IS DISTINCT FROM
-                  (coalesce(EXCLUDED.site_number, onkey_equipment.site_number),
-                   coalesce(EXCLUDED.description, onkey_equipment.description))
-            """
-        ),
-        params,
-    )
+    # onkey_equipment is no longer written (#209): the OnKey asset data
+    # proved unreliable in the field, our own registry is THE asset
+    # registry, and migration 126 emptied the mirror. The export rows
+    # still carry EquipmentNumber; it stays an opaque reference on the
+    # work order.
 
     db.execute(
         text(
@@ -593,23 +575,7 @@ def derive_registers(db: Session, row_hashes: list[str] | None = None) -> dict:
             """
         )
     )
-    db.execute(
-        text(
-            r"""
-            UPDATE onkey_equipment e SET
-                description = coalesce(e.description, m.description),
-                is_active = coalesce(m.is_active, e.is_active),
-                site_number = coalesce(e.site_number, m.location_code),
-                updated_at = now()
-            FROM onkey_location_master m
-            WHERE substring(m.code from '\((\d+)\)') = e.equipment_number
-              AND (e.description, e.is_active, e.site_number) IS DISTINCT FROM
-                  (coalesce(e.description, m.description),
-                   coalesce(m.is_active, e.is_active),
-                   coalesce(e.site_number, m.location_code))
-            """
-        )
-    )
+    # The onkey_equipment enrichment is gone with the asset seed (#209).
     db.execute(
         text(
             """
@@ -660,7 +626,7 @@ def derive_registers(db: Session, row_hashes: list[str] | None = None) -> dict:
         return {"windowed_rows": len(row_hashes)}
 
     counts = {}
-    for table in ("onkey_technicians", "onkey_sites", "onkey_equipment", "onkey_workorders"):
+    for table in ("onkey_technicians", "onkey_sites", "onkey_workorders"):
         counts[table.removeprefix("onkey_")] = db.execute(
             text(f"SELECT count(*) FROM {table}")  # noqa: S608 — fixed table names
         ).scalar()

@@ -3,18 +3,20 @@ import { useFocusEffect } from 'expo-router';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import React, { useCallback, useState } from 'react';
-import { Alert, Pressable, ScrollView, Text, View } from 'react-native';
+import { Alert, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import {
   CertHistoryEntry,
   DispenserResolved,
   SiteResolved,
+  addDispenser,
   fetchCertificatePdf,
   getSite,
   getSiteHistory,
   listSiteDispensers,
 } from '../../src/api/client';
 import { useAuth } from '../../src/auth/AuthContext';
-import { Badge, SectionCard, colors, styles, styles as ui } from '../../src/components/ui';
+import { BarcodeScannerModal } from '../../src/components/BarcodeScanner';
+import { Badge, Button, SectionCard, colors, styles, styles as ui } from '../../src/components/ui';
 import { fetchThrough } from '../../src/db/cache';
 import { MiniMap } from '../../src/components/MiniMap';
 import {
@@ -35,6 +37,17 @@ export default function SiteDetailScreen() {
   const [certs, setCerts] = useState<Record<string, DispenserCert>>({});
   const [history, setHistory] = useState<CertHistoryEntry[]>([]);
   const [sharingCert, setSharingCert] = useState<string | null>(null);
+  // Adding a dispenser lives HERE now (#209): our registry is the only
+  // source of assets, so the site screen must be able to grow it.
+  const [adding, setAdding] = useState(false);
+  const [addBusy, setAddBusy] = useState(false);
+  const [scanning, setScanning] = useState(false);
+  const [form, setForm] = useState({
+    make: 'Tatsuno',
+    model: '',
+    serialNumber: '',
+    saApprovalNumber: '',
+  });
 
   const load = useCallback(async () => {
     setCerts(certStatusByDispenser());
@@ -82,6 +95,27 @@ export default function SiteDetailScreen() {
       load();
     }, [load]),
   );
+
+  const submitAdd = async () => {
+    if (!form.model.trim() || !form.serialNumber.trim() || !form.saApprovalNumber.trim()) {
+      Alert.alert(
+        'Missing details',
+        'Make, model, serial number and SA approval number are required.',
+      );
+      return;
+    }
+    setAddBusy(true);
+    try {
+      await addDispenser(accessToken, { siteId: String(id), ...form });
+      setForm({ make: 'Tatsuno', model: '', serialNumber: '', saApprovalNumber: '' });
+      setAdding(false);
+      await load();
+    } catch (err) {
+      Alert.alert('Could not add dispenser', err instanceof Error ? err.message : String(err));
+    } finally {
+      setAddBusy(false);
+    }
+  };
 
   if (!site) return <Text style={{ padding: 16 }}>Loading…</Text>;
 
@@ -178,11 +212,64 @@ export default function SiteDetailScreen() {
           Certificate status is based on the certificates issued from this device.
         </Text>
         {active.length === 0 ? (
-          <Text style={{ color: colors.muted, marginTop: 6 }}>No active dispensers.</Text>
+          <Text style={{ color: colors.muted, marginTop: 6 }}>
+            No dispensers registered at this site yet. Add the first one to start a
+            verification; it prefills every visit after this.
+          </Text>
         ) : (
           active.map((d) => row(d))
         )}
+        {adding ? (
+          <View style={{ marginTop: 10 }}>
+            {(['make', 'model', 'serialNumber', 'saApprovalNumber'] as const).map((f) => (
+              <View key={f} style={{ marginBottom: 6 }}>
+                <Text style={{ fontSize: 12, color: colors.muted, marginBottom: 3 }}>
+                  {ADD_FIELD_LABELS[f]}
+                </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <TextInput
+                    style={[addInputStyle, { flex: 1 }]}
+                    placeholder={ADD_FIELD_LABELS[f]}
+                    value={form[f]}
+                    onChangeText={(t) => setForm((prev) => ({ ...prev, [f]: t }))}
+                  />
+                  {f === 'serialNumber' ? (
+                    <Text
+                      onPress={() => setScanning(true)}
+                      style={{
+                        color: colors.navy,
+                        fontWeight: '600',
+                        borderWidth: 1.5,
+                        borderColor: colors.navy,
+                        borderRadius: 10,
+                        paddingHorizontal: 12,
+                        paddingVertical: 9,
+                        overflow: 'hidden',
+                      }}
+                    >
+                      Scan
+                    </Text>
+                  ) : null}
+                </View>
+              </View>
+            ))}
+            <Button title="Save dispenser" onPress={() => void submitAdd()} busy={addBusy} />
+            <Button title="Cancel" kind="secondary" onPress={() => setAdding(false)} />
+          </View>
+        ) : (
+          <Button title="Add a dispenser" kind="secondary" onPress={() => setAdding(true)} />
+        )}
       </SectionCard>
+
+      <BarcodeScannerModal
+        visible={scanning}
+        title="Scan the dispenser serial number"
+        onClose={() => setScanning(false)}
+        onScanned={(data) => {
+          setScanning(false);
+          setForm((prev) => ({ ...prev, serialNumber: data }));
+        }}
+      />
 
       {retired.length > 0 ? (
         <SectionCard title="Retired dispensers">{retired.map((d) => row(d, false))}</SectionCard>
@@ -251,3 +338,20 @@ export default function SiteDetailScreen() {
     </ScrollView>
   );
 }
+
+const ADD_FIELD_LABELS: Record<'make' | 'model' | 'serialNumber' | 'saApprovalNumber', string> = {
+  make: 'Make',
+  model: 'Model',
+  serialNumber: 'Serial number',
+  saApprovalNumber: 'SA approval number',
+};
+
+const addInputStyle = {
+  borderWidth: 1,
+  borderColor: colors.line,
+  borderRadius: 10,
+  paddingHorizontal: 10,
+  paddingVertical: 8,
+  color: colors.ink,
+  backgroundColor: '#fff',
+} as const;

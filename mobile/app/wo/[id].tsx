@@ -1301,7 +1301,8 @@ export default function WorkOrderLifecycleScreen() {
           </Text>
         ) : dispensers.length === 0 ? (
           <Text style={{ color: colors.muted, fontSize: 12 }}>
-            No dispensers on record for this site yet.
+            No dispensers registered at this site yet. Open the site (Start a verification
+            below) and add the first one; it prefills every visit after this.
           </Text>
         ) : (
           <>

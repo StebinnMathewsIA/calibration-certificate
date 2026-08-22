@@ -1353,3 +1353,21 @@ OTA update.
 - [ ] The issued certificate screen has "Back to work order" and it
       opens the owning job with the job card ready to fill
 - [ ] The sealed rejection screen has the same button
+
+## Database repair after the test-suite replay bug (#206, #205, #207)
+
+Server-side, verifiable in the app after the CI run completes.
+
+- [ ] Sites tab (viewing as any technician) lists the full site
+      directory again, several hundred sites, not 5
+- [ ] Work as list shows technicians with test work orders first, then
+      by open count, and the counts are real (Abongile shows 4, not 0)
+- [ ] The verification toggle on a work order still holds after the
+      repair (is_calibration_override survives on the row)
+
+## Team work orders section removed (#208)
+
+OTA update.
+
+- [ ] Home no longer shows the "Team work orders" accordion at the
+      bottom, for any role

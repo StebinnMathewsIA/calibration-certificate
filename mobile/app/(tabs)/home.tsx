@@ -3,8 +3,9 @@
  * the device's town, search, the day's four number cards, the date chip
  * beside the map of surrounding work orders, then the work list in three
  * sections: In progress (started, then on the way), Upcoming, Complete
- * and stopped. Below it, everything Home already carried: the measures
- * alert, certificates in progress on this device, and the team section.
+ * and stopped. Below it: the measures alert and certificates in progress
+ * on this device. (The Team work orders accordion was removed in #208;
+ * team visibility lives in the Work as flow.)
  *
  * The map needs the native Google Maps build; until a phone has it, the
  * strip shows a quiet placeholder (see HomeMap for the lazy require).
@@ -17,11 +18,9 @@ import Svg, { Circle, Path } from 'react-native-svg';
 import type { CertificateState, Verification } from '@prowalco/schema';
 import {
   HomeStats,
-  TeamGroup,
   WorkOrderRecord,
   WorkOrderSummary,
   getHomeStats,
-  getTeamWorkOrders,
   listWorkOrderRecords,
   listWorkOrders,
 } from '../../src/api/client';
@@ -248,21 +247,6 @@ export default function HomeScreen() {
     ];
     return { blocking, text: parts.join(' · ') };
   }, [identity, workOrders]);
-
-  // Team view (#76), unchanged.
-  const [team, setTeam] = useState<TeamGroup[] | null>(null);
-  const [teamOpen, setTeamOpen] = useState<Record<string, boolean>>({});
-  useFocusEffect(
-    useCallback(() => {
-      let cancelled = false;
-      fetchThrough('team-workorders', () => getTeamWorkOrders(accessToken))
-        .then((t) => !cancelled && setTeam(t))
-        .catch(() => {});
-      return () => {
-        cancelled = true;
-      };
-    }, [accessToken]),
-  );
 
   const retryItem = async (itemId: string) => {
     repo.clearRetryBackoff(itemId);
@@ -594,73 +578,6 @@ export default function HomeScreen() {
           </Text>
         ) : null}
 
-        {team && team.length > 0 ? (
-          <View style={{ marginHorizontal: 12, marginTop: 16, marginBottom: 8 }}>
-            <Text style={{ fontWeight: '700', color: colors.ink, fontSize: 15, marginBottom: 4 }}>
-              Team work orders
-            </Text>
-            {team.map((g) => {
-              const open = teamOpen[g.staffCode] ?? false;
-              const byStatus = new Map<string, WorkOrderSummary[]>();
-              for (const wo of g.workOrders) {
-                const k = wo.statusDetail ?? 'Open';
-                const l = byStatus.get(k);
-                if (l) l.push(wo);
-                else byStatus.set(k, [wo]);
-              }
-              return (
-                <View key={g.staffCode}>
-                  <Text
-                    onPress={() => setTeamOpen((e) => ({ ...e, [g.staffCode]: !open }))}
-                    accessibilityRole="button"
-                    style={{
-                      paddingVertical: 8,
-                      borderTopWidth: 1,
-                      borderColor: colors.line,
-                      fontWeight: '700',
-                      color: colors.ink,
-                      fontSize: 14,
-                    }}
-                  >
-                    {open ? '▾ ' : '▸ '}
-                    {g.name ?? g.staffCode}
-                    <Text style={{ color: colors.muted, fontWeight: '400', fontSize: 12 }}>
-                      {'  '}{g.workOrders.length} open
-                    </Text>
-                  </Text>
-                  {open
-                    ? [...byStatus.entries()].map(([status, wos]) => (
-                        <View key={status} style={{ marginLeft: 10 }}>
-                          <Text
-                            style={{
-                              color: colors.muted,
-                              fontSize: 11,
-                              marginTop: 6,
-                              textTransform: 'uppercase',
-                            }}
-                          >
-                            {status} ({wos.length})
-                          </Text>
-                          {wos.map((wo) => (
-                            <Text
-                              key={wo.id}
-                              onPress={() =>
-                                router.push({ pathname: '/workorder/[id]', params: { id: wo.id } })
-                              }
-                              style={{ color: colors.blueText, fontSize: 13, paddingVertical: 4 }}
-                            >
-                              {wo.reference} · {wo.site.customerName} {wo.site.siteName}
-                              {wo.scheduledDate ? ` · due ${wo.scheduledDate}` : ''}
-                            </Text>
-                          ))}
-                        </View>
-                      ))
-                    : null}
-                </View>
-              );
-            })}
-          </View>
-        ) : null}
       </ScrollView>
     </View>
   );

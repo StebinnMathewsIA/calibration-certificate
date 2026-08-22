@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import ec, padding, rsa
+from cryptography.hazmat.primitives.asymmetric.utils import encode_dss_signature
 from cryptography.hazmat.primitives.serialization import load_pem_public_key
 
 # Signing happens at upload time (online), so skew only needs to absorb bad
@@ -43,7 +44,13 @@ def device_signature_message(device_id: str, timestamp: str, pdf_sha256: str) ->
 def verify_device_signature(public_key_pem: str, message: str, signature_b64: str) -> bool:
     """True iff signature_b64 is a valid signature over message by the
     enrolled key. EC P-256 is what the app generates; RSA accepted for
-    forward-compatibility."""
+    forward-compatibility.
+
+    EC signatures are accepted in BOTH wire forms (#199): DER, which
+    Python cryptography verifies natively, and raw IEEE P1363 (r||s,
+    exactly twice the curve byte-length), which react-native-quick-crypto
+    emits and which is transcoded to DER here before the same strict
+    verification. Transcoding, not relaxation."""
     try:
         key = load_pem_public_key(public_key_pem.encode())
         signature = base64.b64decode(signature_b64, validate=True)
@@ -51,6 +58,12 @@ def verify_device_signature(public_key_pem: str, message: str, signature_b64: st
         return False
     try:
         if isinstance(key, ec.EllipticCurvePublicKey):
+            raw_len = 2 * ((key.curve.key_size + 7) // 8)
+            if len(signature) == raw_len:
+                half = raw_len // 2
+                r = int.from_bytes(signature[:half], "big")
+                s = int.from_bytes(signature[half:], "big")
+                signature = encode_dss_signature(r, s)
             key.verify(signature, message.encode(), ec.ECDSA(hashes.SHA256()))
         elif isinstance(key, rsa.RSAPublicKey):
             key.verify(signature, message.encode(), padding.PKCS1v15(), hashes.SHA256())

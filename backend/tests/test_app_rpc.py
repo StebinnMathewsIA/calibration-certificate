@@ -33,7 +33,12 @@ def test_unknown_email_sees_nothing(db):
     _as_email(db, "nobody@example.invalid")
     assert db.execute(text("SELECT app_staff_code()")).scalar() is None
     assert db.execute(text("SELECT app_my_work_orders()")).scalar() == []
-    assert db.execute(text("SELECT app_my_sites()")).scalar() == []
+    # Sites are a shared directory since 112/115: every authenticated
+    # caller sees the full flat list, identity only scopes WORK. This
+    # assertion previously expected [], which failed against the flat
+    # function; a green run therefore required the pre-112 body, which
+    # made the suite fight the schema (see the conftest note above).
+    assert isinstance(db.execute(text("SELECT app_my_sites()")).scalar(), list)
     assert db.execute(text("SELECT app_my_technician()")).scalar() is None
 
 

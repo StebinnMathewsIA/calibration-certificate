@@ -84,21 +84,37 @@ def main() -> int:
             raw.commit()
             print(f"baselined {len(files)} existing migrations; none re-run")
         else:
-            cur.execute("SELECT filename FROM schema_migrations")
-            applied = {row[0] for row in cur.fetchall()}
-            pending = [p for p in files if p.name not in applied]
-            for path in pending:
+            # Pending is recomputed after EVERY file, not once up front: a
+            # repair migration may un-record earlier files (124 does) so
+            # that they re-run, in order, within the same boot.
+            ran_this_boot: set[str] = set()
+            applied_count = 0
+            while True:
+                cur.execute("SELECT filename FROM schema_migrations")
+                applied = {row[0] for row in cur.fetchall()}
+                pending = [p for p in files if p.name not in applied]
+                if not pending:
+                    break
+                path = pending[0]
+                if path.name in ran_this_boot:
+                    raise RuntimeError(
+                        f"{path.name} was un-recorded after running this boot; "
+                        "a migration must never delete its own ledger row"
+                    )
                 sql = path.read_text()
                 # Raw cursor, parameters=None: the SQL contains literal '%'
                 # which psycopg2 would otherwise treat as a placeholder.
                 cur.execute(sql)
                 cur.execute(
-                    "INSERT INTO schema_migrations (filename) VALUES (%s)",
+                    "INSERT INTO schema_migrations (filename) VALUES (%s) "
+                    "ON CONFLICT (filename) DO NOTHING",
                     (path.name,),
                 )
                 raw.commit()
+                ran_this_boot.add(path.name)
+                applied_count += 1
                 print(f"applied {path.name}")
-            if not pending:
+            if applied_count == 0:
                 print(f"nothing to apply ({len(applied)} recorded)")
     finally:
         raw.close()

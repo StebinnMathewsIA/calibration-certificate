@@ -41,23 +41,23 @@ if _problems:
 # ---------------------------------------------------------------------------
 # Apply the schema + ensure the bucket (idempotent), then provision the
 # technician test user and sign in for a real Supabase JWT.
+#
+# LEDGER-AWARE, pending-only (#150). This block used to replay every
+# migration file on every run, the exact replay-on-boot bug #150 removed
+# from the deploy path: one erroring file aborts the replay partway and
+# leaves the LIVE database mid-era, and every file before the abort point
+# reverts newer definitions. That is what kept reverting app_my_sites,
+# the technician picker, and the sync cron cadence in production.
 # ---------------------------------------------------------------------------
 from sqlalchemy import create_engine  # noqa: E402
 
-from app.config import MIGRATIONS_DIR  # noqa: E402
 from app.pdf_store import SupabaseStoragePdfStore  # noqa: E402
+from scripts.apply_migrations import main as _apply_migrations  # noqa: E402
+
+if _apply_migrations() != 0:
+    pytest.exit("Migration apply failed; see output above.", returncode=1)
 
 _engine = create_engine(_settings.database_url)
-for _path in sorted(MIGRATIONS_DIR.glob("*.sql")):
-    # Raw DBAPI cursor with parameters=None: the SQL contains literal '%'
-    # (trigger error message), which psycopg2 would otherwise treat as a
-    # format placeholder.
-    _raw = _engine.raw_connection()
-    try:
-        _raw.cursor().execute(_path.read_text())
-        _raw.commit()
-    finally:
-        _raw.close()
 
 pdf_bucket_store = SupabaseStoragePdfStore(
     _settings.supabase_url,

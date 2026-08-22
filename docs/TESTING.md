@@ -1345,3 +1345,11 @@ OTA update.
 - [ ] After sealing, the rejection certificate document shows inline,
       pinch-zoomable, above the share button
 - [ ] The screen header reads "Rejection certificate"
+
+## Back to the work order from certificate screens (#204)
+
+OTA update.
+
+- [ ] The issued certificate screen has "Back to work order" and it
+      opens the owning job with the job card ready to fill
+- [ ] The sealed rejection screen has the same button

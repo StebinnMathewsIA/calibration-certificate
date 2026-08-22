@@ -6,7 +6,7 @@
  */
 import * as Crypto from 'expo-crypto';
 import * as Sharing from 'expo-sharing';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useMemo, useRef, useState } from 'react';
 import { Alert, Switch, Text, TextInput, View } from 'react-native';
 import type { RejectionCertificate, Verification } from '@prowalco/schema';
@@ -66,6 +66,7 @@ function deriveReasons(v: Partial<Verification>, hoseIndex: number): string[] {
 
 export default function RejectScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const router = useRouter();
   const { identity, accessToken } = useAuth();
   const record = useMemo(() => repo.getById(id), [id]);
   const v = record?.form as Partial<Verification> | null;
@@ -197,6 +198,16 @@ export default function RejectScreen() {
             the user of the instrument now; the NRCS copy is forwarded per procedure.
           </Text>
           <Button title="Share sealed rejection certificate" onPress={() => void share()} />
+          {/* The rejection is not the end of the job either (#204). */}
+          <Button
+            title="Back to work order"
+            kind="secondary"
+            onPress={() =>
+              v.workOrderId
+                ? router.replace({ pathname: '/wo/[id]', params: { id: v.workOrderId } })
+                : router.replace('/home')
+            }
+          />
         </SectionCard>
         {sealedRejection ? (
           // The document itself (#203): the exact template the sealed PDF

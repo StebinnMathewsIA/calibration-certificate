@@ -70,6 +70,17 @@ export default function IssuedScreen() {
             }
           />
         ) : null}
+        {/* The certificate is not the end of the job (#204): labour, km
+            and spares still live on the work order's job card. */}
+        <Button
+          title="Back to work order"
+          kind="secondary"
+          onPress={() =>
+            v.workOrderId
+              ? router.replace({ pathname: '/wo/[id]', params: { id: v.workOrderId } })
+              : router.replace('/home')
+          }
+        />
       </SectionCard>
 
       {previewHtml ? (
